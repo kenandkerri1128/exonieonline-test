@@ -1,0 +1,991 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Exonie 3D Remastered</title>
+    <link rel="icon" type="image/png" href="favicon.png">
+    <link rel="preload" as="image" href="backgrounds/loadingscreen.png">
+    <link rel="stylesheet" href="css/style.css">
+
+    <!-- Native ES Module Import Map for Three.js -->
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "./libs/three.module.js",
+            "three/addons/": "./libs/"
+        }
+    }
+    </script>
+    <script src="https://cdn.socket.io/4.7.4/socket.io.min.js"></script>
+    <!-- Standalone Flow Controller (Runs immediately with zero delay) -->
+    <script src="./js/flow.js"></script>
+</head>
+<body>
+
+    <!-- 3D Game World Canvas Container -->
+    <div id="game-container"></div>
+
+    <!-- 3D Target Lock Reticle -->
+    <div id="target-reticle"></div>
+
+    <!-- ============================================================
+         1. CIRCUIT SIEGE INTRO / CREDITS SPLASH SCREEN
+         ============================================================ -->
+    <section id="scr-splash" style="display:none;" class="hidden" onclick="window.ExonieFlow && window.ExonieFlow.skipSplash()">
+        <!-- Stage 1: Studio Logo & Presents -->
+        <div id="splash-studio" class="splash-card show">
+            <img id="studio-logo" src="xeniegaming.png" alt="Xenie Gaming" class="studio-logo" draggable="false"
+                 onerror="this.style.display='none';document.getElementById('studio-logo-fallback').style.display='block'">
+            <div id="studio-logo-fallback" style="display:none; font-size:2rem; font-weight:900; letter-spacing:0.4em; color:#00e5ff;">XENIE GAMING</div>
+            <div class="studio-presents-text">PRESENTS</div>
+        </div>
+
+        <!-- Stage 2: Production Credits -->
+        <div id="splash-credits" class="splash-card">
+            <div class="credits-box">
+                <div class="credits-title">A XENIE GAMING PRODUCTION</div>
+                <div class="credits-grid">
+                    <div class="credit-label">GAME TITLE</div><div class="credit-val credit-highlight">Exonie 3D Remastered</div>
+                    <div class="credit-label">GAME SYSTEMS</div><div class="credit-val">Authoritative Action RPG Loop</div>
+                    <div class="credit-label">RENDERING</div><div class="credit-val">Three.js Engine · High-DPI Mobile</div>
+                    <div class="credit-label">COMBAT FEEL</div><div class="credit-val credit-highlight">Dragon Nest Style 3D Combat</div>
+                    <div class="credit-label">AUDIO</div><div class="credit-val">Original Exonie Soundtrack & SFX</div>
+                    <div class="credit-label">SUPPORT</div><div class="credit-val"><a href="https://www.patreon.com/c/xeniegaming?vanity=user" target="_blank" rel="noopener noreferrer" class="credit-link">patreon.com/c/xeniegaming</a></div>
+                </div>
+                <div class="credits-footer">
+                    Exonie Online Remastered in full 3D with Dragon Nest Action & 100-Floor Spire
+                </div>
+            </div>
+        </div>
+
+        <button id="splash-skip" class="btn-splash-skip" onclick="event.stopPropagation(); window.ExonieFlow && window.ExonieFlow.skipSplash()">Skip ▸</button>
+    </section>
+
+    <!-- ============================================================
+         2. AUTH / LOGIN SCREEN (EXACT 2D EXONIE LOGIN)
+         ============================================================ -->
+    <section id="auth-screen" class="hidden" style="display:none;">
+        <div class="auth-overlay"></div>
+        
+        <!-- Login Form -->
+        <div class="auth-container" id="login-form">
+            <h1>Exonie Online</h1>
+            <div class="build-badge">BUILD: 2026.10.22-3D-REMASTERED</div>
+
+            <input type="text" id="login-user" class="auth-input" placeholder="Username" maxlength="16" value="HeroPlayer">
+            <input type="password" id="login-pass" class="auth-input" placeholder="Password" value="password123">
+
+            <button class="btn-auth-primary" id="btn-login" onclick="window.ExonieFlow.attemptLogin()">LOGIN</button>
+            <button class="btn-auth-guest" id="btn-guest" onclick="window.ExonieFlow.loginAsGuest()">PLAY AS GUEST ⚡</button>
+            
+            <span class="auth-link" id="link-to-register" onclick="window.ExonieFlow.switchAuth('register')">Create an Account</span>
+        </div>
+
+        <!-- Register Form -->
+        <div class="auth-container" id="register-form" style="display:none">
+            <h1>Join Exonie</h1>
+            <div class="build-badge">CREATE YOUR ACCOUNT</div>
+
+            <input type="text" id="reg-user" class="auth-input" placeholder="Username" maxlength="16">
+            <input type="password" id="reg-pass" class="auth-input" placeholder="Password">
+
+            <button class="btn-auth-primary" id="btn-register" onclick="window.ExonieFlow.attemptRegister()">CREATE ACCOUNT</button>
+            <span class="auth-link" id="link-to-login" onclick="window.ExonieFlow.switchAuth('login')">Back to Login</span>
+        </div>
+    </section>
+
+    <!-- ============================================================
+         2B. 3-SLOT ACCOUNT CHARACTER SELECT SCREEN
+         ============================================================ -->
+    <section id="char-select-screen" class="hidden" style="display:none;">
+        <div class="auth-overlay"></div>
+        <div class="char-select-panel">
+            <div class="char-select-header">
+                <h2>Select Your Character</h2>
+                <p>Account: <strong id="char-select-account-name" style="color:#00e5ff;">HeroPlayer</strong> — Store up to 3 Characters</p>
+            </div>
+            <div class="char-slots-grid" id="char-slots-grid">
+                <!-- Populated dynamically by ExonieFlow.renderCharSlots() -->
+            </div>
+            <div style="margin-top:18px; display:flex; justify-content:center;">
+                <button class="pill-btn" onclick="window.ExonieFlow.logoutToAuth()" style="padding:10px 24px;">⬅ Switch Account / Logout</button>
+            </div>
+        </div>
+    </section>
+
+    <!-- ============================================================
+         3. CHARACTER CREATION SCREEN (FORGING AVATAR)
+         ============================================================ -->
+    <section id="creation-screen" class="hidden" style="display:none;">
+        <div class="customizer-container">
+            <!-- 3D Avatar Preview Column (Static Facing Front + Manual Rotate Controls) -->
+            <div class="customizer-preview-col">
+                <div class="preview-glow-ring"></div>
+                <div class="preview-rotate-controls">
+                    <button type="button" class="pill-btn" onclick="window.rotateCustomizerPreview && window.rotateCustomizerPreview(-0.45)">⟲ Turn Left</button>
+                    <button type="button" class="pill-btn" onclick="window.rotateCustomizerPreview && window.rotateCustomizerPreview(0, true)">Front</button>
+                    <button type="button" class="pill-btn" onclick="window.rotateCustomizerPreview && window.rotateCustomizerPreview(0.45)">Turn Right ⟳</button>
+                </div>
+            </div>
+
+            <!-- Customizer Controls Column -->
+            <div class="customizer-controls-col">
+                <div class="customizer-header">
+                    <h2>Forging Avatar</h2>
+                    <p>Customize your 3D vessel before entering the world of Exonie.</p>
+                </div>
+
+                <!-- Character Name -->
+                <div class="option-group">
+                    <label class="option-label">Character Name</label>
+                    <input type="text" id="input-char-name" class="input-name" value="Aria" maxlength="16">
+                </div>
+
+                <!-- Gender Selection (Simply Female & Male) -->
+                <div class="option-group">
+                    <label class="option-label">Gender</label>
+                    <div class="pill-group" id="gender-pills">
+                        <button class="pill-btn active" data-gender="female" onclick="window.ExonieFlow.setGender('female', this)">Female</button>
+                        <button class="pill-btn" data-gender="male" onclick="window.ExonieFlow.setGender('male', this)">Male</button>
+                    </div>
+                </div>
+
+                <!-- 5 Gender-Specific Hair Styles -->
+                <div class="option-group">
+                    <label class="option-label">Hair Style (5 Distinct Styles Per Gender)</label>
+                    <div class="pill-group" id="hair-pills">
+                        <button class="pill-btn active" data-hair="1" id="hair-btn-1" onclick="window.ExonieFlow.setHairStyle('1', this)">1: Twin Tails</button>
+                        <button class="pill-btn" data-hair="2" id="hair-btn-2" onclick="window.ExonieFlow.setHairStyle('2', this)">2: Long Flowing</button>
+                        <button class="pill-btn" data-hair="3" id="hair-btn-3" onclick="window.ExonieFlow.setHairStyle('3', this)">3: Hime Bob</button>
+                        <button class="pill-btn" data-hair="4" id="hair-btn-4" onclick="window.ExonieFlow.setHairStyle('4', this)">4: High Ponytail</button>
+                        <button class="pill-btn" data-hair="5" id="hair-btn-5" onclick="window.ExonieFlow.setHairStyle('5', this)">5: Empress Buns</button>
+                    </div>
+                </div>
+
+                <!-- Hair Color Swatches -->
+                <div class="option-group">
+                    <label class="option-label">Hair Color</label>
+                    <div class="swatch-group" id="hair-swatches">
+                        <div class="swatch active" style="background:#111111;" data-color="#111111" title="Jet Black" onclick="window.ExonieFlow.setHairColor('#111111', this)"></div>
+                        <div class="swatch" style="background:#fbc02d;" data-color="#fbc02d" title="Golden Blonde" onclick="window.ExonieFlow.setHairColor('#fbc02d', this)"></div>
+                        <div class="swatch" style="background:#5d4037;" data-color="#5d4037" title="Chestnut Brown" onclick="window.ExonieFlow.setHairColor('#5d4037', this)"></div>
+                        <div class="swatch" style="background:#0288d1;" data-color="#0288d1" title="Celestial Blue" onclick="window.ExonieFlow.setHairColor('#0288d1', this)"></div>
+                        <div class="swatch" style="background:#eceff1;" data-color="#eceff1" title="Pure White" onclick="window.ExonieFlow.setHairColor('#eceff1', this)"></div>
+                        <div class="swatch" style="background:#d32f2f;" data-color="#d32f2f" title="Crimson Red" onclick="window.ExonieFlow.setHairColor('#d32f2f', this)"></div>
+                        <div class="swatch" style="background:#7b1fa2;" data-color="#7b1fa2" title="Mystic Violet" onclick="window.ExonieFlow.setHairColor('#7b1fa2', this)"></div>
+                        <div class="swatch" style="background:#388e3c;" data-color="#388e3c" title="Emerald Green" onclick="window.ExonieFlow.setHairColor('#388e3c', this)"></div>
+                    </div>
+                </div>
+
+                <!-- Skin Tone Swatches -->
+                <div class="option-group">
+                    <label class="option-label">Skin Tone</label>
+                    <div class="swatch-group" id="skin-swatches">
+                        <div class="swatch active" style="background:#f5c6a5;" data-color="#f5c6a5" title="Peach" onclick="window.ExonieFlow.setSkinColor('#f5c6a5', this)"></div>
+                        <div class="swatch" style="background:#ffe0b2;" data-color="#ffe0b2" title="Fair" onclick="window.ExonieFlow.setSkinColor('#ffe0b2', this)"></div>
+                        <div class="swatch" style="background:#d7ccc8;" data-color="#d7ccc8" title="Tan" onclick="window.ExonieFlow.setSkinColor('#d7ccc8', this)"></div>
+                        <div class="swatch" style="background:#8d6e63;" data-color="#8d6e63" title="Bronze" onclick="window.ExonieFlow.setSkinColor('#8d6e63', this)"></div>
+                        <div class="swatch" style="background:#e0e0e0;" data-color="#e0e0e0" title="Pale" onclick="window.ExonieFlow.setSkinColor('#e0e0e0', this)"></div>
+                    </div>
+                </div>
+
+                <div class="customizer-note">
+                    <p style="color:#94a3b8; font-size:0.85rem; margin:10px 0 15px 0;">
+                        💡 <em>Class is chosen in-game: equip any weapon from your bag and open the Skills window (K) to choose your permanent class path.</em>
+                    </p>
+                </div>
+
+                <button class="btn-finish-creation" id="btn-finish-creation" onclick="window.ExonieFlow.finishCreation()">FINISH CREATION ⚔️</button>
+            </div>
+        </div>
+    </section>
+
+    <!-- ============================================================
+         4. STORY PROLOGUE DIALOGUE (BEDROOM -> SLEEP -> VOID)
+         ============================================================ -->
+    <section id="prologue-screen" class="hidden" style="display:none;">
+        <!-- Visual Backdrop for Scenes -->
+        <div id="prologue-bg" class="bg-bedroom">
+            <!-- Bedroom visual elements -->
+            <div id="prologue-bedroom-vfx">
+                <div class="clock-display">11:58 PM</div>
+                <div class="ambient-desk-glow">
+                    <span>*Laptop screen softly humming in the dark room...*</span>
+                </div>
+            </div>
+            <!-- Void visual elements -->
+            <div id="prologue-void-vfx" style="display:none;">
+                <div class="void-spire-glow"></div>
+            </div>
+        </div>
+
+        <!-- Single Interactive Story Dialogue Box -->
+        <div class="dialogue-box" id="prologue-dialogue-box" onclick="window.ExonieFlow.advanceDialogue()">
+            <div class="speaker-badge" id="prologue-speaker">You</div>
+            <div class="dialogue-text" id="prologue-text">11:58 PM... Another exhausting day in the real world is finally over.</div>
+            <div class="dialogue-actions">
+                <button class="btn-skip" id="btn-prologue-skip" onclick="event.stopPropagation(); window.ExonieFlow.skipPrologue()">Skip Prologue ⏩</button>
+                <button class="btn-next" id="btn-prologue-next" onclick="event.stopPropagation(); window.ExonieFlow.advanceDialogue()">Next ▶</button>
+            </div>
+        </div>
+    </section>
+
+    <!-- ============================================================
+         5. IN-GAME HUD
+         ============================================================ -->
+    <div id="game-hud" style="display:none;">
+        <!-- Top Left: Player Status -->
+        <div class="hud-top-left">
+            <div class="player-avatar-frame">
+                <span class="player-avatar-icon">⚔️</span>
+                <span class="player-level-badge">Lv.1</span>
+            </div>
+            <div class="player-bars">
+                <div class="player-name-row">
+                    <span class="player-name-text">Aria</span>
+                    <span class="player-class-badge">Blademaster</span>
+                </div>
+                <!-- HP Bar -->
+                <div class="bar-wrapper">
+                    <div class="bar-fill bar-hp" style="width: 100%;"></div>
+                    <span class="bar-text" id="hp-text">500 / 500</span>
+                </div>
+                <!-- MP Bar -->
+                <div class="bar-wrapper">
+                    <div class="bar-fill bar-mp" style="width: 100%;"></div>
+                    <span class="bar-text" id="mp-text">200 / 200</span>
+                </div>
+                <!-- EXP Bar -->
+                <div class="bar-wrapper" style="height: 5px;">
+                    <div class="bar-fill bar-exp" style="width: 0%;"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Top Center: Floor Indicator & Training Tavern Speedrun Timer -->
+        <div class="hud-top-center">
+            <span class="floor-title">Town of Exonie</span>
+            <span class="floor-subtitle">Safe Haven</span>
+            <div id="tavern-timer-ui" style="display:none;">⏱️ 00:00.00</div>
+        </div>
+
+        <!-- World Announcement Broadcast Banner (Rare Drops, World Boss & Raid Kills) -->
+        <div id="loot-broadcast" style="display:none;"></div>
+
+        <!-- Top Right: Gold, Menu & Minimap -->
+        <div class="hud-top-right">
+            <div class="gold-counter">🪙 <span id="gold-val">500</span></div>
+            <div class="hud-menu-buttons">
+                <button class="hud-btn" id="btn-stats" title="Player Stats [P]">📊</button>
+                <button class="hud-btn" id="btn-inventory" title="Inventory [B]">🎒</button>
+                <button class="hud-btn" id="btn-skills" title="Skills & Class [K]">📜</button>
+                <button class="hud-btn" id="btn-settings" title="Settings [ESC]">⚙️</button>
+            </div>
+            <div id="minimap-container">
+                <canvas id="minimap-canvas"></canvas>
+            </div>
+        </div>
+
+        <!-- Center Screen: Boss Health Bar -->
+        <div class="hud-combat-center">
+            <div id="boss-health-bar" style="display:none;">
+                <div class="boss-name-row">
+                    <span class="boss-name" id="boss-name">[BOSS] Dragon Slime</span>
+                    <span id="boss-hp-text">35,000 / 35,000</span>
+                </div>
+                <div class="bar-wrapper" style="height: 16px;">
+                    <div class="bar-fill bar-hp" id="boss-hp-fill" style="width: 100%;"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Side: Dragon Nest Combo Counter -->
+        <div id="combo-container">
+            <span class="combo-count">0</span>
+            <span class="combo-text">HITS</span>
+        </div>
+
+        <!-- Bottom Desktop Skill Hotbar (Shows Actual Skill Names Like 2D Exonie) -->
+        <div id="desktop-hotbar">
+            <div class="hotbar-slot" id="hotbar-1" title="Active Skill 1">
+                <span class="hotbar-key" id="hb-key-1">1 / Q</span>
+                <span class="hotbar-icon" id="hb-icon-1">⚔️</span>
+                <span class="hotbar-skill-name" id="hb-name-1">Locked</span>
+                <div class="cd-overlay" id="cd-1"></div>
+                <span class="cd-text" id="cdt-1"></span>
+            </div>
+            <div class="hotbar-slot" id="hotbar-2" title="Active Skill 2">
+                <span class="hotbar-key" id="hb-key-2">2 / E</span>
+                <span class="hotbar-icon" id="hb-icon-2">🔥</span>
+                <span class="hotbar-skill-name" id="hb-name-2">Locked</span>
+                <div class="cd-overlay" id="cd-2"></div>
+                <span class="cd-text" id="cdt-2"></span>
+            </div>
+            <div class="hotbar-slot" id="hotbar-3" title="Health Potion">
+                <span class="hotbar-key" id="hb-key-3">3</span>
+                <span class="hotbar-icon">🧪</span>
+                <span class="hotbar-skill-name" id="hb-name-3">Potion</span>
+                <span class="hotbar-qty" id="potion-qty-text">x10</span>
+                <div class="cd-overlay" id="cd-3"></div>
+                <span class="cd-text" id="cdt-3"></span>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============================================================
+         CRISP MOBILE TOUCH CONTROLS
+         ============================================================ -->
+    <div id="mobile-controls" style="display:none;">
+        <!-- Mobile Top Shortcut Bar (Stats, Bag, Skills, Potion) -->
+        <div id="mobile-menu-shortcuts">
+            <button class="mobile-short-btn" id="m-btn-stats">📊 Stats</button>
+            <button class="mobile-short-btn" id="m-btn-inventory">🎒 Bag</button>
+            <button class="mobile-short-btn" id="m-btn-skills">📜 Skills</button>
+            <button class="mobile-short-btn" id="m-btn-potion">🧪 Potion (<span id="m-potion-qty">10</span>)</button>
+        </div>
+
+        <!-- Virtual Joystick (Bottom Left) -->
+        <div id="joystick-zone">
+            <div id="joystick-thumb"></div>
+        </div>
+
+        <!-- Action Buttons (Bottom Right Arc) -->
+        <div id="touch-actions-zone">
+            <!-- Target Lock -->
+            <button class="touch-btn" id="btn-touch-lock" title="Lock On">
+                <span class="btn-icon">🎯</span>
+            </button>
+
+            <!-- Skill 2 -->
+            <button class="touch-btn" id="btn-touch-skill2" title="Skill 2">
+                <span class="btn-icon" id="m-icon-skill2">🔥</span>
+                <div class="btn-cooldown-overlay" id="m-cd-skill2"></div>
+                <span class="btn-cooldown-txt" id="m-cdt-skill2"></span>
+            </button>
+
+            <!-- Skill 1 -->
+            <button class="touch-btn" id="btn-touch-skill1" title="Skill 1">
+                <span class="btn-icon" id="m-icon-skill1">⚡</span>
+                <div class="btn-cooldown-overlay" id="m-cd-skill1"></div>
+                <span class="btn-cooldown-txt" id="m-cdt-skill1"></span>
+            </button>
+
+            <!-- Jump Button (Touch) -->
+            <button class="touch-btn" id="btn-touch-jump" title="Jump [Space]">
+                <span class="btn-icon">🦘</span>
+            </button>
+
+            <!-- Dodge Roll -->
+            <button class="touch-btn" id="btn-touch-dodge" title="Dodge Roll [Shift]">
+                <span class="btn-icon">💨</span>
+            </button>
+
+            <!-- Big Primary Attack Combo -->
+            <button class="touch-btn" id="btn-touch-attack" title="Attack Combo">
+                <span class="btn-icon">⚔️</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Dragon Nest Aim Crosshair (Centered for Pointer Lock) -->
+    <div id="crosshair-center">
+        <div class="crosshair-dot"></div>
+        <div class="crosshair-ring"></div>
+    </div>
+
+    <!-- Floating Rich Item Hover Tooltip -->
+    <div id="item-hover-tooltip" style="display:none;"></div>
+
+    <!-- ============================================================
+         PLAYER STATS MODAL (AUTHENTIC 2D EXONIE STATS WINDOW [P])
+         ============================================================ -->
+    <div class="game-modal" id="stats-modal" style="display:none;">
+        <div class="modal-dialog" style="max-width:440px;">
+            <div class="modal-header">
+                <h3>📊 Player Stats</h3>
+                <button class="btn-close-modal" id="btn-close-stats">✖</button>
+            </div>
+            <div class="confirm-modal-body" style="text-align:left; display:flex; flex-direction:column; gap:12px;">
+                <div class="stats-grid-2d">
+                    <div class="stat-row-2d"><span>Character Name:</span><strong id="stat-name" style="color:#00e5ff;">Aria</strong></div>
+                    <div class="stat-row-2d"><span>Class Path:</span><strong id="stat-class" style="color:#4ade80;">Novice</strong></div>
+                    <div class="stat-row-2d"><span>Level:</span><strong id="stat-lvl" style="color:#ffd700;">1</strong></div>
+                    <div class="stat-row-2d"><span>EXP Progress:</span><strong id="stat-exp" style="color:#cbd5e1;">0 / 100</strong></div>
+                    <div class="stat-row-2d"><span>Max HP:</span><strong id="stat-maxhp" style="color:#f87171;">105</strong></div>
+                    <div class="stat-row-2d"><span>Attack Power (ATK):</span><strong id="stat-atk" style="color:#fb923c;">5</strong></div>
+                    <div class="stat-row-2d"><span>Magic Attack (MATK):</span><strong id="stat-matk" style="color:#60a5fa;">5</strong></div>
+                    <div class="stat-row-2d"><span>Defense (DEF):</span><strong id="stat-def" style="color:#a3e635;">4</strong></div>
+                    <div class="stat-row-2d"><span>Speed (SPD):</span><strong id="stat-spd" style="color:#2dd4bf;">1</strong></div>
+                    <div class="stat-row-2d"><span>Strength (STR):</span><strong id="stat-str" style="color:#f43f5e;">10</strong></div>
+                    <div class="stat-row-2d"><span>Intelligence (INT):</span><strong id="stat-int" style="color:#c084fc;">10</strong></div>
+                </div>
+                <div style="display:flex; gap:10px; margin-top:6px;">
+                    <button class="btn-item-action" id="btn-stats-switch-char" style="flex:1; background:#0284c7; padding:10px;">👥 Switch Character</button>
+                    <button class="btn-item-action" id="btn-stats-close" style="flex:1; background:#334155; padding:10px;">Close [P]</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============================================================
+         INVENTORY & EQUIPMENT MODAL (2D EXONIE REPLICATED)
+         ============================================================ -->
+    <div class="game-modal" id="inventory-modal" style="display:none;">
+        <div class="modal-dialog">
+            <div class="modal-header">
+                <h3>🎒 Bag & Equipment</h3>
+                <button class="btn-close-modal" id="btn-close-inventory">✖</button>
+            </div>
+            <div class="modal-body-inventory">
+                <!-- Equipment Slots Column -->
+                <div class="equip-section">
+                    <div class="section-title">Equipped</div>
+                    <div class="equip-slot-card" id="slot-weapon" data-slot="weapon">
+                        <span class="slot-badge">WEAPON</span>
+                        <div class="slot-item-view" id="equip-view-weapon">Empty</div>
+                    </div>
+                    <div class="equip-slot-card" id="slot-armor" data-slot="armor">
+                        <span class="slot-badge">ARMOR</span>
+                        <div class="slot-item-view" id="equip-view-armor">Starter Armor</div>
+                    </div>
+                    <div class="equip-slot-card" id="slot-leggings" data-slot="leggings">
+                        <span class="slot-badge">LEGGINGS</span>
+                        <div class="slot-item-view" id="equip-view-leggings">Starter Leggings</div>
+                    </div>
+                </div>
+
+                <!-- Bag Grid (20 slots) -->
+                <div class="bag-section">
+                    <div class="section-title">Inventory (20 Slots) — Left-Click to Lock & Equip, Double-Click for Instant Equip</div>
+                    <div class="bag-grid" id="inventory-slots-grid"></div>
+                </div>
+            </div>
+            <!-- Item Details Footer -->
+            <div class="item-detail-panel" id="item-detail-panel">
+                <div id="detail-item-title">Select an item to view stats</div>
+                <div id="detail-item-desc">Equipping a weapon allows you to choose your permanent class in the Skills menu (K).</div>
+                <div id="detail-item-actions"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============================================================
+         SKILL & CLASS SELECTION MODAL (2D EXONIE REPLICATED)
+         ============================================================ -->
+    <div class="game-modal" id="skill-modal" style="display:none;">
+        <div class="modal-dialog modal-dialog-skills">
+            <div class="modal-header">
+                <h3 id="skill-modal-title">📜 Class & Skills</h3>
+                <button class="btn-close-modal" id="btn-close-skills">✖</button>
+            </div>
+            
+            <div class="modal-body-skills">
+                <!-- 1. Class Selection Area (When player has no class yet) -->
+                <div id="class-selection-area" style="display:none;">
+                    <div class="class-selection-prompt" id="class-selection-prompt">
+                        Equip a weapon from your bag to view available classes.
+                    </div>
+                    <div class="available-classes-grid" id="available-classes-grid"></div>
+                </div>
+
+                <!-- 2. Active Class & Skills Area (When class is already chosen) -->
+                <div id="active-class-area" style="display:none;">
+                    <div class="active-class-header">
+                        <div class="active-class-title-row">
+                            <span class="active-class-name" id="active-class-name">Berserker</span>
+                            <span class="active-class-aura" id="active-class-aura">Red Aura</span>
+                        </div>
+                        <span class="active-class-sub">Weapon Specialization: <strong id="active-class-weapon">Sword</strong></span>
+                    </div>
+
+                    <div class="class-skills-list" id="class-skills-list"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============================================================
+         CUSTOM CONFIRMATION MODAL (PERMANENT CLASS PROMPT)
+         ============================================================ -->
+    <div class="game-modal" id="confirm-modal" style="display:none;">
+        <div class="modal-dialog modal-dialog-confirm">
+            <div class="modal-header">
+                <h3 id="confirm-modal-title">Confirm Class Awakening</h3>
+            </div>
+            <div class="confirm-modal-body" id="confirm-modal-msg">
+                Are you sure you want to become a Berserker? This is permanent!
+            </div>
+            <div class="confirm-modal-actions">
+                <button class="btn-confirm-cancel" id="btn-confirm-no">Cancel</button>
+                <button class="btn-confirm-ok" id="btn-confirm-yes">Awaken Class ⚔️</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============================================================
+         ESC SETTINGS MENU MODAL (AUTHENTIC 2D EXONIE SETTINGS + KEYBIND CUSTOMIZER)
+         ============================================================ -->
+    <div class="game-modal" id="settings-modal" style="display:none;">
+        <div class="modal-dialog modal-dialog-confirm" style="max-width:520px;">
+            <div class="modal-header">
+                <h3>⚙️ Game Settings & Keybinds</h3>
+                <button class="btn-close-modal" id="btn-close-settings">✖</button>
+            </div>
+            <div class="confirm-modal-body" style="text-align:left; display:flex; flex-direction:column; gap:12px; max-height:76vh; overflow-y:auto;">
+                <!-- Interactive Keybind Customizer -->
+                <div style="background:rgba(15,23,42,0.9); border:1px solid rgba(56,189,248,0.3); border-radius:10px; padding:12px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                        <span style="color:#00e5ff; font-weight:800; font-size:0.85rem;">⌨️ CUSTOMIZE BUTTON HOTKEYS (Click to Rebind)</span>
+                        <button type="button" class="pill-btn" id="btn-reset-keybinds" style="font-size:0.72rem; padding:3px 9px;">Reset Defaults</button>
+                    </div>
+                    <div class="keybind-grid" id="keybind-customizer-grid">
+                        <div class="keybind-row"><span>Active Skill 1</span><button type="button" class="keybind-btn" data-bind="skill1" id="bind-btn-skill1">1 / Q</button></div>
+                        <div class="keybind-row"><span>Active Skill 2</span><button type="button" class="keybind-btn" data-bind="skill2" id="bind-btn-skill2">2 / E</button></div>
+                        <div class="keybind-row"><span>Health Potion</span><button type="button" class="keybind-btn" data-bind="potion" id="bind-btn-potion">3</button></div>
+                        <div class="keybind-row"><span>Dodge Roll</span><button type="button" class="keybind-btn" data-bind="dodge" id="bind-btn-dodge">SHIFT</button></div>
+                        <div class="keybind-row"><span>Player Stats</span><button type="button" class="keybind-btn" data-bind="stats" id="bind-btn-stats">P</button></div>
+                        <div class="keybind-row"><span>Bag & Equipment</span><button type="button" class="keybind-btn" data-bind="bag" id="bind-btn-bag">B / I</button></div>
+                        <div class="keybind-row"><span>Class & Skills</span><button type="button" class="keybind-btn" data-bind="skills" id="bind-btn-skills">K</button></div>
+                    </div>
+                    <div style="font-size:0.75rem; color:#94a3b8; margin-top:6px;">
+                        • <strong>[WASD / Arrows]</strong>: Move &nbsp;|&nbsp; <strong>[Left Click]</strong>: Auto-Aim & Attack &nbsp;|&nbsp; <strong>[Right Drag]</strong>: Orbit Camera
+                    </div>
+                </div>
+
+                <label style="display:flex; align-items:center; justify-content:space-between; cursor:pointer; font-weight:700; color:#e2e8f0;">
+                    <span>🌤️ Town Sky Time (Morning Sun & Clouds / Night Moon & Stars)</span>
+                    <button type="button" class="pill-btn" id="btn-toggle-sky-time" style="padding:5px 12px;">☀️ Morning / Day</button>
+                </label>
+
+                <label style="display:flex; align-items:center; justify-content:space-between; cursor:pointer; font-weight:700; color:#e2e8f0;">
+                    <span>🖥️ Full Screen Mode</span>
+                    <input type="checkbox" id="chk-fullscreen" style="width:20px; height:20px; accent-color:#00e5ff;">
+                </label>
+
+                <label style="display:flex; align-items:center; justify-content:space-between; cursor:pointer; font-weight:700; color:#e2e8f0;">
+                    <span>✨ High Quality 3D Graphics (Shadows)</span>
+                    <input type="checkbox" id="chk-high-quality" checked style="width:20px; height:20px; accent-color:#00e5ff;">
+                </label>
+
+                <div style="display:flex; flex-direction:column; gap:6px;">
+                    <div style="display:flex; justify-content:space-between; font-weight:700; color:#e2e8f0;">
+                        <span>🔊 Master Volume</span>
+                        <span id="lbl-volume-pct" style="color:#00e5ff;">70%</span>
+                    </div>
+                    <input type="range" id="rng-master-volume" min="0" max="100" value="70" style="width:100%; accent-color:#00e5ff; cursor:pointer;">
+                </div>
+
+                <div style="display:flex; gap:8px; margin-top:6px; flex-wrap:wrap;">
+                    <button class="btn-item-action" id="btn-settings-unstuck" style="flex:1; background:#0284c7; padding:10px;">🏠 Return to Town</button>
+                    <button class="btn-item-action" id="btn-settings-switch-char" style="flex:1; background:#7c3aed; padding:10px;">👥 Switch Character (3 Slots)</button>
+                    <button class="btn-item-action" id="btn-settings-resume" style="flex:1; background:#22c55e; color:#000; font-weight:900; padding:10px;">Resume</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============================================================
+          TOWN MARKETPLACE & ALL-AROUND MERCHANT MODAL (AUTHENTIC 2D EXONIE)
+          ============================================================ -->
+    <div class="game-modal" id="marketplace-modal" style="display:none;">
+        <div class="modal-dialog" style="max-width:680px; width:95vw;">
+            <div class="modal-header">
+                <h3>⚖️ Town Marketplace — All-Around Merchant</h3>
+                <button class="btn-close-modal" id="btn-close-marketplace">✖</button>
+            </div>
+            <div class="confirm-modal-body" style="text-align:left; display:flex; flex-direction:column; gap:12px; max-height:78vh; overflow-y:auto; padding:16px;">
+                <!-- Tab Navigation Buttons -->
+                <div style="display:flex; gap:6px; flex-wrap:wrap; border-bottom:1px solid #334155; padding-bottom:8px;">
+                    <button class="pill-btn active" id="tab-btn-shop" onclick="window.switchMarketTab('shop')">🛒 Wandering Shop</button>
+                    <button class="pill-btn" id="tab-btn-ah" onclick="window.switchMarketTab('ah')">⚖️ Auction House</button>
+                    <button class="pill-btn" id="tab-btn-forge" onclick="window.switchMarketTab('forge')">🔨 Divine Forge</button>
+                    <button class="pill-btn" id="tab-btn-craft" onclick="window.switchMarketTab('craft')">🧪 Consumables</button>
+                    <button class="pill-btn" id="tab-btn-pets" onclick="window.switchMarketTab('pets')">👻 Cosmetics (Pets)</button>
+                </div>
+
+                <!-- 1. Wandering Merchant Shop Tab -->
+                <div id="market-view-shop" style="display:flex; flex-direction:column; gap:12px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; background:#1e293b; padding:12px 16px; border-radius:10px; border:1px solid #38bdf8;">
+                        <div>
+                            <h4 style="color:#4ade80; margin:0 0 4px 0;">🧪 Health Potion</h4>
+                            <div style="font-size:0.82rem; color:#94a3b8;">Restores 100 HP when consumed. [Price: 25 Gold each]</div>
+                        </div>
+                        <button class="btn-item-action" onclick="window.game && window.game.buyPotions(5, 125)" style="background:#22c55e; color:#000; font-weight:900; padding:10px 16px;">Buy 5 (125 G)</button>
+                    </div>
+
+                    <div style="background:#1e293b; padding:14px; border-radius:10px; border:1px solid #f59e0b; display:flex; flex-direction:column; gap:10px;">
+                        <h4 style="color:#fbbf24; margin:0;">💠 Custom Refinement Stone Order</h4>
+                        <div style="font-size:0.82rem; color:#cbd5e1;">Order customized refinement stones for your gear:</div>
+                        <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+                            <div>
+                                <label style="font-size:0.75rem; color:#94a3b8; font-weight:800;">Target Stone Level (1–100):</label>
+                                <input type="number" id="shop-stone-level" min="1" max="100" value="10" style="padding:6px 10px; background:#0f172a; color:#00e5ff; border:1px solid #475569; border-radius:6px; font-weight:800; width:100%;" oninput="window.updateStonePrice()">
+                            </div>
+                            <div>
+                                <label style="font-size:0.75rem; color:#94a3b8; font-weight:800;">Rarity Grade:</label>
+                                <select id="shop-stone-rarity" style="padding:6px 10px; background:#0f172a; color:#fff; border:1px solid #475569; border-radius:6px; font-weight:700; width:100%;" onchange="window.updateStonePrice()">
+                                    <option value="Basic">Basic (1x)</option>
+                                    <option value="Rare">Rare (3x)</option>
+                                    <option value="Unique" selected>Unique (6x)</option>
+                                    <option value="Legendary">Legendary (12x)</option>
+                                    <option value="Godly">Godly (25x)</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:4px;">
+                            <span style="font-weight:900; color:#ffd700;">🪙 Cost: <span id="shop-stone-total-price">1,500</span> Gold</span>
+                            <button class="btn-item-action" onclick="window.buyCustomStone()" style="background:#f59e0b; color:#000; font-weight:900; padding:10px 18px;">Purchase Stone</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 2. Auction House Tab -->
+                <div id="market-view-ah" style="display:none; flex-direction:column; gap:10px;">
+                    <p style="color:#94a3b8; font-size:0.83rem; margin:0;">Browse server listings or sell items from your inventory for Gold.</p>
+                    <div id="ah-listings-grid" style="display:grid; grid-template-columns:1fr 1fr; gap:8px; max-height:280px; overflow-y:auto;">
+                        <!-- Populated dynamically with AH items -->
+                    </div>
+                </div>
+
+                <!-- 3. Divine Forge (Blacksmith) Tab -->
+                <div id="market-view-forge" style="display:none; flex-direction:column; gap:10px;">
+                    <div style="background:#1e293b; padding:14px; border-radius:10px; border:2px solid #a855f7;">
+                        <h4 style="color:#c084fc; margin:0 0 6px 0;">⚡ Blacksmith Divine Ascension</h4>
+                        <p style="font-size:0.82rem; color:#cbd5e1; margin:0 0 10px 0;">
+                            Ascend your <strong>Godly</strong> equipment into <strong>Divine</strong> tier using <strong>Divine Essence</strong> and <strong>Exo Metals</strong> (Red, Green, Blue)!
+                        </p>
+                        <div style="background:rgba(0,0,0,0.4); border-radius:8px; padding:10px; font-size:0.85rem; color:#e2e8f0; display:flex; flex-direction:column; gap:4px;">
+                            <div>• Required: <strong>1x Divine Essence</strong></div>
+                            <div>• Required: <strong>1x Red, 1x Green, 1x Blue Exo Metal</strong></div>
+                            <div>• Fee: <strong>3,000,000 G</strong> (Weapon) / <strong>1,000,000 G</strong> (Armor)</div>
+                        </div>
+                        <button class="btn-item-action" onclick="window.attemptDivineForge()" style="margin-top:12px; width:100%; background:linear-gradient(135deg,#9333ea,#7c3aed); font-weight:900; padding:11px;">🔨 Ascend Equipped Weapon to Divine</button>
+                    </div>
+                </div>
+
+                <!-- 4. Consumables Crafting (Stat Forger) Tab -->
+                <div id="market-view-craft" style="display:none; flex-direction:column; gap:10px;">
+                    <div style="background:#1e293b; padding:14px; border-radius:10px; border:1px solid #38bdf8;">
+                        <h4 style="color:#38bdf8; margin:0 0 6px 0;">🧪 Craft Stat Forger</h4>
+                        <p style="font-size:0.82rem; color:#cbd5e1; margin:0 0 8px 0;">
+                            Reroll random sub-stats (STR / INT) on equipment of the matching rarity.
+                        </p>
+                        <div style="display:flex; justify-content:space-between; align-items:center; background:#0f172a; padding:10px; border-radius:8px;">
+                            <span>Stat Forger [Unique / Legendary]</span>
+                            <button class="btn-item-action" onclick="window.craftStatForger()" style="background:#0284c7; padding:8px 16px;">Craft (300,000 G)</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 5. Cosmetics Crafting (Pets) Tab -->
+                <div id="market-view-pets" style="display:none; flex-direction:column; gap:10px;">
+                    <div style="background:#1e293b; padding:14px; border-radius:10px; border:1px solid #ec4899;">
+                        <h4 style="color:#f472b6; margin:0 0 6px 0;">👻 Void Pet (Godly Companion)</h4>
+                        <p style="font-size:0.82rem; color:#cbd5e1; margin:0 0 8px 0;">
+                            A floating spectral pet that follows you into battle. Requires <strong>10 Soul Pieces</strong> (dropped by the Haunted House Wraith King).
+                        </p>
+                        <button class="btn-item-action" onclick="window.craftVoidPet()" style="background:linear-gradient(135deg,#ec4899,#db2777); font-weight:900; padding:10px; width:100%;">Craft Void Pet (10 Soul Pieces)</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============================================================
+         HAUNTED HOUSE CHALLENGE MODAL (AUTHENTIC 2D MECHANIC)
+         ============================================================ -->
+    <div class="game-modal" id="haunted-house-modal" style="display:none;">
+        <div class="modal-dialog" style="max-width:480px;">
+            <div class="modal-header">
+                <h3 style="color:#c084fc;">👻 Haunted House — Face the Wraith King</h3>
+                <button class="btn-close-modal" id="btn-close-haunted-house">✖</button>
+            </div>
+            <div class="confirm-modal-body" style="text-align:left; display:flex; flex-direction:column; gap:12px; padding:16px;">
+                <p style="color:#cbd5e1; font-size:0.85rem; margin:0;">
+                    Unlimited entries. No timers. Face the <strong>Wraith King</strong>! The monster's level will be randomly rolled based on your chosen difficulty bracket.
+                </p>
+                <div style="display:flex; flex-direction:column; gap:8px;">
+                    <button class="btn-item-action" onclick="window.enterHauntedHouseChallenge('easy')" style="background:#22c55e; color:#000; font-weight:900; padding:12px; text-align:left; display:flex; justify-content:space-between;">
+                        <span>🟢 EASY (Lv. 1 – 15)</span>
+                        <span>1,000 Gold</span>
+                    </button>
+                    <button class="btn-item-action" onclick="window.enterHauntedHouseChallenge('normal')" style="background:#f59e0b; color:#000; font-weight:900; padding:12px; text-align:left; display:flex; justify-content:space-between;">
+                        <span>🟡 NORMAL (Lv. 16 – 30)</span>
+                        <span>10,000 Gold</span>
+                    </button>
+                    <button class="btn-item-action" onclick="window.enterHauntedHouseChallenge('hard')" style="background:#ef4444; color:#fff; font-weight:900; padding:12px; text-align:left; display:flex; justify-content:space-between;">
+                        <span>🔴 HARD (Lv. 31 – 80)</span>
+                        <span>500,000 Gold</span>
+                    </button>
+                </div>
+                <div style="background:rgba(0,0,0,0.4); border-radius:8px; padding:8px 12px; font-size:0.78rem; color:#94a3b8; margin-top:4px;">
+                    🎁 <strong>Loot Drops:</strong> 50% chance for Unique/Legendary/Godly Gear, Power Gems, Refinement Stones, <strong>Soul Piece</strong> (3%), and <strong>Divine Essence</strong> (2%)!
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============================================================
+         AUTHENTIC 2D EXONIE DEATH SCREEN OVERLAY
+         ============================================================ -->
+    <div id="death-screen" style="display:none;">
+        <div class="death-box">
+            <div class="death-skull">💀</div>
+            <h1 class="death-title">YOU DIED</h1>
+            <p class="death-sub">Your vessel has fallen in battle. Return to the Town of Exonie to restore your full strength, or drink a Revival Juice to rise immediately.</p>
+            <div class="death-actions">
+                <button class="btn-death-respawn" id="btn-death-respawn">🏠 Respawn in Town (100% Full HP)</button>
+                <button class="btn-death-revive" id="btn-death-revive" style="display:none;">✨ Drink Revival Juice (Revive Here)</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============================================================
+         HOME PERSONAL STORAGE VAULT MODAL (15 SLOTS — INSIDE HOME)
+         ============================================================ -->
+    <div class="game-modal" id="storage-modal" style="display:none;">
+        <div class="modal-dialog" style="max-width:560px;">
+            <div class="modal-header">
+                <h3>🧰 Home Storage Vault (15 Slots)</h3>
+                <button class="btn-close-modal" id="btn-close-storage">✖</button>
+            </div>
+            <div class="confirm-modal-body" style="text-align:left; display:flex; flex-direction:column; gap:12px;">
+                <p style="color:#94a3b8; font-size:0.85rem;">
+                    💡 <strong>How to Use:</strong> Click any stored item below to <strong>Withdraw</strong> it into your Bag, or open your <strong>Bag [B]</strong> and click/deposit items into your 15-slot Home Vault.
+                </p>
+                <div class="bag-grid" id="storage-slots-grid" style="grid-template-columns:repeat(5, 1fr);"></div>
+                <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; margin-top:6px;">
+                    <span id="storage-count-label" style="color:#fbbf24; font-weight:800; font-size:0.85rem;">Stored: 0 / 15</span>
+                    <div style="display:flex; gap:8px;">
+                        <button class="btn-item-action" id="btn-storage-open-bag" style="background:#0284c7; padding:9px 16px;">🎒 Open Bag Side-by-Side</button>
+                        <button class="btn-item-action" id="btn-storage-close-2" style="background:#334155; padding:9px 16px;">Close Vault</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============================================================
+         QUEST BOARD / DAILY MISSIONS FOR GOLD MODAL (OUTSIDE GUILD BASE)
+         ============================================================ -->
+    <div class="game-modal" id="daily-missions-modal" style="display:none;">
+        <div class="modal-dialog" style="max-width:520px;">
+            <div class="modal-header">
+                <h3 style="color:#ffd700;">📜 Quest Board — Daily Gold Missions</h3>
+                <button class="btn-close-modal" id="btn-close-daily-missions">✖</button>
+            </div>
+            <div class="confirm-modal-body" style="text-align:left; display:flex; flex-direction:column; gap:14px;">
+                <p style="color:#cbd5e1; font-size:0.86rem;">
+                    Complete Guild Quest Board contracts in the Spire Maze to earn massive Gold rewards!
+                </p>
+
+                <!-- Active Mission Progress Box -->
+                <div id="active-mission-box" style="display:none; background:rgba(15,23,42,0.92); border:2px solid #ffd700; border-radius:12px; padding:16px; text-align:center;">
+                    <div style="font-size:0.75rem; font-weight:900; color:#fbbf24; letter-spacing:1px; text-transform:uppercase;">ACTIVE CONTRACT</div>
+                    <h4 id="active-mission-name" style="color:#4ade80; font-size:1.15rem; margin:6px 0;">Defeat 15 Slimes in Floor 1-2</h4>
+                    <div style="font-size:0.9rem; color:#fde047; font-weight:800; margin-bottom:8px;">
+                        Reward: <span id="active-mission-reward">25,000</span> Gold
+                    </div>
+                    <div style="background:#1e293b; border:1px solid #475569; border-radius:8px; height:18px; overflow:hidden; margin-bottom:8px;">
+                        <div id="active-mission-bar" style="width:0%; height:100%; background:linear-gradient(90deg, #f59e0b, #22c55e); transition:width 0.25s ease;"></div>
+                    </div>
+                    <div style="font-size:0.95rem; font-weight:900; color:#fff; margin-bottom:12px;">
+                        Progress: <span id="active-mission-progress" style="color:#00e5ff;">0 / 15</span>
+                    </div>
+                    <button class="btn-item-action" id="btn-abandon-mission" style="background:#ef4444; padding:8px 18px;">✖ Abandon Contract</button>
+                </div>
+
+                <!-- Mission Selection List -->
+                <div id="mission-selection-box" style="display:flex; flex-direction:column; gap:10px;">
+                    <div class="skill-class-card" style="cursor:default; display:flex; justify-content:space-between; align-items:center; gap:12px;">
+                        <div>
+                            <h3 style="color:#4ade80; margin:0;">🟢 Beginner Contract (Floor 1–2)</h3>
+                            <div class="skill-class-card-desc">Defeat <strong>15 Monsters</strong> on Spire Floor 1 or Floor 2.</div>
+                            <div style="color:#ffd700; font-weight:900; font-size:0.9rem; margin-top:4px;">🪙 Reward: 25,000 Gold</div>
+                        </div>
+                        <button class="btn-item-action" onclick="window.acceptDailyMission && window.acceptDailyMission('easy')" style="background:#22c55e; color:#000; font-weight:900; padding:10px 16px; white-space:nowrap;">Accept (25k G)</button>
+                    </div>
+
+                    <div class="skill-class-card" style="cursor:default; display:flex; justify-content:space-between; align-items:center; gap:12px;">
+                        <div>
+                            <h3 style="color:#fb923c; margin:0;">🟠 Novice Contract (Floor 3–4)</h3>
+                            <div class="skill-class-card-desc">Defeat <strong>20 Monsters</strong> on Spire Floor 3 or Floor 4.</div>
+                            <div style="color:#ffd700; font-weight:900; font-size:0.9rem; margin-top:4px;">🪙 Reward: 100,000 Gold</div>
+                        </div>
+                        <button class="btn-item-action" onclick="window.acceptDailyMission && window.acceptDailyMission('medium')" style="background:#f97316; color:#000; font-weight:900; padding:10px 16px; white-space:nowrap;">Accept (100k G)</button>
+                    </div>
+
+                    <div class="skill-class-card" style="cursor:default; display:flex; justify-content:space-between; align-items:center; gap:12px;">
+                        <div>
+                            <h3 style="color:#f43f5e; margin:0;">🔴 Expert Contract (Floor 5–6+)</h3>
+                            <div class="skill-class-card-desc">Defeat <strong>25 Monsters</strong> on Spire Floor 5 or higher.</div>
+                            <div style="color:#ffd700; font-weight:900; font-size:0.9rem; margin-top:4px;">🪙 Reward: 250,000 Gold</div>
+                        </div>
+                        <button class="btn-item-action" onclick="window.acceptDailyMission && window.acceptDailyMission('hard')" style="background:#ef4444; color:#fff; font-weight:900; padding:10px 16px; white-space:nowrap;">Accept (250k G)</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============================================================
+         TRAINING TAVERN SOLO CHALLENGE MODAL (AUTHENTIC 2D RULES)
+         ============================================================ -->
+    <div class="game-modal" id="tavern-modal" style="display:none;">
+        <div class="modal-dialog" style="max-width:480px;">
+            <div class="modal-header">
+                <h3 style="color:#ffab00;">🍺 Training Tavern — Solo Speedrun</h3>
+                <button class="btn-close-modal" id="btn-close-tavern">✖</button>
+            </div>
+            <div class="confirm-modal-body" style="text-align:left; display:flex; flex-direction:column; gap:12px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(15,23,42,0.9); padding:10px 14px; border-radius:10px; border:1px solid #f59e0b;">
+                    <span style="color:#e2e8f0; font-weight:700;">Daily Challenge Entries:</span>
+                    <strong id="tavern-entries-text" style="color:#4ade80; font-size:1.05rem;">5 / 5</strong>
+                </div>
+                <p style="color:#94a3b8; font-size:0.83rem;">
+                    Test your solo DPS against a single opponent! Your clear time & level are recorded on the <strong>Tavern Rankings</strong>, with a <strong>50% chance</strong> to drop a special Tavern Accessory!
+                </p>
+                <div style="display:flex; flex-direction:column; gap:6px;">
+                    <label style="color:#cbd5e1; font-weight:800; font-size:0.84rem;">Select Opponent Category:</label>
+                    <select id="tavern-boss-type" style="padding:10px; background:#0f172a; color:#fff; border:1px solid #f59e0b; border-radius:8px; font-weight:700;">
+                        <option value="common">Common Monster</option>
+                        <option value="mini">Mini Boss</option>
+                        <option value="floor" selected>Floor Boss</option>
+                    </select>
+                </div>
+                <div style="display:flex; flex-direction:column; gap:6px;">
+                    <label style="color:#cbd5e1; font-weight:800; font-size:0.84rem;">Select Monster Level (1 – 50):</label>
+                    <input type="number" id="tavern-boss-level" min="1" max="50" value="10" style="padding:10px; background:#0f172a; color:#00e5ff; border:1px solid #38bdf8; border-radius:8px; font-weight:900; font-size:1rem;">
+                </div>
+                <div style="display:flex; gap:10px; margin-top:6px;">
+                    <button class="btn-item-action" id="btn-enter-tavern" style="flex:1.4; background:linear-gradient(135deg,#f59e0b,#d97706); color:#000; font-weight:900; padding:12px;">⚔️ ENTER TAVERN</button>
+                    <button class="btn-item-action" id="btn-tavern-open-ranks" style="flex:1; background:#334155; color:#ffd700; font-weight:800; padding:12px;">🏆 Rankings</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============================================================
+         TAVERN LEADERBOARD MODAL (AUTHENTIC 2D UNIFIED TOP 50 RANKINGS)
+         ============================================================ -->
+    <div class="game-modal" id="leaderboard-modal" style="display:none;">
+        <div class="modal-dialog" style="max-width:620px; width:95vw;">
+            <div class="modal-header">
+                <h3 style="color:#ffd700;">🏆 Tavern Leaderboard (Top 50 Speedruns)</h3>
+                <button class="btn-close-modal" id="btn-close-leaderboard">✖</button>
+            </div>
+            <div class="confirm-modal-body" style="text-align:left; display:flex; flex-direction:column; gap:10px; padding:16px;">
+                <p style="color:#94a3b8; font-size:0.82rem; margin:0;">
+                    Official Exonie Solo Speedrun Rankings: Ranked by <strong>Category Weight</strong> (Floor Boss &gt; Mini Boss &gt; Common) &rarr; <strong>Monster Level</strong> &rarr; <strong>Clear Time</strong>.
+                </p>
+                <div style="max-height:360px; overflow-y:auto; background:rgba(15,23,42,0.9); border:1px solid #334155; border-radius:10px; padding:6px;">
+                    <table style="width:100%; border-collapse:collapse; font-size:0.85rem; color:#e2e8f0;">
+                        <thead>
+                            <tr style="border-bottom:2px solid #475569; color:#ffd700; text-align:left;">
+                                <th style="padding:8px 6px;">#</th>
+                                <th style="padding:8px 6px;">Player</th>
+                                <th style="padding:8px 6px;">Class</th>
+                                <th style="padding:8px 6px;">Opponent</th>
+                                <th style="padding:8px 6px; text-align:right;">Time</th>
+                            </tr>
+                        </thead>
+                        <tbody id="leaderboard-tbody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============================================================
+         DUNGEON DIFFICULTY MODAL (FOR DUNGEON 1 ON FLOOR 3 & DUNGEON 2 ON FLOOR 7)
+         ============================================================ -->
+    <div class="game-modal" id="dungeon-modal" style="display:none;">
+        <div class="modal-dialog" style="max-width:440px;">
+            <div class="modal-header">
+                <h3 id="dungeon-modal-title" style="color:#00e5ff;">🗝️ Select Dungeon Difficulty</h3>
+                <button class="btn-close-modal" id="btn-close-dungeon">✖</button>
+            </div>
+            <div class="confirm-modal-body" style="display:flex; flex-direction:column; gap:10px;">
+                <div style="display:flex; justify-content:space-between; background:rgba(15,23,42,0.9); padding:8px 14px; border-radius:8px; border:1px solid #38bdf8;">
+                    <span>Weekly Dungeon Entries:</span>
+                    <strong id="dungeon-entries-text" style="color:#4ade80;">7 / 7</strong>
+                </div>
+                <button class="btn-item-action" onclick="window.enterDungeonWithDifficulty && window.enterDungeonWithDifficulty('easy', 1.0)" style="background:#22c55e; color:#000; font-weight:900; padding:12px;">🟢 EASY (1.0x Monster Level — Standard Loot)</button>
+                <button class="btn-item-action" onclick="window.enterDungeonWithDifficulty && window.enterDungeonWithDifficulty('medium', 1.4)" style="background:#f59e0b; color:#000; font-weight:900; padding:12px;">🟡 MEDIUM (1.4x Monster Level — +25% Rare Drops)</button>
+                <button class="btn-item-action" onclick="window.enterDungeonWithDifficulty && window.enterDungeonWithDifficulty('hard', 1.9)" style="background:#ef4444; color:#fff; font-weight:900; padding:12px;">🔴 HARD (1.9x Monster Level — +50% Legendary Drops)</button>
+                <button class="btn-item-action" onclick="window.enterDungeonWithDifficulty && window.enterDungeonWithDifficulty('extreme', 2.5)" style="background:#9333ea; color:#fff; font-weight:900; padding:12px;">🟣 EXTREME (2.5x Monster Level — Godly/Divine Drops)</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============================================================
+         MAZE GUIDE & FAST TRAVEL MODAL (OUTSIDE SPIRE TOWER)
+         ============================================================ -->
+    <div class="game-modal" id="maze-guide-modal" style="display:none;">
+        <div class="modal-dialog" style="max-width:520px;">
+            <div class="modal-header">
+                <h3 style="color:#00e5ff;">🗺️ Spire Maze Guide & Fast Travel</h3>
+                <button class="btn-close-modal" id="btn-close-maze-guide">✖</button>
+            </div>
+            <div class="confirm-modal-body" style="text-align:left; display:flex; flex-direction:column; gap:12px;">
+                <p style="color:#94a3b8; font-size:0.84rem;">
+                    Select any Spire Floor below to teleport directly to its entrance! (Note: <strong>Crystal Dungeon 1</strong> is located on <strong>Floor 3</strong>, and <strong>Ancient Cave Dungeon 2</strong> is located on <strong>Floor 7</strong>.)
+                </p>
+                <div id="maze-guide-floors-grid" style="display:grid; grid-template-columns:repeat(2, 1fr); gap:8px; max-height:300px; overflow-y:auto;"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============================================================
+         AUTHENTIC 2D PICTURE LOADING / MAP TRANSITION SCREEN OVERLAY
+         ============================================================ -->
+    <div id="map-transition-screen" style="display:none;">
+        <img src="backgrounds/loadingscreen.png" class="transition-bg-img" alt="Exonie Loading Screen" draggable="false">
+        <div class="transition-bottom-loader">
+            <h2 id="transition-title">Town of Exonie</h2>
+            <p id="transition-subtitle">Safe Haven</p>
+            <div class="transition-bar-track">
+                <div class="transition-bar-fill" id="transition-bar-fill"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============================================================
+         AUTHENTIC 2D EXONIE PERSISTENT CHAT BOX & INPUT (LOCAL + WORLD)
+         ============================================================ -->
+    <div id="persistent-chat-box">
+        <div id="chat-tab-bar">
+            <button id="chat-tab-local" class="chat-tab active" onclick="window.switchChatTab && window.switchChatTab('local')">Local</button>
+            <button id="chat-tab-world" class="chat-tab" onclick="window.switchChatTab && window.switchChatTab('world')">World <span id="world-unread-dot" class="unread-dot" style="display:none;"></span></button>
+        </div>
+        <div id="chat-tab-content-local" class="chat-tab-content">
+            <div id="persistent-chat-content">
+                <div class="chat-line system-line">🛡️ Welcome to Exonie 3D! Press [Enter] to chat.</div>
+            </div>
+        </div>
+        <div id="chat-tab-content-world" class="chat-tab-content" style="display:none;">
+            <div id="world-chat-content">
+                <div class="chat-line system-line">🌐 Connected to World Channel. Broadcast messages visible to all players.</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Chat Input Container (Shows upon pressing Enter) -->
+    <div id="chat-input-container" style="display:none;">
+        <input type="text" id="chat-input" placeholder="Press Enter to Chat..." maxlength="120" autocomplete="off">
+    </div>
+
+    <!-- System Message Toast -->
+    <div id="system-toast"></div>
+
+    <!-- Floor Cleared Notification Banner -->
+    <div id="floor-cleared-banner">
+        <span class="banner-title" id="banner-title">FLOOR CLEARED!</span>
+        <span class="banner-subtitle" id="banner-sub">Ascension Gate is Now Open!</span>
+    </div>
+
+    <!-- Main Game Orchestrator Script -->
+    <script type="module" src="./js/game.js"></script>
+</body>
+</html>
