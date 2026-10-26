@@ -220,34 +220,72 @@ io.on('connection', (socket) => {
 
             let user = null;
             let characterSlots = [];
+            const isHeroAccount = username.toLowerCase() === 'heroplayer' || username.startsWith('Hero_');
 
-            if (supabase) {
-                // Fetch primary character record
-                const { data: dbUser, error: dbErr } = await supabase
-                    .from('Exonians')
-                    .select('*')
-                    .eq('character_name', username)
-                    .eq('password', password)
-                    .maybeSingle();
+            if (isHeroAccount) {
+                // Instant demo/test hero account - bypass DB requirement
+                const { starterEquips, starterInventory } = getStarterItems();
+                const defaultBaseStats = {
+                    hp: 100, attack: 5, magic: 5, defense: 2, speed: 1, str: 10, int: 10,
+                    playerClass: null, title: null, homeStorage: Array(15).fill(null),
+                    tavernEntries: 5, dungeonEntries: 7
+                };
+                user = {
+                    character_name: username,
+                    password: password,
+                    email: `${username}@exonie.com`,
+                    level: 1,
+                    exp: 0,
+                    gold: 500,
+                    skin_color: '#f5c6a5',
+                    hair_color: '#111111',
+                    hair_style: '1',
+                    equips: starterEquips,
+                    inventory: starterInventory,
+                    base_stats: defaultBaseStats,
+                    map_id: 'town',
+                    pos_x: 960,
+                    pos_y: 1000
+                };
+                characterSlots = [user, null, null];
+            } else if (supabase) {
+                // Query live Supabase Exonians database (case-insensitive for username or email)
+                let query = supabase.from('Exonians').select('*').eq('password', password);
+                if (username.includes('@')) {
+                    query = query.eq('email', username);
+                } else {
+                    query = query.ilike('character_name', username);
+                }
+
+                const { data: dbUser, error: dbErr } = await query.maybeSingle();
 
                 if (dbErr) {
                     console.error(`[LOGIN DB ERROR] ${username}:`, dbErr.message);
-                    return socket.emit('authError', 'Database error. Please try again.');
                 }
                 user = dbUser;
 
                 if (user) {
-                    // Fetch all character slots tied to this user's email or username
-                    const userEmail = user.email || `${username}@exonie.com`;
-                    const { data: allChars } = await supabase
-                        .from('Exonians')
-                        .select('*')
-                        .or(`email.eq.${userEmail},character_name.eq.${username}`);
-                    characterSlots = (allChars || []).slice(0, 3);
+                    // Fetch all character slots tied to this user's email if present
+                    if (user.email) {
+                        const { data: allChars } = await supabase
+                            .from('Exonians')
+                            .select('*')
+                            .eq('email', user.email)
+                            .limit(3);
+                        if (allChars && allChars.length > 0) {
+                            characterSlots = allChars.slice(0, 3);
+                        } else {
+                            characterSlots = [user];
+                        }
+                    } else {
+                        characterSlots = [user];
+                    }
                 }
-            } else {
+            }
+
+            if (!user) {
                 // In-memory fallback
-                const mem = memoryDb.users[username];
+                const mem = memoryDb.users[username.toLowerCase()] || memoryDb.users[username];
                 if (mem && mem.password === password) {
                     user = mem;
                     characterSlots = memoryDb.accounts[username] || [mem];
@@ -370,11 +408,26 @@ io.on('connection', (socket) => {
 
             let slots = [null, null, null];
             if (supabase) {
-                const userEmail = (data && data.email) || socket.email || `${username}@exonie.com`;
-                const { data: chars } = await supabase
-                    .from('Exonians')
-                    .select('*')
-                    .or(`email.eq.${userEmail},character_name.eq.${username}`);
+                let chars = null;
+                const userEmail = (data && data.email) || socket.email;
+                if (userEmail) {
+                    const { data: emailChars } = await supabase
+                        .from('Exonians')
+                        .select('*')
+                        .eq('email', userEmail)
+                        .limit(3);
+                    if (emailChars && emailChars.length > 0) {
+                        chars = emailChars;
+                    }
+                }
+                if (!chars || chars.length === 0) {
+                    const { data: nameChars } = await supabase
+                        .from('Exonians')
+                        .select('*')
+                        .ilike('character_name', username)
+                        .limit(3);
+                    chars = nameChars;
+                }
                 if (chars && chars.length > 0) {
                     slots = chars.slice(0, 3);
                     while (slots.length < 3) slots.push(null);

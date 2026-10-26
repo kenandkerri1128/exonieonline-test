@@ -2513,10 +2513,10 @@ html, body {
    ============================================================ */
 #persistent-chat-box {
     position: fixed;
-    bottom: 95px;
+    bottom: 25px;
     left: 20px;
-    width: 360px;
-    height: 190px;
+    width: 380px;
+    height: 220px;
     background: rgba(15, 23, 42, 0.88);
     backdrop-filter: blur(8px);
     border: 1px solid rgba(255, 255, 255, 0.18);
@@ -2616,35 +2616,48 @@ html, body {
     color: #e2e8f0;
 }
 
-#chat-input-container {
-    position: fixed;
-    bottom: 25px;
-    left: 20px;
-    width: 360px;
-    z-index: 2000;
-    display: none !important;
-}
-
-#chat-input-container.in-game.open {
-    display: block !important;
+.chat-input-row {
+    display: flex;
+    gap: 6px;
+    margin-top: 6px;
+    padding-top: 6px;
+    border-top: 1px solid rgba(255, 255, 255, 0.12);
 }
 
 #chat-input {
-    width: 100%;
+    flex: 1;
     background: rgba(15, 23, 42, 0.95);
-    border: 1px solid #38bdf8;
+    border: 1px solid rgba(56, 189, 248, 0.6);
     color: #fff;
-    padding: 10px 14px;
-    border-radius: 8px;
+    padding: 7px 10px;
+    border-radius: 6px;
     outline: none;
-    font-size: 14px;
-    box-shadow: 0 4px 16px rgba(0, 229, 255, 0.25);
+    font-size: 13px;
     box-sizing: border-box;
+    transition: border-color 0.2s, box-shadow 0.2s;
 }
 
 #chat-input:focus {
     border-color: #00e5ff;
-    box-shadow: 0 0 12px rgba(0, 229, 255, 0.5);
+    box-shadow: 0 0 10px rgba(0, 229, 255, 0.45);
+}
+
+.btn-chat-send {
+    background: linear-gradient(135deg, #0284c7, #0369a1);
+    color: #fff;
+    border: 1px solid #38bdf8;
+    padding: 7px 14px;
+    border-radius: 6px;
+    font-weight: 700;
+    font-size: 12px;
+    cursor: pointer;
+    transition: 0.15s;
+    letter-spacing: 0.5px;
+}
+
+.btn-chat-send:hover {
+    background: linear-gradient(135deg, #0369a1, #0284c7);
+    box-shadow: 0 0 8px rgba(56, 189, 248, 0.5);
 }
 
 .overhead-chat-bubble {
@@ -2685,16 +2698,11 @@ html, body {
 
 @media (max-width: 950px), (pointer: coarse) {
     #persistent-chat-box {
-        width: 260px;
-        height: 140px;
-        bottom: 80px;
+        width: 290px;
+        height: 180px;
+        bottom: 75px;
         left: 10px;
         font-size: 11px;
-    }
-    #chat-input-container {
-        width: 260px;
-        bottom: 20px;
-        left: 10px;
     }
 }
 

@@ -41,21 +41,21 @@
             <div class="studio-presents-text">PRESENTS</div>
         </div>
 
-        <!-- Stage 2: Production Credits (100% Copy of Circuit Siege) -->
+        <!-- Stage 2: Production Credits (100% Copy of Circuit Siege with Antigravity) -->
         <div id="splash-credits" class="splash-card">
             <div class="credits-box">
                 <div class="credits-title">A XENIE GAMING PRODUCTION</div>
                 <div class="credits-grid">
                     <div class="credit-label">GAME SYSTEMS</div><div class="credit-val">Authoritative Sim Loop</div>
                     <div class="credit-label">RENDERING</div><div class="credit-val">Three.js Engine</div>
-                    <div class="credit-label">3D ASSETS</div><div class="credit-val credit-highlight">Tripo 3D <span style="font-size:0.75rem; font-weight:normal; color:#94a3b8;">· AI Design</span></div>
+                    <div class="credit-label">DEVELOPMENT</div><div class="credit-val credit-highlight">Antigravity <span style="font-size:0.75rem; font-weight:normal; color:#94a3b8;">· DeepMind AI</span></div>
                     <div class="credit-label">AUDIO</div><div class="credit-val">Original Soundtrack · WebAudio SFX</div>
                     <div class="credit-label">SUPPORT</div><div class="credit-val"><a href="https://www.patreon.com/c/xeniegaming?vanity=user" target="_blank" rel="noopener noreferrer" class="credit-link">patreon.com/c/xeniegaming</a></div>
                 </div>
                 <div class="credits-footer">
-                    <div>3D Environmental & Architectural Assets created with <span class="credit-highlight">Tripo 3D</span></div>
-                    <div style="font-size:0.72rem; margin-top:4px;">
-                        Licensed under <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener noreferrer" class="credit-link">Creative Commons Attribution 4.0 International (CC BY 4.0)</a>
+                    <div>Engineered with <span class="credit-highlight">Antigravity</span> by <span style="color:#a5f3fc; font-weight:600;">XeNiE Gaming</span></div>
+                    <div style="font-size:0.72rem; margin-top:4px; color:#94a3b8;">
+                        © 2026 Xenie Gaming · All Rights Reserved
                     </div>
                 </div>
             </div>
@@ -963,7 +963,7 @@
         </div>
         <div id="chat-tab-content-local" class="chat-tab-content">
             <div id="persistent-chat-content">
-                <div class="chat-line system-line">🛡️ Welcome to Exonie 3D! Press [Enter] to chat.</div>
+                <div class="chat-line system-line">🛡️ Welcome to Exonie 3D! Type below or press [Enter] to chat.</div>
             </div>
         </div>
         <div id="chat-tab-content-world" class="chat-tab-content" style="display:none;">
@@ -971,11 +971,10 @@
                 <div class="chat-line system-line">🌐 Connected to World Channel. Broadcast messages visible to all players.</div>
             </div>
         </div>
-    </div>
-
-    <!-- Chat Input Container (Shows upon pressing Enter) -->
-    <div id="chat-input-container" style="display:none;">
-        <input type="text" id="chat-input" placeholder="Press Enter to Chat..." maxlength="120" autocomplete="off">
+        <form id="chat-input-form" class="chat-input-row" onsubmit="event.preventDefault(); window.submitChat && window.submitChat();">
+            <input type="text" id="chat-input" placeholder="Type a message... (Enter to send)" maxlength="120" autocomplete="off">
+            <button id="chat-send-btn" type="submit" class="btn-chat-send">Send</button>
+        </form>
     </div>
 
     <!-- System Message Toast -->

@@ -225,9 +225,9 @@ export class GameApp {
             previewScene = new THREE.Scene();
             previewScene.background = new THREE.Color(0x0a101d);
 
-            previewCamera = new THREE.PerspectiveCamera(40, w / h, 0.1, 100);
-            previewCamera.position.set(0, 1.35, 3.4);
-            previewCamera.lookAt(0, 1.10, 0);
+            previewCamera = new THREE.PerspectiveCamera(42, w / h, 0.1, 100);
+            previewCamera.position.set(0, 1.15, 4.6);
+            previewCamera.lookAt(0, 1.05, 0);
 
             previewRenderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
             previewRenderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
@@ -400,7 +400,6 @@ export class GameApp {
         this.activeChatTab = 'local';
         this.isChatting = false;
         const chatInput = document.getElementById('chat-input');
-        const chatContainer = document.getElementById('chat-input-container');
 
         window.switchChatTab = (tab) => {
             this.activeChatTab = tab;
@@ -421,41 +420,44 @@ export class GameApp {
             }
         };
 
+        window.submitChat = () => this.submitChat();
+
         if (chatInput) {
             chatInput.addEventListener('keydown', (e) => {
                 if (e.code === 'Enter') {
                     e.preventDefault();
-                    const text = chatInput.value.trim();
-                    if (text.length > 0) {
-                        this.sendChatMessage(text);
-                    }
-                    chatInput.value = '';
-                    if (chatContainer) {
-                        chatContainer.classList.remove('open');
-                        chatContainer.style.display = 'none';
-                    }
-                    chatInput.blur();
-                    this.isChatting = false;
+                    this.submitChat();
                 } else if (e.code === 'Escape') {
                     e.preventDefault();
                     chatInput.value = '';
-                    if (chatContainer) {
-                        chatContainer.classList.remove('open');
-                        chatContainer.style.display = 'none';
-                    }
                     chatInput.blur();
                     this.isChatting = false;
                 }
             });
+            chatInput.addEventListener('focus', () => {
+                this.isChatting = true;
+            });
+            chatInput.addEventListener('blur', () => {
+                this.isChatting = false;
+            });
         }
     }
 
-    openChatInput() {
-        const chatContainer = document.getElementById('chat-input-container');
+    submitChat() {
         const chatInput = document.getElementById('chat-input');
-        if (chatContainer && chatInput) {
-            chatContainer.classList.add('open');
-            chatContainer.style.display = 'block';
+        if (!chatInput) return;
+        const text = chatInput.value.trim();
+        if (text.length > 0) {
+            this.sendChatMessage(text);
+        }
+        chatInput.value = '';
+        chatInput.blur();
+        this.isChatting = false;
+    }
+
+    openChatInput() {
+        const chatInput = document.getElementById('chat-input');
+        if (chatInput) {
             chatInput.focus();
             this.isChatting = true;
         }
@@ -581,11 +583,16 @@ export class GameApp {
         const mobileCtrl = document.getElementById('mobile-controls');
         if (mobileCtrl) mobileCtrl.style.display = isTouch ? 'block' : 'none';
 
+        // Blur any active input and clear keystrokes so movement is immediate
+        if (document.activeElement && typeof document.activeElement.blur === 'function') {
+            document.activeElement.blur();
+        }
+        this.keys = {};
+        this.isChatting = false;
+
         // Reveal persistent chat box ONLY inside the active game world
         const chatBox = document.getElementById('persistent-chat-box');
         if (chatBox) chatBox.classList.add('in-game');
-        const chatInputWrap = document.getElementById('chat-input-container');
-        if (chatInputWrap) chatInputWrap.classList.add('in-game');
 
         const equippedWpnType = this.getEquippedWeaponType();
         const equippedRarity = this.player.equips?.weapon?.rarity || 'Starter';
@@ -1179,8 +1186,22 @@ export class GameApp {
 
     setupKeyboardInput() {
         window.addEventListener('keydown', (e) => {
-            // Ignore game hotkeys if typing in an input box
-            if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
+            // Check if typing in an input box
+            if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) {
+                if (e.target.id === 'chat-input') {
+                    return; // let chat input handle keystrokes
+                }
+                const authScr = document.getElementById('auth-screen');
+                const charScr = document.getElementById('creation-screen');
+                const isAuthOpen = authScr && authScr.style.display !== 'none' && !authScr.classList.contains('hidden');
+                const isCharOpen = charScr && charScr.style.display !== 'none' && !charScr.classList.contains('hidden');
+                if (!isAuthOpen && !isCharOpen) {
+                    // Unfocus lingering inputs from previous screens so movement keys register immediately!
+                    e.target.blur();
+                } else {
+                    return;
+                }
+            }
 
             // If Settings Keybind Customizer is listening for a new key press:
             if (this.ui && this.ui.listeningBindAction) {
@@ -1241,6 +1262,13 @@ export class GameApp {
         window.addEventListener('mousedown', (e) => {
             if (e.button === 0 && e.target.id === 'canvas-3d') {
                 this.onAttackTrigger();
+            }
+        });
+
+        // Ensure clicking game canvas or HUD blurs any lingering inputs so keyboard controls are always responsive
+        window.addEventListener('pointerdown', (e) => {
+            if (e.target && e.target.id !== 'chat-input' && document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA')) {
+                document.activeElement.blur();
             }
         });
     }
