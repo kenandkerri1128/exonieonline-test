@@ -206,37 +206,68 @@ window.ExonieFlow = {
     },
 
     // ============================================================
-    // 1. AUTHENTIC 2D PICTURE LOADING SCREEN ON STARTUP
+    // 1. CIRCUIT SIEGE INTRO CREDITS SPLASH SCREEN (100% IDENTICAL)
     // ============================================================
-    startSplash() {
-        if (!this.scrSplash) this.cacheDOM();
-        if (this.scrSplash) {
-            this.scrSplash.classList.add('hidden');
-            this.scrSplash.style.display = 'none';
+    hidePreGameChat() {
+        const chatBox = document.getElementById('persistent-chat-box');
+        if (chatBox) chatBox.classList.remove('in-game');
+        const chatInput = document.getElementById('chat-input-container');
+        if (chatInput) {
+            chatInput.classList.remove('in-game', 'open');
+            chatInput.style.display = 'none';
         }
-        this.step = 'splash';
-        this.showLoadingTransition('Exonie Online', 'Loading 3D Remastered...', 2200, () => {
-            this.showAuth();
-        });
+    },
+
+    startSplash() {
+        this.hidePreGameChat();
+        if (!this.scrSplash) this.cacheDOM();
+        this.step = 'splash_studio';
+        if (this.scrSplash) {
+            this.scrSplash.style.display = 'flex';
+            this.scrSplash.classList.remove('hidden');
+        }
+        if (this.splashStudio) this.splashStudio.classList.add('show');
+        if (this.splashCredits) this.splashCredits.classList.remove('show');
+
+        clearTimeout(this.splashTimer);
+        this.splashTimer = setTimeout(() => {
+            this.showCredits();
+        }, 2200);
     },
 
     showCredits() {
-        this.skipSplash();
+        this.hidePreGameChat();
+        this.step = 'splash_credits';
+        if (this.splashStudio) this.splashStudio.classList.remove('show');
+        if (this.splashCredits) this.splashCredits.classList.add('show');
+
+        clearTimeout(this.splashTimer);
+        this.splashTimer = setTimeout(() => {
+            this.skipSplash();
+        }, 3200);
     },
 
     skipSplash() {
         clearTimeout(this.splashTimer);
+        if (this.splashStudio) this.splashStudio.classList.remove('show');
+        if (this.splashCredits) this.splashCredits.classList.remove('show');
         if (this.scrSplash) {
             this.scrSplash.classList.add('hidden');
-            this.scrSplash.style.display = 'none';
+            setTimeout(() => {
+                if (this.scrSplash) this.scrSplash.style.display = 'none';
+            }, 800);
         }
-        this.showAuth();
+        // Seamless 2D Picture Loading Screen transition into Auth
+        this.showLoadingTransition('Exonie Online', 'Connecting to 3D Realm...', 1350, () => {
+            this.showAuth();
+        });
     },
 
     // ============================================================
     // 2. 2D EXONIE LOGIN SCREEN
     // ============================================================
     showAuth() {
+        this.hidePreGameChat();
         this.step = 'auth';
         if (!this.scrAuth) this.cacheDOM();
         if (this.scrAuth) {
@@ -257,9 +288,79 @@ window.ExonieFlow = {
         }
     },
 
+    getSocket() {
+        if (window.exonieSocket) return window.exonieSocket;
+        if (typeof io !== 'undefined') {
+            let serverUrl = 'https://exonieonline-test.onrender.com';
+            if (typeof window !== 'undefined' && window.location) {
+                const host = window.location.hostname;
+                if (host === 'localhost' || host === '127.0.0.1') {
+                    serverUrl = 'http://localhost:3003';
+                }
+            }
+            window.exonieSocket = io(serverUrl, {
+                transports: ['websocket', 'polling'],
+                reconnection: true,
+                timeout: 10000
+            });
+            window.socket = window.exonieSocket;
+            this.setupSocketListeners(window.exonieSocket);
+            return window.exonieSocket;
+        }
+        return null;
+    },
+
+    setupSocketListeners(socket) {
+        if (this._socketListenersSet) return;
+        this._socketListenersSet = true;
+
+        socket.on('authError', (msg) => {
+            alert(msg || 'Authentication Error');
+        });
+
+        socket.on('loginSuccess', (data) => {
+            console.log('✅ [Flow] Supabase login success:', data);
+            this.accountName = data.username;
+            if (Array.isArray(data.characters)) {
+                this.accountSlots = data.characters;
+                this.saveAccountSlots(data.characters);
+            }
+            this.onAuthSuccess(data.username);
+        });
+
+        socket.on('registerSuccess', (username) => {
+            alert(`Account "${username}" registered in Supabase! You can now login.`);
+            this.switchAuth('login');
+            if (this.inputUser) this.inputUser.value = username;
+        });
+
+        socket.on('accountCharacters', (chars) => {
+            if (Array.isArray(chars)) {
+                this.accountSlots = chars;
+                this.saveAccountSlots(chars);
+                this.renderCharSlots();
+            }
+        });
+
+        socket.on('characterCreated', (data) => {
+            console.log('✅ [Flow] Character saved to Supabase:', data);
+            const slots = this.getAccountSlots();
+            slots[data.slotIndex] = data.character;
+            this.saveAccountSlots(slots);
+        });
+    },
+
     attemptLogin() {
         const username = (this.inputUser && this.inputUser.value.trim()) ? this.inputUser.value.trim() : 'Aria';
-        this.onAuthSuccess(username);
+        const passInput = document.getElementById('login-pass');
+        const password = (passInput && passInput.value) ? passInput.value : 'password123';
+
+        const s = this.getSocket();
+        if (s && s.connected) {
+            s.emit('login', { username, password });
+        } else {
+            this.onAuthSuccess(username);
+        }
     },
 
     loginAsGuest() {
@@ -269,8 +370,21 @@ window.ExonieFlow = {
 
     attemptRegister() {
         const regInput = document.getElementById('reg-user');
-        const username = (regInput && regInput.value.trim()) ? regInput.value.trim() : 'HeroPlayer';
-        this.onAuthSuccess(username);
+        const regPass = document.getElementById('reg-pass');
+        const username = (regInput && regInput.value.trim()) ? regInput.value.trim() : '';
+        const password = (regPass && regPass.value) ? regPass.value : '';
+
+        if (!username || !password) {
+            alert('Please enter both username and password to create an account.');
+            return;
+        }
+
+        const s = this.getSocket();
+        if (s && s.connected) {
+            s.emit('register', { username, password });
+        } else {
+            this.onAuthSuccess(username);
+        }
     },
 
     onAuthSuccess(username) {
@@ -278,6 +392,12 @@ window.ExonieFlow = {
         this.accountName = username;
         this.charData.name = username;
         if (this.inputCharName) this.inputCharName.value = username;
+
+        // Request live Supabase characters for this account
+        const s = this.getSocket();
+        if (s && s.connected) {
+            s.emit('getAccountCharacters', { username });
+        }
 
         this.showLoadingTransition('Character Selection', `Account: ${username} (3 Character Slots)`, 900, () => {
             if (this.scrAuth) {
@@ -296,6 +416,9 @@ window.ExonieFlow = {
     },
 
     getAccountSlots() {
+        if (Array.isArray(this.accountSlots) && this.accountSlots.length === 3) {
+            return this.accountSlots;
+        }
         try {
             const raw = localStorage.getItem(this.getAccountStorageKey());
             if (raw) {
@@ -307,6 +430,7 @@ window.ExonieFlow = {
     },
 
     saveAccountSlots(slots) {
+        this.accountSlots = slots;
         try {
             localStorage.setItem(this.getAccountStorageKey(), JSON.stringify(slots));
         } catch (e) {}
@@ -318,9 +442,16 @@ window.ExonieFlow = {
         const idx = Math.max(0, Math.min(2, Number(this.activeSlotIndex) || 0));
         slots[idx] = stateObj;
         this.saveAccountSlots(slots);
+
+        // Sync with Supabase
+        const s = this.getSocket();
+        if (s && s.connected) {
+            s.emit('saveCharacter', stateObj);
+        }
     },
 
     showCharSelect() {
+        this.hidePreGameChat();
         this.step = 'char_select';
         if (!this.scrCharSelect) this.cacheDOM();
         if (this.charSelectAccountName) this.charSelectAccountName.textContent = this.accountName;
@@ -343,14 +474,15 @@ window.ExonieFlow = {
             const card = document.createElement('div');
             card.className = 'char-slot-card';
             if (c) {
-                const cls = c.playerClass || c.className || 'Novice';
+                const name = c.character_name || c.name || 'Hero';
+                const cls = (c.base_stats && c.base_stats.playerClass) || c.playerClass || c.className || 'Novice';
                 const lvl = c.level || 1;
-                const gnd = (c.gender === 'male') ? 'Male' : 'Female';
+                const gnd = (c.gender === 'male' || (c.base_stats && c.base_stats.gender === 'male')) ? 'Male' : 'Female';
                 const gold = (c.gold !== undefined) ? c.gold : 500;
                 card.innerHTML = `
                     <div class="char-slot-badge">CHARACTER SLOT ${i + 1}</div>
-                    <div style="font-size:2.4rem; margin:4px 0;">${c.gender === 'male' ? '🗡️' : '⚔️'}</div>
-                    <div class="char-slot-name">${c.name || 'Hero'}</div>
+                    <div style="font-size:2.4rem; margin:4px 0;">${gnd === 'Male' ? '🗡️' : '⚔️'}</div>
+                    <div class="char-slot-name">${name}</div>
                     <div class="char-slot-meta">
                         <strong style="color:#ffd700;">Lv. ${lvl}</strong> · <span style="color:#4ade80;">${cls}</span><br>
                         <span>${gnd} · 🪙 ${Number(gold).toLocaleString()} Gold</span>
@@ -406,11 +538,17 @@ window.ExonieFlow = {
         const savedChar = slots[slotIdx];
         if (!savedChar) return;
         this.activeSlotIndex = slotIdx;
-        this.charData = Object.assign({}, savedChar, { slotIndex: slotIdx, isNewCharacter: false });
+        const charName = savedChar.character_name || savedChar.name || 'Hero';
+        this.charData = Object.assign({}, savedChar, { name: charName, slotIndex: slotIdx, isNewCharacter: false });
         this.step = 'game';
         this.stopMenuMusic();
 
-        this.showLoadingTransition('Town of Exonie', `Welcome back, ${savedChar.name} (Lv.${savedChar.level || 1})!`, 1350, () => {
+        const s = this.getSocket();
+        if (s && s.connected) {
+            s.emit('enterWorld', { character_name: charName });
+        }
+
+        this.showLoadingTransition('Town of Exonie', `Welcome back, ${charName} (Lv.${savedChar.level || 1})!`, 1350, () => {
             if (this.scrCharSelect) {
                 this.scrCharSelect.classList.add('hidden');
                 this.scrCharSelect.style.display = 'none';
@@ -443,6 +581,7 @@ window.ExonieFlow = {
     },
 
     openCharSelectFromGame() {
+        this.hidePreGameChat();
         if (window.game && window.game.saveCharacterToAccountSlot) {
             window.game.saveCharacterToAccountSlot();
         }
@@ -458,6 +597,7 @@ window.ExonieFlow = {
     // 3. CHARACTER CREATION SCREEN (FORGING AVATAR)
     // ============================================================
     showCreation() {
+        this.hidePreGameChat();
         this.step = 'creation';
         if (!this.scrCreation) this.cacheDOM();
         if (this.scrCreation) {
@@ -494,19 +634,16 @@ window.ExonieFlow = {
     },
 
     initCharacterPreview() {
-        if (this.previewInitialized) return;
-
         try {
             if (window.initCustomizer3D) {
-                this.previewInitialized = true;
                 window.initCustomizer3D(this.charData);
             } else {
-                // Retry every 100ms until ready
-                setTimeout(() => this.initCharacterPreview(), 100);
+                // Retry every 80ms until game.js exports it
+                setTimeout(() => this.initCharacterPreview(), 80);
             }
         } catch (e) {
             console.warn('3D preview retry:', e);
-            setTimeout(() => this.initCharacterPreview(), 200);
+            setTimeout(() => this.initCharacterPreview(), 150);
         }
     },
 
@@ -568,6 +705,15 @@ window.ExonieFlow = {
 
         console.log('🛡️ [EXONIE 3D] Character creation finished:', this.charData);
 
+        const s = this.getSocket();
+        if (s && s.connected) {
+            s.emit('createCharacter', {
+                username: this.accountName,
+                slotIndex: this.activeSlotIndex,
+                charData: this.charData
+            });
+        }
+
         this.showLoadingTransition('Entering Story Prologue', '11:58 PM — The Night Before the Rift...', 950, () => {
             if (this.scrCreation) {
                 this.scrCreation.classList.add('hidden');
@@ -581,6 +727,7 @@ window.ExonieFlow = {
     // 4. STORY PROLOGUE DIALOGUE (BEDROOM -> SLEEP -> VOID)
     // ============================================================
     startPrologue() {
+        this.hidePreGameChat();
         this.step = 'prologue';
         if (!this.scrPrologue) this.cacheDOM();
         if (this.scrPrologue) {

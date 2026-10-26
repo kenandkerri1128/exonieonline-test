@@ -196,67 +196,114 @@ export class GameApp {
 
         window.initCustomizer3D = (charData) => {
             const previewCol = document.querySelector('.customizer-preview-col');
-            if (!previewCol || previewRenderer) return;
+            if (!previewCol) return;
+
+            if (previewRenderer && previewChar) {
+                if (charData) {
+                    previewChar.setCustomization({
+                        gender: charData.gender || 'female',
+                        hairStyle: charData.hairStyle || '1',
+                        hairColor: charData.hairColor || '#111111',
+                        skinColor: charData.skinColor || '#f5c6a5',
+                        weaponType: null
+                    });
+                }
+                const w = previewCol.clientWidth || 300;
+                const h = previewCol.clientHeight || 360;
+                previewCamera.aspect = w / h;
+                previewCamera.updateProjectionMatrix();
+                previewRenderer.setSize(w, h);
+                if (!previewCol.contains(previewRenderer.domElement)) {
+                    previewCol.appendChild(previewRenderer.domElement);
+                }
+                return;
+            }
+
+            const w = previewCol.clientWidth || 300;
+            const h = previewCol.clientHeight || 360;
 
             previewScene = new THREE.Scene();
-            previewScene.background = new THREE.Color(0x0f172a);
+            previewScene.background = new THREE.Color(0x0a101d);
 
-            previewCamera = new THREE.PerspectiveCamera(45, 1, 0.1, 100);
-            previewCamera.position.set(0, 1.35, 3.8);
+            previewCamera = new THREE.PerspectiveCamera(40, w / h, 0.1, 100);
+            previewCamera.position.set(0, 1.35, 3.4);
+            previewCamera.lookAt(0, 1.10, 0);
 
             previewRenderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
             previewRenderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-            previewRenderer.setSize(280, 340);
+            previewRenderer.setSize(w, h);
             previewRenderer.toneMapping = THREE.ACESFilmicToneMapping;
-            previewRenderer.toneMappingExposure = 1.18;
+            previewRenderer.toneMappingExposure = 1.25;
             if (THREE.SRGBColorSpace) previewRenderer.outputColorSpace = THREE.SRGBColorSpace;
             previewRenderer.domElement.id = 'char-preview-canvas';
+            previewRenderer.domElement.style.width = '100%';
+            previewRenderer.domElement.style.height = '100%';
             previewCol.appendChild(previewRenderer.domElement);
 
             if (this.engine && this.engine.envMap) {
                 previewScene.environment = this.engine.envMap;
             }
 
-            const ambLight = new THREE.AmbientLight(0xffffff, 1.0);
+            const ambLight = new THREE.AmbientLight(0xffffff, 1.8);
             previewScene.add(ambLight);
 
-            const dirLight = new THREE.DirectionalLight(0xfffaed, 1.5);
-            dirLight.position.set(3, 5, 4);
-            previewScene.add(dirLight);
+            const keyLight = new THREE.DirectionalLight(0xffffff, 2.2);
+            keyLight.position.set(2, 4, 3);
+            previewScene.add(keyLight);
+
+            const fillLight = new THREE.DirectionalLight(0x00e5ff, 1.2);
+            fillLight.position.set(-2, 2, -2);
+            previewScene.add(fillLight);
+
+            const backLight = new THREE.DirectionalLight(0xfffaed, 0.8);
+            backLight.position.set(0, 3, -3);
+            previewScene.add(backLight);
 
             previewChar = new Character3D({
-                name: charData.name || 'Hero',
-                gender: charData.gender || 'female',
-                hairStyle: charData.hairStyle || '1',
-                hairColor: charData.hairColor || '#111111',
-                skinColor: charData.skinColor || '#f5c6a5',
+                name: (charData && charData.name) || 'Hero',
+                gender: (charData && charData.gender) || 'female',
+                hairStyle: (charData && charData.hairStyle) || '1',
+                hairColor: (charData && charData.hairColor) || '#111111',
+                skinColor: (charData && charData.skinColor) || '#f5c6a5',
                 weaponType: null
             });
             previewChar.group.rotation.y = 0;
             previewScene.add(previewChar.group);
 
-            // Allow manual drag rotation on the preview canvas (no auto-rotation!)
+            // Allow manual drag rotation on the preview canvas (mouse & touch)
             let isDraggingPreview = false;
             let lastPreviewX = 0;
-            previewRenderer.domElement.addEventListener('mousedown', (e) => {
+            const startDrag = (clientX) => {
                 isDraggingPreview = true;
-                lastPreviewX = e.clientX;
-            });
-            window.addEventListener('mouseup', () => { isDraggingPreview = false; });
-            window.addEventListener('mousemove', (e) => {
+                lastPreviewX = clientX;
+            };
+            const moveDrag = (clientX) => {
                 if (isDraggingPreview && previewChar) {
-                    const dx = e.clientX - lastPreviewX;
-                    lastPreviewX = e.clientX;
+                    const dx = clientX - lastPreviewX;
+                    lastPreviewX = clientX;
                     previewChar.group.rotation.y += dx * 0.012;
                 }
-            });
+            };
+            const endDrag = () => { isDraggingPreview = false; };
+
+            previewRenderer.domElement.addEventListener('mousedown', (e) => startDrag(e.clientX));
+            window.addEventListener('mouseup', endDrag);
+            window.addEventListener('mousemove', (e) => moveDrag(e.clientX));
+
+            previewRenderer.domElement.addEventListener('touchstart', (e) => {
+                if (e.touches && e.touches[0]) startDrag(e.touches[0].clientX);
+            }, { passive: true });
+            window.addEventListener('touchend', endDrag);
+            window.addEventListener('touchmove', (e) => {
+                if (e.touches && e.touches[0]) moveDrag(e.touches[0].clientX);
+            }, { passive: true });
 
             const animPreview = () => {
                 requestAnimationFrame(animPreview);
                 if (previewChar) {
                     previewChar.update(0.016, false);
                 }
-                if (previewRenderer) {
+                if (previewRenderer && previewScene && previewCamera) {
                     previewRenderer.render(previewScene, previewCamera);
                 }
             };
@@ -273,12 +320,12 @@ export class GameApp {
         };
 
         window.updateCustomizerPreview = (charData) => {
-            if (previewChar) {
+            if (previewChar && charData) {
                 previewChar.setCustomization({
-                    gender: charData.gender,
-                    hairStyle: charData.hairStyle,
-                    hairColor: charData.hairColor,
-                    skinColor: charData.skinColor,
+                    gender: charData.gender || 'female',
+                    hairStyle: charData.hairStyle || '1',
+                    hairColor: charData.hairColor || '#111111',
+                    skinColor: charData.skinColor || '#f5c6a5',
                     weaponType: null
                 });
             }
@@ -301,7 +348,7 @@ export class GameApp {
                     }
                 }
                 console.log(`[Socket] Connecting to Exonie server at: ${serverUrl}`);
-                this.socket = io(serverUrl, {
+                this.socket = window.exonieSocket || io(serverUrl, {
                     transports: ['websocket', 'polling'],
                     reconnection: true,
                     reconnectionAttempts: 10,
@@ -310,6 +357,7 @@ export class GameApp {
                     timeout: 20000
                 });
                 window.socket = this.socket;
+                window.exonieSocket = this.socket;
 
                 this.socket.on('connect', () => {
                     console.log(`[Socket] Connected to Exonie server at ${serverUrl} (Socket ID: ${this.socket.id})`);
@@ -382,13 +430,19 @@ export class GameApp {
                         this.sendChatMessage(text);
                     }
                     chatInput.value = '';
-                    if (chatContainer) chatContainer.style.display = 'none';
+                    if (chatContainer) {
+                        chatContainer.classList.remove('open');
+                        chatContainer.style.display = 'none';
+                    }
                     chatInput.blur();
                     this.isChatting = false;
                 } else if (e.code === 'Escape') {
                     e.preventDefault();
                     chatInput.value = '';
-                    if (chatContainer) chatContainer.style.display = 'none';
+                    if (chatContainer) {
+                        chatContainer.classList.remove('open');
+                        chatContainer.style.display = 'none';
+                    }
                     chatInput.blur();
                     this.isChatting = false;
                 }
@@ -400,6 +454,7 @@ export class GameApp {
         const chatContainer = document.getElementById('chat-input-container');
         const chatInput = document.getElementById('chat-input');
         if (chatContainer && chatInput) {
+            chatContainer.classList.add('open');
             chatContainer.style.display = 'block';
             chatInput.focus();
             this.isChatting = true;
@@ -525,6 +580,12 @@ export class GameApp {
         const isTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
         const mobileCtrl = document.getElementById('mobile-controls');
         if (mobileCtrl) mobileCtrl.style.display = isTouch ? 'block' : 'none';
+
+        // Reveal persistent chat box ONLY inside the active game world
+        const chatBox = document.getElementById('persistent-chat-box');
+        if (chatBox) chatBox.classList.add('in-game');
+        const chatInputWrap = document.getElementById('chat-input-container');
+        if (chatInputWrap) chatInputWrap.classList.add('in-game');
 
         const equippedWpnType = this.getEquippedWeaponType();
         const equippedRarity = this.player.equips?.weapon?.rarity || 'Starter';

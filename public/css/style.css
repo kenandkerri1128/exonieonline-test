@@ -2525,11 +2525,15 @@ html, body {
     font-size: 13px;
     font-family: var(--font-ui);
     z-index: 1000;
-    display: flex;
+    display: none !important;
     flex-direction: column;
     padding: 8px 10px;
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
     pointer-events: auto;
+}
+
+#persistent-chat-box.in-game {
+    display: flex !important;
 }
 
 #chat-tab-bar {
@@ -2618,6 +2622,11 @@ html, body {
     left: 20px;
     width: 360px;
     z-index: 2000;
+    display: none !important;
+}
+
+#chat-input-container.in-game.open {
+    display: block !important;
 }
 
 #chat-input {

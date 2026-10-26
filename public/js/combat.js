@@ -638,9 +638,6 @@ export class CombatSystem {
                 this.spawnFloatingDamage(bombPos, '💣 GO BOOM!', true);
                 this.damageMonstersInRadius(player, bombPos, radius, atkVal * 5.0, monsters, onMonsterKilled);
             }
-                if (this.audio) this.audio.playSfx('gunshot');
-                this.damageMonstersInRadius(player, bombPos, radius, atkVal * 5.0, monsters, onMonsterKilled);
-            }
         } else if (pClass === 'Phantom Striker') {
             if (skillSlot === 1) {
                 // Shadow Step (Lv.1, 5s CD): Blink 8 units forward

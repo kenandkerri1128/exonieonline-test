@@ -1,3 +1,4 @@
+require('dotenv').config();
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
@@ -14,6 +15,31 @@ const PORT = process.env.PORT || 3003;
 // Serve static assets from public
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/node_modules', express.static(path.join(__dirname, 'node_modules')));
+
+// ==========================================
+// 🛡️ SUPABASE LIVE DATABASE INTEGRATION
+// Matches 2D Exonie 'Exonians' table schema
+// ==========================================
+let supabase = null;
+try {
+    const { createClient } = require('@supabase/supabase-js');
+    const supabaseUrl = process.env.SUPABASE_URL;
+    const supabaseKey = process.env.SUPABASE_KEY;
+    if (supabaseUrl && supabaseKey) {
+        supabase = createClient(supabaseUrl, supabaseKey);
+        console.log(`✅ [Supabase] Connected to live database at: ${supabaseUrl}`);
+    } else {
+        console.warn('⚠️ [Supabase Notice] SUPABASE_URL or SUPABASE_KEY missing. Database calls will safely use memory fallback.');
+    }
+} catch (e) {
+    console.warn('⚠️ [Supabase Warning] Could not initialize Supabase client:', e.message);
+}
+
+// In-memory fallback database for local testing or when Supabase keys are not set
+const memoryDb = {
+    users: {}, // username -> user record
+    accounts: {} // accountName -> [char1, char2, char3]
+};
 
 // ==========================================
 // EXONIE 3D MONSTER DATABASE & RULES
@@ -56,22 +82,37 @@ const MonsterDatabase = {
     "floor_boss_dragon": { name: "Ignis The Ancient", category: "floor_boss", level: 60, maxHp: 240000, atk: 1400, def: 380, speed: 4.5, expYield: 120000, goldYield: 5000, modelType: "dragon", color: 0xd50000, scale: 5.0 }
 };
 
-// Item Templates & Drop Rates
+// ==========================================
+// 🛡️ 2D EXONIE LOOT & STAT GENERATION ENGINE
+// Matches 2D Exonie server.js lines 670-1300
+// ==========================================
+const STAT_TYPES = ['attack', 'magic', 'defense', 'speed', 'int', 'str', 'hp'];
 const RARITY_COLORS = {
-    Starter: "#9e9e9e",
-    Basic: "#ffffff",
-    Rare: "#2196f3",
-    Unique: "#ab47bc",
-    Legendary: "#ff9800",
-    Godly: "#f44336",
+    Starter: "#aaaaaa",
+    Basic: "#8B4513",
+    Rare: "#2196F3",
+    Unique: "#9c27b0",
+    Legendary: "#f44336",
+    Godly: "#e0ffff",
     Divine: "#ffea00"
 };
 
-const ITEM_TYPES = ['sword', 'dagger', 'staff', 'gun', 'touchpad', 'armor', 'leggings', 'pendant'];
-const STAT_TYPES = ['attack', 'magic', 'defense', 'speed', 'int', 'str', 'hp'];
+const ITEM_TEMPLATES = {
+    sword:    { slot: 'weapon', statKey: 'attack',  baseName: 'Sword',    spriteName: 'sword' },
+    staff:    { slot: 'weapon', statKey: 'magic',   baseName: 'Staff',    spriteName: 'staff' },
+    pendant:  { slot: 'weapon', statKey: 'magic',   baseName: 'Pendant',  spriteName: 'pendant' },
+    gun:      { slot: 'weapon', statKey: 'attack',  baseName: 'Gun',      spriteName: 'gun' },
+    dagger:   { slot: 'weapon', statKey: 'attack',  baseName: 'Dagger',   spriteName: 'dagger' },
+    touchpad: { slot: 'weapon', statKey: 'magic',   baseName: 'Touchpad', spriteName: 'touchpad' },
+    armor:    { slot: 'armor',  statKey: 'defense', baseName: 'Armor',    spriteName: 'armor' },
+    leggings: { slot: 'leggings', statKey: 'hp',    baseName: 'Leggings', spriteName: 'leggings' }
+};
 
 function getBaseStat(lvl) {
-    if (lvl >= 50) return 100 + (Math.floor((lvl - 50) / 5) * 3);
+    if (lvl >= 50) {
+        let extraTicks = Math.floor((lvl - 50) / 5);
+        return 100 + (extraTicks * 3);
+    }
     if (lvl >= 45) return 45;
     if (lvl >= 40) return 40;
     if (lvl >= 35) return 30;
@@ -84,110 +125,439 @@ function getBaseStat(lvl) {
     return 5;
 }
 
-function generateDrop(mobLevel, category) {
-    const roll = Math.random();
+function generateDrop(mLevel, category) {
+    let rarityRoll = Math.random();
     let rarity = "Basic";
+
     if (category === "floor_boss") {
-        if (roll < 0.15) rarity = "Divine";
-        else if (roll < 0.40) rarity = "Godly";
-        else if (roll < 0.75) rarity = "Legendary";
-        else rarity = "Unique";
+        rarity = rarityRoll < 0.15 ? "Divine" : (rarityRoll <= 0.45 ? "Godly" : "Legendary");
     } else if (category === "mini_boss") {
-        if (roll < 0.05) rarity = "Godly";
-        else if (roll < 0.25) rarity = "Legendary";
-        else if (roll < 0.65) rarity = "Unique";
-        else rarity = "Rare";
+        rarity = rarityRoll < 0.10 ? "Godly" : (rarityRoll < 0.40 ? "Legendary" : (rarityRoll < 0.70 ? "Unique" : "Rare"));
     } else {
-        if (roll < 0.01) rarity = "Godly";
-        else if (roll < 0.05) rarity = "Legendary";
-        else if (roll < 0.20) rarity = "Unique";
-        else if (roll < 0.50) rarity = "Rare";
-        else rarity = "Basic";
+        rarity = rarityRoll < 0.02 ? "Godly" : (rarityRoll < 0.08 ? "Legendary" : (rarityRoll < 0.25 ? "Unique" : (rarityRoll < 0.50 ? "Rare" : "Basic")));
     }
 
-    const type = ITEM_TYPES[Math.floor(Math.random() * ITEM_TYPES.length)];
-    const bonusMultiplier = { Basic: 1.0, Rare: 1.4, Unique: 1.8, Legendary: 2.4, Godly: 3.2, Divine: 4.5 }[rarity] || 1.0;
-    let statVal = getBaseStat(mobLevel) + ({ Basic: 0, Rare: 2, Unique: 5, Legendary: 8, Godly: 12, Divine: 12 }[rarity] || 0);
-    if (rarity === "Divine") statVal = (getBaseStat(mobLevel) + 12) * 2;
-    if (type === 'gun' || type === 'pendant') statVal = Math.floor(statVal / 2);
+    const keys = Object.keys(ITEM_TEMPLATES);
+    const typeKey = keys[Math.floor(Math.random() * keys.length)];
+    const template = ITEM_TEMPLATES[typeKey];
+
+    let statVal = getBaseStat(mLevel) + ({ "Starter": 0, "Basic": 0, "Rare": 2, "Unique": 5, "Legendary": 8, "Godly": 12, "Divine": 12 }[rarity] || 0);
+    if (rarity === "Divine") statVal = (getBaseStat(mLevel) + 12) * 2;
+    if (typeKey === 'gun' || typeKey === 'pendant') statVal = Math.floor(statVal / 2);
 
     const fixedStat = {};
-    const isWpn = !['armor', 'leggings'].includes(type);
-    const itemSlot = isWpn ? 'weapon' : type;
-    if (type === 'armor') fixedStat.defense = Math.max(2, statVal);
-    else if (type === 'leggings') fixedStat.hp = Math.max(10, statVal * 4);
-    else if (['staff', 'pendant', 'touchpad'].includes(type)) fixedStat.magic = statVal;
-    else fixedStat.attack = statVal;
+    fixedStat[template.statKey] = statVal;
 
     const randomStat = {};
     const numStats = rarity === "Divine" ? 4 : (rarity === "Godly" ? 3 : (rarity === "Legendary" ? 2 : 1));
-    const available = [...STAT_TYPES];
+    const availableStats = [...STAT_TYPES];
     for (let i = 0; i < numStats; i++) {
-        if (available.length === 0) break;
-        const rIdx = Math.floor(Math.random() * available.length);
-        const sKey = available.splice(rIdx, 1)[0];
-        randomStat[sKey] = Math.max(1, Math.floor(Math.random() * getBaseStat(mobLevel)) + 1);
+        if (availableStats.length === 0) break;
+        let rIdx = Math.floor(Math.random() * availableStats.length);
+        let sKey = availableStats.splice(rIdx, 1)[0];
+        randomStat[sKey] = Math.floor(Math.random() * getBaseStat(mLevel)) + 1;
     }
 
+    const isWpn = !['armor', 'leggings'].includes(typeKey);
     return {
-        id: 'item_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
-        name: `${rarity} ${type.charAt(0).toUpperCase() + type.slice(1)}`,
-        type: itemSlot,
-        weaponType: isWpn ? type : null,
-        sprite: `${rarity.toLowerCase()}${type}`,
+        id: 'drop_' + Date.now() + '_' + Math.floor(Math.random() * 10000),
+        name: `${rarity} ${template.baseName}`,
+        type: template.slot,
+        weaponType: isWpn ? typeKey : null,
+        sprite: `${rarity.toLowerCase()}${template.spriteName}`,
+        level: mLevel,
         rarity: rarity,
-        level: mobLevel,
-        levelReq: Math.max(1, mobLevel - 2),
-        color: RARITY_COLORS[rarity],
+        color: RARITY_COLORS[rarity] || '#ffffff',
         fixedStat: fixedStat,
         randomStat: randomStat,
         enhanceLevel: 0,
-        sellPrice: Math.floor(mobLevel * 10 * bonusMultiplier)
+        quantity: 1
     };
 }
 
-// In-memory player state for multiplayer
-const players = {};
+// Starter Items matching 2D Exonie createCharacter
+function getStarterItems() {
+    const starterEquips = {
+        weapon: null,
+        armor: { id: 'eq_armor_' + Date.now(), name: "Starter Armor", type: "armor", sprite: "starterarmor", level: 1, rarity: "Starter", color: "#aaaaaa", fixedStat: { defense: 2 } },
+        leggings: { id: 'eq_leg_' + Date.now(), name: "Starter Leggings", type: "leggings", sprite: "starterleggings", level: 1, rarity: "Starter", color: "#aaaaaa", fixedStat: { hp: 5 } }
+    };
 
+    const starterInventory = [];
+    for (let i = 0; i < 20; i++) starterInventory.push(null);
+
+    starterInventory[0] = { id: 'wpn_1_' + Date.now(), name: "Starter Sword", type: "weapon", weaponType: "sword", sprite: "startersword", level: 1, rarity: "Starter", color: "#aaaaaa", fixedStat: { attack: 3 }, randomStat: {} };
+    starterInventory[1] = { id: 'wpn_2_' + Date.now(), name: "Starter Staff", type: "weapon", weaponType: "staff", sprite: "starterstaff", level: 1, rarity: "Starter", color: "#aaaaaa", fixedStat: { magic: 3 }, randomStat: {} };
+    starterInventory[2] = { id: 'wpn_3_' + Date.now(), name: "Starter Pendant", type: "weapon", weaponType: "pendant", sprite: "starterpendant", level: 1, rarity: "Starter", color: "#aaaaaa", fixedStat: { magic: 2 }, randomStat: {} };
+    starterInventory[3] = { id: 'wpn_4_' + Date.now(), name: "Starter Gun", type: "weapon", weaponType: "gun", sprite: "startergun", level: 1, rarity: "Starter", color: "#aaaaaa", fixedStat: { attack: 2 }, randomStat: {} };
+    starterInventory[4] = { id: 'wpn_5_' + Date.now(), name: "Starter Dagger", type: "weapon", weaponType: "dagger", sprite: "starterdagger", level: 1, rarity: "Starter", color: "#aaaaaa", fixedStat: { attack: 3, speed: 2 }, randomStat: {} };
+    starterInventory[5] = { id: 'wpn_6_' + Date.now(), name: "Starter Touchpad", type: "weapon", weaponType: "touchpad", sprite: "startertouchpad", level: 1, rarity: "Starter", color: "#aaaaaa", fixedStat: { magic: 3 }, randomStat: {} };
+    starterInventory[6] = { id: 'pot_1_' + Date.now(), name: "Health Potion", type: "potion", sprite: "potion1", level: 1, rarity: "Basic", color: "#8B4513", fixedStat: { hpHeal: 50 }, quantity: 10 };
+
+    return { starterEquips, starterInventory };
+}
+
+// In-memory player state for active online players
+const onlinePlayers = {};
+
+// ==========================================
+// SOCKET.IO REALTIME ENGINE
+// ==========================================
 io.on('connection', (socket) => {
-    console.log(`Player connected: ${socket.id}`);
+    console.log(`[Socket] Connection established: ${socket.id}`);
+
+    // 1. LOGIN (Supabase Exonians query matching 2D Exonie server.js line 3177)
+    socket.on('login', async (data) => {
+        try {
+            const username = (data && data.username) ? String(data.username).trim() : '';
+            const password = (data && data.password) ? String(data.password) : '';
+
+            if (!username || !password) {
+                return socket.emit('authError', 'Please enter both username and password.');
+            }
+
+            console.log(`[LOGIN ATTEMPT] Authenticating: ${username}`);
+
+            let user = null;
+            let characterSlots = [];
+
+            if (supabase) {
+                // Fetch primary character record
+                const { data: dbUser, error: dbErr } = await supabase
+                    .from('Exonians')
+                    .select('*')
+                    .eq('character_name', username)
+                    .eq('password', password)
+                    .maybeSingle();
+
+                if (dbErr) {
+                    console.error(`[LOGIN DB ERROR] ${username}:`, dbErr.message);
+                    return socket.emit('authError', 'Database error. Please try again.');
+                }
+                user = dbUser;
+
+                if (user) {
+                    // Fetch all character slots tied to this user's email or username
+                    const userEmail = user.email || `${username}@exonie.com`;
+                    const { data: allChars } = await supabase
+                        .from('Exonians')
+                        .select('*')
+                        .or(`email.eq.${userEmail},character_name.eq.${username}`);
+                    characterSlots = (allChars || []).slice(0, 3);
+                }
+            } else {
+                // In-memory fallback
+                const mem = memoryDb.users[username];
+                if (mem && mem.password === password) {
+                    user = mem;
+                    characterSlots = memoryDb.accounts[username] || [mem];
+                }
+            }
+
+            if (!user) {
+                return socket.emit('authError', 'Invalid username or password.');
+            }
+
+            // Ensure 3 slots array
+            while (characterSlots.length < 3) characterSlots.push(null);
+
+            socket.username = username;
+            socket.email = user.email || `${username}@exonie.com`;
+
+            console.log(`[LOGIN SUCCESS] ${username} logged in with ${characterSlots.filter(Boolean).length} characters.`);
+            socket.emit('loginSuccess', {
+                username: username,
+                email: socket.email,
+                characters: characterSlots
+            });
+
+        } catch (e) {
+            console.error('[LOGIN CRASH]', e);
+            socket.emit('authError', 'Server error during login.');
+        }
+    });
+
+    // 2. REGISTER (Inserts new character into Supabase Exonians table)
+    socket.on('register', async (data) => {
+        try {
+            const username = (data && data.username) ? String(data.username).trim() : '';
+            const password = (data && data.password) ? String(data.password) : '';
+            const email = (data && data.email) ? String(data.email).trim() : `${username}@exonie.com`;
+
+            if (!username || !password) {
+                return socket.emit('authError', 'Please provide a username and password.');
+            }
+
+            if (supabase) {
+                const { data: existing } = await supabase
+                    .from('Exonians')
+                    .select('character_name')
+                    .eq('character_name', username)
+                    .maybeSingle();
+
+                if (existing) {
+                    return socket.emit('authError', 'Username is already taken!');
+                }
+
+                const { starterEquips, starterInventory } = getStarterItems();
+                const defaultBaseStats = {
+                    hp: 100, attack: 5, magic: 5, defense: 2, speed: 1, str: 10, int: 10,
+                    playerClass: null, title: null, homeStorage: Array(15).fill(null),
+                    tavernEntries: 5, dungeonEntries: 7
+                };
+
+                const { error: insErr } = await supabase.from('Exonians').insert([{
+                    character_name: username,
+                    password: password,
+                    email: email,
+                    email_verified: true,
+                    level: 1,
+                    exp: 0,
+                    gold: 500,
+                    skin_color: '#f5c6a5',
+                    hair_color: '#111111',
+                    hair_style: '1',
+                    equips: starterEquips,
+                    inventory: starterInventory,
+                    base_stats: defaultBaseStats,
+                    map_id: 'town',
+                    pos_x: 960,
+                    pos_y: 1000
+                }]);
+
+                if (insErr) {
+                    console.error('[REGISTER DB ERROR]', insErr.message);
+                    return socket.emit('authError', `Failed to create account: ${insErr.message}`);
+                }
+            } else {
+                if (memoryDb.users[username]) {
+                    return socket.emit('authError', 'Username is already taken!');
+                }
+                const { starterEquips, starterInventory } = getStarterItems();
+                const newRec = {
+                    character_name: username,
+                    password: password,
+                    email: email,
+                    level: 1,
+                    exp: 0,
+                    gold: 500,
+                    skin_color: '#f5c6a5',
+                    hair_color: '#111111',
+                    hair_style: '1',
+                    equips: starterEquips,
+                    inventory: starterInventory,
+                    base_stats: { hp: 100, attack: 5, magic: 5, defense: 2, speed: 1, str: 10, int: 10, playerClass: null },
+                    map_id: 'town'
+                };
+                memoryDb.users[username] = newRec;
+                memoryDb.accounts[username] = [newRec, null, null];
+            }
+
+            console.log(`[REGISTER SUCCESS] Account created: ${username}`);
+            socket.emit('registerSuccess', username);
+
+        } catch (e) {
+            console.error('[REGISTER CRASH]', e);
+            socket.emit('authError', 'Server error during registration.');
+        }
+    });
+
+    // 3. FETCH ACCOUNT CHARACTERS
+    socket.on('getAccountCharacters', async (data) => {
+        try {
+            const username = (data && data.username) || socket.username;
+            if (!username) return socket.emit('accountCharacters', [null, null, null]);
+
+            let slots = [null, null, null];
+            if (supabase) {
+                const userEmail = (data && data.email) || socket.email || `${username}@exonie.com`;
+                const { data: chars } = await supabase
+                    .from('Exonians')
+                    .select('*')
+                    .or(`email.eq.${userEmail},character_name.eq.${username}`);
+                if (chars && chars.length > 0) {
+                    slots = chars.slice(0, 3);
+                    while (slots.length < 3) slots.push(null);
+                }
+            } else {
+                slots = memoryDb.accounts[username] || [null, null, null];
+            }
+            socket.emit('accountCharacters', slots);
+        } catch (e) {
+            console.error('[GET CHARS ERROR]', e);
+        }
+    });
+
+    // 4. CREATE / CUSTOMIZE CHARACTER IN SLOT
+    socket.on('createCharacter', async (data) => {
+        try {
+            const { username, charData } = data;
+            const charName = (charData && charData.name) ? String(charData.name).trim() : username;
+            const slotIdx = Math.max(0, Math.min(2, Number(data.slotIndex) || 0));
+
+            console.log(`[CREATE CHAR] User: ${username}, Char: ${charName}, Slot: ${slotIdx}`);
+
+            const { starterEquips, starterInventory } = getStarterItems();
+            const defaultBaseStats = {
+                hp: 100, attack: 5, magic: 5, defense: 2, speed: 1, str: 10, int: 10,
+                playerClass: null, title: null, homeStorage: Array(15).fill(null),
+                tavernEntries: 5, dungeonEntries: 7
+            };
+
+            let savedChar = null;
+
+            if (supabase) {
+                const userEmail = socket.email || `${username}@exonie.com`;
+                const charRecord = {
+                    character_name: charName,
+                    password: data.password || 'default123',
+                    email: userEmail,
+                    email_verified: true,
+                    skin_color: charData.skinColor || '#f5c6a5',
+                    hair_color: charData.hairColor || '#111111',
+                    hair_style: String(charData.hairStyle || '1'),
+                    equips: starterEquips,
+                    inventory: starterInventory,
+                    base_stats: defaultBaseStats,
+                    gold: 500,
+                    level: 1,
+                    exp: 0,
+                    map_id: 'town',
+                    pos_x: 960,
+                    pos_y: 1000
+                };
+
+                // Upsert character into Exonians
+                const { data: upserted, error: upErr } = await supabase
+                    .from('Exonians')
+                    .upsert(charRecord, { onConflict: 'character_name' })
+                    .select()
+                    .single();
+
+                if (upErr) {
+                    console.error('[CREATE CHAR DB ERROR]', upErr.message);
+                    return socket.emit('authError', `Failed to save character: ${upErr.message}`);
+                }
+                savedChar = upserted;
+            } else {
+                savedChar = {
+                    character_name: charName,
+                    name: charName,
+                    gender: charData.gender || 'female',
+                    hairStyle: charData.hairStyle || '1',
+                    hairColor: charData.hairColor || '#111111',
+                    skinColor: charData.skinColor || '#f5c6a5',
+                    equips: starterEquips,
+                    inventory: starterInventory,
+                    base_stats: defaultBaseStats,
+                    gold: 500,
+                    level: 1,
+                    exp: 0,
+                    map_id: 'town'
+                };
+                if (!memoryDb.accounts[username]) memoryDb.accounts[username] = [null, null, null];
+                memoryDb.accounts[username][slotIdx] = savedChar;
+            }
+
+            socket.emit('characterCreated', { slotIndex: slotIdx, character: savedChar });
+
+        } catch (e) {
+            console.error('[CREATE CHAR CRASH]', e);
+            socket.emit('authError', 'Server error creating character.');
+        }
+    });
+
+    // 5. SAVE CHARACTER PROGRESS TO SUPABASE
+    socket.on('saveCharacter', async (charState) => {
+        try {
+            if (!charState || !charState.name) return;
+            const charName = String(charState.name).trim();
+
+            if (supabase) {
+                await supabase.from('Exonians').update({
+                    level: charState.level || 1,
+                    exp: charState.exp || 0,
+                    gold: charState.gold || 0,
+                    equips: charState.equips || {},
+                    inventory: charState.inventory || [],
+                    base_stats: charState.baseStats || {},
+                    skin_color: charState.skinColor,
+                    hair_color: charState.hairColor,
+                    hair_style: charState.hairStyle
+                }).eq('character_name', charName);
+            }
+        } catch (e) {
+            console.error('[SAVE CHAR ERROR]', e.message);
+        }
+    });
+
+    // 6. ENTER 3D WORLD / JOIN GAME
+    socket.on('enterWorld', async (data) => {
+        try {
+            const charName = (data && (data.character_name || data.name)) ? String(data.character_name || data.name).trim() : 'Hero';
+            let charRow = null;
+
+            if (supabase) {
+                const { data: fresh } = await supabase
+                    .from('Exonians')
+                    .select('*')
+                    .eq('character_name', charName)
+                    .maybeSingle();
+                charRow = fresh;
+            }
+
+            const pData = charRow || data;
+
+            onlinePlayers[socket.id] = {
+                socketId: socket.id,
+                id: charName,
+                name: charName,
+                gender: pData.gender || 'female',
+                hairStyle: pData.hair_style || pData.hairStyle || '1',
+                hairColor: pData.hair_color || pData.hairColor || '#111111',
+                skinColor: pData.skin_color || pData.skinColor || '#f5c6a5',
+                className: (pData.base_stats && pData.base_stats.playerClass) || pData.playerClass || 'Novice',
+                level: pData.level || 1,
+                exp: pData.exp || 0,
+                gold: pData.gold || 500,
+                equips: pData.equips || {},
+                inventory: pData.inventory || [],
+                baseStats: pData.base_stats || pData.baseStats || {},
+                hp: 500,
+                maxHp: 500,
+                mp: 200,
+                maxMp: 200,
+                atk: 50,
+                def: 10,
+                x: 0,
+                y: 0,
+                z: 0,
+                rotY: 0
+            };
+
+            socket.emit('gameState', { self: onlinePlayers[socket.id], players: onlinePlayers });
+            socket.broadcast.emit('playerJoined', onlinePlayers[socket.id]);
+            console.log(`[WORLD] ${charName} entered 3D world (Socket: ${socket.id})`);
+
+        } catch (e) {
+            console.error('[ENTER WORLD ERROR]', e);
+        }
+    });
 
     socket.on('joinGame', (playerData) => {
-        players[socket.id] = {
-            id: socket.id,
-            name: playerData.name || 'Hero',
-            gender: playerData.gender || 'female',
-            hairStyle: playerData.hairStyle || '1',
-            hairColor: playerData.hairColor || '#111111',
-            skinColor: playerData.skinColor || '#f5c6a5',
-            className: playerData.className || 'Blademaster',
-            level: playerData.level || 1,
-            hp: playerData.hp || 500,
-            maxHp: playerData.maxHp || 500,
-            mp: playerData.mp || 200,
-            maxMp: playerData.maxMp || 200,
-            atk: playerData.atk || 50,
-            def: playerData.def || 10,
-            currentFloor: playerData.currentFloor || 1,
-            x: 0,
-            y: 0,
-            z: 0,
-            rotY: 0
-        };
-
-        // Notify client of join success and other players
-        socket.emit('gameState', { self: players[socket.id], players });
-        socket.broadcast.emit('playerJoined', players[socket.id]);
+        onlinePlayers[socket.id] = Object.assign({ id: socket.id, x: 0, y: 0, z: 0, rotY: 0 }, playerData);
+        socket.emit('gameState', { self: onlinePlayers[socket.id], players: onlinePlayers });
+        socket.broadcast.emit('playerJoined', onlinePlayers[socket.id]);
     });
 
     socket.on('playerMove', (data) => {
-        if (!players[socket.id]) return;
-        players[socket.id].x = data.x;
-        players[socket.id].y = data.y;
-        players[socket.id].z = data.z;
-        players[socket.id].rotY = data.rotY;
-        players[socket.id].anim = data.anim;
-        socket.broadcast.emit('playerMoved', players[socket.id]);
+        if (!onlinePlayers[socket.id]) return;
+        onlinePlayers[socket.id].x = data.x;
+        onlinePlayers[socket.id].y = data.y;
+        onlinePlayers[socket.id].z = data.z;
+        onlinePlayers[socket.id].rotY = data.rotY;
+        onlinePlayers[socket.id].anim = data.anim;
+        socket.broadcast.emit('playerMoved', onlinePlayers[socket.id]);
     });
 
     socket.on('monsterKill', (data) => {
@@ -209,8 +579,8 @@ io.on('connection', (socket) => {
     });
 
     socket.on('disconnect', () => {
-        console.log(`Player disconnected: ${socket.id}`);
-        delete players[socket.id];
+        console.log(`[Socket] Player disconnected: ${socket.id}`);
+        delete onlinePlayers[socket.id];
         io.emit('playerLeft', socket.id);
     });
 });
@@ -219,6 +589,7 @@ server.listen(PORT, () => {
     console.log(`===============================================`);
     console.log(`🛡️  EXONIE 3D REMASTERED SERVER STARTED 🛡️`);
     console.log(`📡 URL: http://localhost:${PORT}`);
+    console.log(`🗄️ Supabase Live Database Connection: ${supabase ? 'ACTIVE' : 'OFFLINE/FALLBACK'}`);
     console.log(`⚡ Dragon Nest 3D Combat + Crisp Mobile Enabled`);
     console.log(`===============================================`);
 });

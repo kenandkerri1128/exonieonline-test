@@ -199,6 +199,10 @@ export class Character3D {
         }
     }
 
+    setEquipVisuals(opts = {}) {
+        this.setCustomization(opts);
+    }
+
     setCustomization(opts = {}) {
         if (opts.gender !== undefined) this.gender = opts.gender;
         if (opts.hairStyle !== undefined) this.hairStyle = String(opts.hairStyle);
@@ -1268,7 +1272,7 @@ export class Character3D {
             p.lElbow.rotation.x = -0.35;
             p.rElbow.rotation.x = -0.35;
             if (this.skillCastTimer <= 0) {
-                const theme = CLASS_ARMOR_THEMES[this.jobClass] || CLASS_ARMOR_THEMES['None'];
+                const theme = EQUIPMENT_RARITY_THEMES[this.armorRarity] || EQUIPMENT_RARITY_THEMES['Starter'];
                 if (this.auraLight) {
                     this.auraLight.color.setHex(theme.glow);
                     this.auraLight.intensity = (this.jobClass && this.jobClass !== 'None') ? 1.1 : 0.35;
