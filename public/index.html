@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Exonie 3D Remastered</title>
     <link rel="icon" type="image/png" href="favicon.png">
-    <link rel="preload" as="image" href="backgrounds/loadingscreen.png">
+    <link rel="preload" as="image" href="loadingscreen.png">
     <link rel="stylesheet" href="css/style.css">
 
     <!-- Native ES Module Import Map for Three.js -->
@@ -938,16 +938,16 @@
     </div>
 
     <!-- ============================================================
-         AUTHENTIC 2D PICTURE LOADING / MAP TRANSITION SCREEN OVERLAY
+         AUTHENTIC 2D PICTURE LOADING SCREEN & MAP TRANSITION OVERLAY
          ============================================================ -->
-    <div id="map-transition-screen" style="display:none;">
-        <img src="backgrounds/loadingscreen.png" class="transition-bg-img" alt="Exonie Loading Screen" draggable="false">
-        <div class="transition-bottom-loader">
-            <h2 id="transition-title">Town of Exonie</h2>
-            <p id="transition-subtitle">Safe Haven</p>
-            <div class="transition-bar-track">
-                <div class="transition-bar-fill" id="transition-bar-fill"></div>
+    <div id="loading-screen" style="display:none;">
+        <div class="loader-content">
+            <h1 class="loader-title" id="loading-screen-title">ENTERING EXONIE...</h1>
+            <p class="loader-subtitle" id="loading-screen-subtitle">Preparing 3D Realm...</p>
+            <div class="loader-bar-bg">
+                <div id="loading-bar-fill" class="loader-bar-fill"></div>
             </div>
+            <div class="loader-tip" id="loading-screen-tip">💡 Tip: Equip high-rarity weapons to unlock glowing auras and higher stats!</div>
         </div>
     </div>
 

@@ -217,12 +217,71 @@ export function getItemSellPrice(item) {
     return Math.min(500000, sellPrice * qty);
 }
 
+// ==========================================
+// 2D EXONIE STAT SCALING & DROP ENGINE
+// ==========================================
+export const STAT_TYPES = ['attack', 'magic', 'defense', 'speed', 'int', 'str', 'hp'];
+
+export const RARITY_COLORS = {
+    Starter:   '#aaaaaa',
+    Basic:     '#ffffff',
+    Rare:      '#2196f3',
+    Unique:    '#ab47bc',
+    Legendary: '#ff9800',
+    Godly:     '#f44336',
+    Divine:    '#ffea00'
+};
+
+export const ITEM_TEMPLATES = {
+    sword:    { slot: 'weapon', statKey: 'attack', baseName: 'Sword', spriteName: 'sword' },
+    staff:    { slot: 'weapon', statKey: 'magic', baseName: 'Staff', spriteName: 'staff' },
+    pendant:  { slot: 'weapon', statKey: 'magic', baseName: 'Pendant', spriteName: 'pendant' },
+    gun:      { slot: 'weapon', statKey: 'attack', baseName: 'Gun', spriteName: 'gun' },
+    dagger:   { slot: 'weapon', statKey: 'attack', baseName: 'Dagger', spriteName: 'dagger' },
+    touchpad: { slot: 'weapon', statKey: 'magic', baseName: 'Touchpad', spriteName: 'touchpad' },
+    armor:    { slot: 'armor', statKey: 'defense', baseName: 'Armor', spriteName: 'armor' },
+    leggings: { slot: 'leggings', statKey: 'hp', baseName: 'Leggings', spriteName: 'leggings' }
+};
+
+export function getBaseStat(lvl) {
+    if (lvl >= 50) {
+        const extraTicks = Math.floor((lvl - 50) / 5);
+        return 100 + (extraTicks * 3);
+    }
+    if (lvl >= 45) return 45;
+    if (lvl >= 40) return 40;
+    if (lvl >= 35) return 30;
+    if (lvl >= 30) return 27;
+    if (lvl >= 25) return 22;
+    if (lvl >= 20) return 20;
+    if (lvl >= 15) return 15;
+    if (lvl >= 10) return 12;
+    if (lvl >= 5)  return 8;
+    return 5;
+}
+
+// 🛡️ Authentic 2D Rolled Bonus Stats
+export function rollRandomStats(mLevel, rarity) {
+    const numStats = rarity === 'Divine' ? 4 : (rarity === 'Godly' ? 3 : (rarity === 'Legendary' ? 2 : 1));
+    const available = [...STAT_TYPES];
+    const rolled = {};
+    const baseStat = getBaseStat(mLevel);
+
+    for (let i = 0; i < numStats; i++) {
+        if (available.length === 0) break;
+        const rIdx = Math.floor(Math.random() * available.length);
+        const sKey = available.splice(rIdx, 1)[0];
+        rolled[sKey] = Math.max(1, Math.floor(Math.random() * baseStat) + 1);
+    }
+    return rolled;
+}
+
 export function generatePowerGem(level, rarity) {
     const r = rarity || 'Unique';
-    const mult = { Unique: 1, Legendary: 2, Godly: 3 }[r] || 1;
-    const strVal = Math.max(2, Math.floor(level * 0.4 * mult));
-    const intVal = Math.max(2, Math.floor(level * 0.4 * mult));
-    const colors = { Unique: '#ab47bc', Legendary: '#ff9800', Godly: '#f44336' };
+    const stats = [...STAT_TYPES];
+    const rStat = stats[Math.floor(Math.random() * stats.length)];
+    const statVal = getBaseStat(level) + ({ Basic: 0, Rare: 2, Unique: 5, Legendary: 8, Godly: 12, Divine: 16 }[r] || 0);
+
     return {
         id: `gem_${Date.now()}_${Math.random()}`,
         name: `${r} Power Gem`,
@@ -230,10 +289,14 @@ export function generatePowerGem(level, rarity) {
         sprite: 'powergem',
         level: level,
         rarity: r,
-        color: colors[r] || '#ab47bc',
-        bonusStr: strVal,
-        bonusInt: intVal,
-        desc: `Imbues equipped weapon with +${strVal} STR and +${intVal} INT!`
+        color: RARITY_COLORS[r] || '#ab47bc',
+        fixedStat: {},
+        randomStat: { [rStat]: statVal },
+        enhanceLevel: 0,
+        quantity: 1,
+        bonusStr: Math.max(2, Math.floor(statVal * 0.5)),
+        bonusInt: Math.max(2, Math.floor(statVal * 0.5)),
+        desc: `Imbues equipped weapon with +${statVal} ${rStat.toUpperCase()}!`
     };
 }
 
@@ -424,7 +487,7 @@ export function generateLoot(mob) {
         return drops;
     }
 
-    // ⚔️ GEAR DROP (50%) - BASIC/RARE ONLY FOR COMMON MOBS
+    // ⚔️ GEAR DROP (50%) - STRICT 2D EXONIE FORMULAS (FIXED STAT + RANDOM BONUS STATS)
     const arch = WEAPON_ARCHETYPES[Math.floor(Math.random() * WEAPON_ARCHETYPES.length)];
     const equipTypeRoll = Math.random();
     let rarity = 'Basic';
@@ -432,50 +495,60 @@ export function generateLoot(mob) {
 
     if (category === 'floor_boss') rarity = rarityRoll <= 0.35 ? 'Godly' : 'Legendary';
     else if (category === 'mini_boss') rarity = rarityRoll < 0.35 ? 'Unique' : 'Rare';
-    else rarity = rarityRoll < 0.15 ? 'Rare' : 'Basic'; // COMMON MOBS ARE STRICTLY BASIC (85%) OR RARE (15%)
+    else rarity = rarityRoll < 0.15 ? 'Rare' : 'Basic';
 
-    const mult = { Basic: 1.0, Rare: 1.4, Unique: 1.8, Legendary: 2.4, Godly: 3.2, Divine: 4.5 }[rarity] || 1.0;
-    const color = { Basic: '#ffffff', Rare: '#2196f3', Unique: '#ab47bc', Legendary: '#ff9800', Godly: '#f44336', Divine: '#ffea00' }[rarity] || '#ffffff';
-    const statBase = Math.max(3, Math.floor((lvl * 1.8 + 4) * mult));
+    const color = RARITY_COLORS[rarity] || '#ffffff';
+    let statVal = getBaseStat(lvl) + ({ Starter: 0, Basic: 0, Rare: 2, Unique: 5, Legendary: 8, Godly: 12, Divine: 12 }[rarity] || 0);
+    if (rarity === 'Divine') statVal = (getBaseStat(lvl) + 12) * 2;
 
-    if (equipTypeRoll < 0.45) {
+    const randomStats = rollRandomStats(lvl, rarity);
+
+    if (equipTypeRoll < 0.50) {
         // Weapon
+        let wpnStat = statVal;
+        if (arch.kind === 'gun' || arch.kind === 'pendant') wpnStat = Math.floor(statVal / 2);
         drops.push({
             id: `wpn_${Date.now()}_${Math.random()}`,
             name: `${rarity} ${arch.label}`,
             type: 'weapon',
             weaponType: arch.kind,
-            sprite: arch.sprite,
+            sprite: `${rarity.toLowerCase()}${arch.kind}`,
             level: lvl,
             rarity: rarity,
             color: color,
-            fixedStat: { [arch.stat]: statBase },
+            fixedStat: { [arch.stat]: Math.max(3, wpnStat) },
+            randomStat: randomStats,
+            enhanceLevel: 0,
             desc: arch.desc
         });
     } else if (equipTypeRoll < 0.75) {
         // Armor
         drops.push({
             id: `arm_${Date.now()}_${Math.random()}`,
-            name: `${rarity} Battle Armor`,
+            name: `${rarity} Armor`,
             type: 'armor',
-            sprite: 'starterarmor',
+            sprite: `${rarity.toLowerCase()}armor`,
             level: lvl,
             rarity: rarity,
             color: color,
-            fixedStat: { defense: Math.max(2, Math.floor(statBase * 0.85)) },
+            fixedStat: { defense: Math.max(2, statVal) },
+            randomStat: randomStats,
+            enhanceLevel: 0,
             desc: 'Reinforced Exonie chestplate.'
         });
     } else {
         // Leggings
         drops.push({
             id: `leg_${Date.now()}_${Math.random()}`,
-            name: `${rarity} Greaves`,
+            name: `${rarity} Leggings`,
             type: 'leggings',
-            sprite: 'starterleggings',
+            sprite: `${rarity.toLowerCase()}leggings`,
             level: lvl,
             rarity: rarity,
             color: color,
-            fixedStat: { hp: Math.max(10, Math.floor(statBase * 3.5)) },
+            fixedStat: { hp: Math.max(10, statVal * 4) },
+            randomStat: randomStats,
+            enhanceLevel: 0,
             desc: 'Armored leg guards that boost vitality.'
         });
     }
@@ -537,16 +610,19 @@ export function generateHauntedLoot(level) {
         // 55% Gear (Legendary or Godly)
         const gearRarity = Math.random() < 0.25 ? 'Godly' : 'Legendary';
         const arch = WEAPON_ARCHETYPES[Math.floor(Math.random() * WEAPON_ARCHETYPES.length)];
+        let statVal = getBaseStat(lvl) + (gearRarity === 'Godly' ? 12 : 8);
         drops.push({
             id: `wpn_${Date.now()}_${Math.random()}`,
             name: `${gearRarity} ${arch.label}`,
             type: 'weapon',
             weaponType: arch.kind,
-            sprite: arch.sprite,
+            sprite: `${gearRarity.toLowerCase()}${arch.kind}`,
             level: lvl,
             rarity: gearRarity,
-            color: gearRarity === 'Godly' ? '#f44336' : '#ff9800',
-            fixedStat: { [arch.stat]: Math.max(15, lvl * 4) },
+            color: RARITY_COLORS[gearRarity] || '#ff9800',
+            fixedStat: { [arch.stat]: statVal },
+            randomStat: rollRandomStats(lvl, gearRarity),
+            enhanceLevel: 0,
             desc: arch.desc
         });
     }
@@ -569,18 +645,27 @@ export function generateDungeonLoot(mob) {
         else if (roll < 0.70) gemRarity = 'Rare';
         drops.push(generatePowerGem(lvl, gemRarity));
     } else {
-        // 50% High-tier gear
+        // 50% High-tier gear with random stats
+        const roll = Math.random();
+        let rarity = 'Rare';
+        if (roll < 0.05) rarity = 'Godly';
+        else if (roll < 0.25) rarity = 'Legendary';
+        else if (roll < 0.65) rarity = 'Unique';
+
         const arch = WEAPON_ARCHETYPES[Math.floor(Math.random() * WEAPON_ARCHETYPES.length)];
+        let statVal = getBaseStat(lvl) + ({ Unique: 5, Legendary: 8, Godly: 12 }[rarity] || 2);
         drops.push({
             id: `wpn_${Date.now()}_${Math.random()}`,
-            name: `Rare ${arch.label}`,
+            name: `${rarity} ${arch.label}`,
             type: 'weapon',
             weaponType: arch.kind,
-            sprite: arch.sprite,
+            sprite: `${rarity.toLowerCase()}${arch.kind}`,
             level: lvl,
-            rarity: 'Rare',
-            color: '#2196f3',
-            fixedStat: { [arch.stat]: Math.max(8, lvl * 2) },
+            rarity: rarity,
+            color: RARITY_COLORS[rarity] || '#2196f3',
+            fixedStat: { [arch.stat]: statVal },
+            randomStat: rollRandomStats(lvl, rarity),
+            enhanceLevel: 0,
             desc: arch.desc
         });
     }

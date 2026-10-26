@@ -68,6 +68,21 @@ const RARITY_COLORS = {
 };
 
 const ITEM_TYPES = ['sword', 'dagger', 'staff', 'gun', 'touchpad', 'armor', 'leggings', 'pendant'];
+const STAT_TYPES = ['attack', 'magic', 'defense', 'speed', 'int', 'str', 'hp'];
+
+function getBaseStat(lvl) {
+    if (lvl >= 50) return 100 + (Math.floor((lvl - 50) / 5) * 3);
+    if (lvl >= 45) return 45;
+    if (lvl >= 40) return 40;
+    if (lvl >= 35) return 30;
+    if (lvl >= 30) return 27;
+    if (lvl >= 25) return 22;
+    if (lvl >= 20) return 20;
+    if (lvl >= 15) return 15;
+    if (lvl >= 10) return 12;
+    if (lvl >= 5)  return 8;
+    return 5;
+}
 
 function generateDrop(mobLevel, category) {
     const roll = Math.random();
@@ -92,17 +107,41 @@ function generateDrop(mobLevel, category) {
 
     const type = ITEM_TYPES[Math.floor(Math.random() * ITEM_TYPES.length)];
     const bonusMultiplier = { Basic: 1.0, Rare: 1.4, Unique: 1.8, Legendary: 2.4, Godly: 3.2, Divine: 4.5 }[rarity] || 1.0;
-    const baseStat = Math.max(5, Math.floor(mobLevel * 4 * bonusMultiplier));
+    let statVal = getBaseStat(mobLevel) + ({ Basic: 0, Rare: 2, Unique: 5, Legendary: 8, Godly: 12, Divine: 12 }[rarity] || 0);
+    if (rarity === "Divine") statVal = (getBaseStat(mobLevel) + 12) * 2;
+    if (type === 'gun' || type === 'pendant') statVal = Math.floor(statVal / 2);
+
+    const fixedStat = {};
+    const isWpn = !['armor', 'leggings'].includes(type);
+    const itemSlot = isWpn ? 'weapon' : type;
+    if (type === 'armor') fixedStat.defense = Math.max(2, statVal);
+    else if (type === 'leggings') fixedStat.hp = Math.max(10, statVal * 4);
+    else if (['staff', 'pendant', 'touchpad'].includes(type)) fixedStat.magic = statVal;
+    else fixedStat.attack = statVal;
+
+    const randomStat = {};
+    const numStats = rarity === "Divine" ? 4 : (rarity === "Godly" ? 3 : (rarity === "Legendary" ? 2 : 1));
+    const available = [...STAT_TYPES];
+    for (let i = 0; i < numStats; i++) {
+        if (available.length === 0) break;
+        const rIdx = Math.floor(Math.random() * available.length);
+        const sKey = available.splice(rIdx, 1)[0];
+        randomStat[sKey] = Math.max(1, Math.floor(Math.random() * getBaseStat(mobLevel)) + 1);
+    }
 
     return {
         id: 'item_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
         name: `${rarity} ${type.charAt(0).toUpperCase() + type.slice(1)}`,
-        type: type,
+        type: itemSlot,
+        weaponType: isWpn ? type : null,
+        sprite: `${rarity.toLowerCase()}${type}`,
         rarity: rarity,
+        level: mobLevel,
         levelReq: Math.max(1, mobLevel - 2),
         color: RARITY_COLORS[rarity],
-        statValue: baseStat,
-        statType: ['armor', 'leggings'].includes(type) ? 'def' : 'atk',
+        fixedStat: fixedStat,
+        randomStat: randomStat,
+        enhanceLevel: 0,
         sellPrice: Math.floor(mobLevel * 10 * bonusMultiplier)
     };
 }

@@ -528,8 +528,10 @@ export class GameApp {
 
         const equippedWpnType = this.getEquippedWeaponType();
         const equippedRarity = this.player.equips?.weapon?.rarity || 'Starter';
+        const equippedArmorRarity = this.player.equips?.armor?.rarity || 'Starter';
+        const equippedLeggingsRarity = this.player.equips?.leggings?.rarity || 'Starter';
 
-        // Build 3D Player Character Model
+        // Build 3D Player Character Model (Appearance changes by equipment rarity!)
         this.player.char3D = new Character3D({
             name: this.player.name,
             gender: this.player.gender,
@@ -538,16 +540,26 @@ export class GameApp {
             skinColor: this.player.skinColor,
             className: this.player.baseStats.playerClass || 'No Class',
             weaponType: equippedWpnType,
-            weaponRarity: equippedRarity
+            weaponRarity: equippedRarity,
+            armorRarity: equippedArmorRarity,
+            leggingsRarity: equippedLeggingsRarity
         });
 
         this.engine.scene.add(this.player.char3D.group);
         this.saveCharacterToAccountSlot();
 
-        // Load Town of Exonie
-        this.loadMap('town');
-        this.audio.playBgm('town');
-        this.ui.updatePlayerHUD(this.player);
+        // Load Town of Exonie with authentic 2D Loading Screen
+        if (window.showLoadingTransition) {
+            window.showLoadingTransition('ENTERING EXONIE...', 'Town of Exonie (Safe Haven)', 1600, () => {
+                this.loadMap('town');
+                this.audio.playBgm('town');
+                this.ui.updatePlayerHUD(this.player);
+            });
+        } else {
+            this.loadMap('town');
+            this.audio.playBgm('town');
+            this.ui.updatePlayerHUD(this.player);
+        }
 
         this.ui.showToast(`Welcome to Exonie, ${this.player.name}! Press [P] for Stats or [B] for Bag.`);
     }
@@ -801,6 +813,10 @@ export class GameApp {
                     if (eq.fixedStat.magic) totalMag += eq.fixedStat.magic;
                 }
                 if (eq.randomStat) {
+                    if (eq.randomStat.hp) totalHp += eq.randomStat.hp;
+                    if (eq.randomStat.defense) totalDef += eq.randomStat.defense;
+                    if (eq.randomStat.attack) totalAtk += eq.randomStat.attack;
+                    if (eq.randomStat.magic) totalMag += eq.randomStat.magic;
                     if (eq.randomStat.str) bonusStr += eq.randomStat.str;
                     if (eq.randomStat.int) bonusInt += eq.randomStat.int;
                 }
@@ -860,11 +876,18 @@ export class GameApp {
         this.player.equips[slot] = item;
         this.player.inventory[slotIndex] = oldEquip;
 
-        if (slot === 'weapon') {
+        // Update 3D Character Model Equipment Visuals based on Rarity (2D Exonie style)
+        if (this.player.char3D) {
             const wpnType = this.getEquippedWeaponType();
-            if (this.player.char3D) {
-                this.player.char3D.setWeapon(wpnType, item.rarity || 'Starter');
-            }
+            const wpnRarity = this.player.equips?.weapon?.rarity || 'Starter';
+            const armRarity = this.player.equips?.armor?.rarity || 'Starter';
+            const legRarity = this.player.equips?.leggings?.rarity || 'Starter';
+            this.player.char3D.setEquipVisuals({
+                weaponType: wpnType,
+                weaponRarity: wpnRarity,
+                armorRarity: armRarity,
+                leggingsRarity: legRarity
+            });
         }
 
         this.recalculateStats();
@@ -1230,6 +1253,22 @@ export class GameApp {
         }
         this.monsters = [];
         this.floorBoss = null;
+
+        // Clear map-specific minions and fire zones
+        if (this.combat) {
+            if (this.combat.alliedMinions) {
+                for (const sm of this.combat.alliedMinions) {
+                    this.engine.scene.remove(sm.group);
+                }
+                this.combat.alliedMinions = [];
+            }
+            if (this.combat.fireZones) {
+                for (const f of this.combat.fireZones) {
+                    this.engine.scene.remove(f.mesh);
+                }
+                this.combat.fireZones = [];
+            }
+        }
         this.currentMapId = mapId;
 
         // Build the 3D map from 2D Exonie dataset
@@ -1923,7 +1962,9 @@ export class GameApp {
 
         // 5. Update Systems
         this.world.update(delta, this.player.pos);
-        this.combat.update(delta);
+        this.combat.update(delta, this.player, this.monsters, (deadMob) => {
+            this.onMonsterDefeated(deadMob);
+        });
         this.engine.updateParticles(delta);
         this.engine.updateCamera(this.player.pos, delta);
 

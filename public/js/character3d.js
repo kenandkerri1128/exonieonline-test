@@ -5,31 +5,67 @@
 // ============================================================================
 import * as THREE from 'three';
 
-const RARITY_COLORS = {
+export const RARITY_COLORS = {
     Starter:   0x9e9e9e,
     Basic:     0xffffff,
-    Rare:      0x4caf50,
-    Unique:    0x2196f3,
-    Legendary: 0x9c27b0,
-    Godly:     0xffeb3b,
-    Divine:    0xe91e63
+    Rare:      0x2196f3,
+    Unique:    0xab47bc,
+    Legendary: 0xff5722,
+    Godly:     0x00e5ff,
+    Divine:    0xffea00
 };
 
-const CLASS_ARMOR_THEMES = {
-    'None':              { primary: 0x263238, trim: 0x90a4ae, glow: 0x00e5ff },
-    'No Class':          { primary: 0x263238, trim: 0x90a4ae, glow: 0x00e5ff },
-    'Berserker':         { primary: 0x3e1010, trim: 0xff5252, glow: 0xff1744 },
-    'Blademaster':       { primary: 0x1a2639, trim: 0x4fc3f7, glow: 0x00e5ff },
-    'Ninja Assassin':    { primary: 0x161224, trim: 0xb388ff, glow: 0xd500f9 },
-    'Phantom Striker':   { primary: 0x122229, trim: 0x80deea, glow: 0x00bcd4 },
-    'Sniper':            { primary: 0x2e2418, trim: 0xffca28, glow: 0xffab00 },
-    'Explosives Expert': { primary: 0x381510, trim: 0xff8a65, glow: 0xff5722 },
-    'Cyber Buster':      { primary: 0x102830, trim: 0x18ffff, glow: 0x00e5ff },
-    'Summoner':          { primary: 0x1a1438, trim: 0x7c4dff, glow: 0x651fff },
-    'Elementalist':      { primary: 0x381510, trim: 0xff8a65, glow: 0xff5722 },
-    'Ice Master':        { primary: 0x102a3b, trim: 0x81d4fa, glow: 0x29b6f6 },
-    'Healer':            { primary: 0x1b3320, trim: 0xa5d6a7, glow: 0x00e676 },
-    'Tech Genius':       { primary: 0x1a1d2e, trim: 0x00e5ff, glow: 0x18ffff }
+// 🛡️ Authentic 2D Equipment Visual Themes based ONLY on Rarity (Not Classes!)
+export const EQUIPMENT_RARITY_THEMES = {
+    Starter: {
+        primary: 0x374151,  // Rough iron grey
+        trim: 0x6b7280,     // Dull steel
+        glow: 0x9ca3af,
+        emissiveIntensity: 0.05,
+        hasGlow: false
+    },
+    Basic: {
+        primary: 0x453229,  // Hardened leather & bronze
+        trim: 0x9a8370,     // Polished bronze
+        glow: 0xd6c7b2,
+        emissiveIntensity: 0.15,
+        hasGlow: false
+    },
+    Rare: {
+        primary: 0x0f2a4a,  // Cobalt Blue
+        trim: 0x2196f3,     // Brilliant Sapphire
+        glow: 0x60a5fa,
+        emissiveIntensity: 0.50,
+        hasGlow: false
+    },
+    Unique: {
+        primary: 0x2e1047,  // Royal Amethyst
+        trim: 0xab47bc,     // Arcane Violet
+        glow: 0xc084fc,
+        emissiveIntensity: 0.85,
+        hasGlow: false
+    },
+    Legendary: {
+        primary: 0x4a1212,  // Volcanic Crimson
+        trim: 0xff3d00,     // Blazing Amber
+        glow: 0xf44336,     // Fire Glow
+        emissiveIntensity: 3.5,
+        hasGlow: true       // 🔥 GLOWS ACTIVE
+    },
+    Godly: {
+        primary: 0x0a2838,  // Celestial Ice
+        trim: 0x00e5ff,     // Radiant Cyan
+        glow: 0xe0ffff,     // Brilliant Diamond Radiance
+        emissiveIntensity: 4.8,
+        hasGlow: true       // ⚡ GLOWS ACTIVE
+    },
+    Divine: {
+        primary: 0x3d3000,  // Sunforged Gold
+        trim: 0xffd700,     // Pure Radiant Gold
+        glow: 0xffea00,     // Blinding Divine Aura
+        emissiveIntensity: 6.0,
+        hasGlow: true       // ✨ GLOWS ACTIVE
+    }
 };
 
 // ── Circuit Siege Shared Geometry Helpers ──
@@ -118,6 +154,8 @@ export class Character3D {
         this.jobClass = options.jobClass || options.className || 'None';
         this.weaponType = options.weaponType || (options.weapon ? options.weapon.weaponType : null);
         this.weaponRarity = options.weaponRarity || (options.weapon ? options.weapon.rarity : 'Starter');
+        this.armorRarity = options.armorRarity || (options.armor ? options.armor.rarity : 'Starter');
+        this.leggingsRarity = options.leggingsRarity || (options.leggings ? options.leggings.rarity : 'Starter');
 
         this.group = new THREE.Group();
         this.parts = {};
@@ -149,6 +187,18 @@ export class Character3D {
         return this.state === 'dodge';
     }
 
+    // 🛡️ Dynamic Equipment Visual Updates strictly following Rarity (2D Exonie style)
+    setEquipVisuals(opts = {}) {
+        if (opts.weaponType !== undefined) this.weaponType = opts.weaponType;
+        if (opts.weaponRarity !== undefined) this.weaponRarity = opts.weaponRarity;
+        if (opts.armorRarity !== undefined) this.armorRarity = opts.armorRarity;
+        if (opts.leggingsRarity !== undefined) this.leggingsRarity = opts.leggingsRarity;
+        this.buildMesh();
+        if (this.weaponType) {
+            this.setWeapon(this.weaponType, this.weaponRarity);
+        }
+    }
+
     setCustomization(opts = {}) {
         if (opts.gender !== undefined) this.gender = opts.gender;
         if (opts.hairStyle !== undefined) this.hairStyle = String(opts.hairStyle);
@@ -156,6 +206,9 @@ export class Character3D {
         if (opts.skinColor !== undefined) this.skinColor = opts.skinColor;
         if (opts.className !== undefined) this.jobClass = opts.className;
         if (opts.jobClass !== undefined) this.jobClass = opts.jobClass;
+        if (opts.weaponRarity !== undefined) this.weaponRarity = opts.weaponRarity;
+        if (opts.armorRarity !== undefined) this.armorRarity = opts.armorRarity;
+        if (opts.leggingsRarity !== undefined) this.leggingsRarity = opts.leggingsRarity;
         this.buildMesh();
         if (opts.weaponType !== undefined) {
             this.setWeapon(opts.weaponType, opts.weaponRarity || this.weaponRarity);
@@ -182,7 +235,9 @@ export class Character3D {
         this.droneGroup = null;
 
         const isFemale = this.gender === 'female';
-        const theme = CLASS_ARMOR_THEMES[this.jobClass] || CLASS_ARMOR_THEMES['None'];
+        // 🛡️ Strict 2D Exonie Visual Rule: Appearance changes ONLY based on rarity of equipment!
+        const armorTheme = EQUIPMENT_RARITY_THEMES[this.armorRarity] || EQUIPMENT_RARITY_THEMES['Starter'];
+        const leggingsTheme = EQUIPMENT_RARITY_THEMES[this.leggingsRarity] || EQUIPMENT_RARITY_THEMES['Starter'];
 
         const skinMat = new THREE.MeshStandardMaterial({
             color: new THREE.Color(this.skinColor),
@@ -195,12 +250,12 @@ export class Character3D {
             metalness: 0.22
         });
         const armorMat = new THREE.MeshStandardMaterial({
-            color: theme.primary,
+            color: armorTheme.primary,
             roughness: 0.28,
             metalness: 0.78
         });
         const trimMat = new THREE.MeshStandardMaterial({
-            color: theme.trim,
+            color: armorTheme.trim,
             roughness: 0.22,
             metalness: 0.88
         });
@@ -210,22 +265,41 @@ export class Character3D {
             metalness: 0.72
         });
         const glowMat = new THREE.MeshStandardMaterial({
-            color: theme.glow,
-            emissive: theme.glow,
-            emissiveIntensity: 2.2,
+            color: armorTheme.glow,
+            emissive: armorTheme.glow,
+            emissiveIntensity: armorTheme.hasGlow ? armorTheme.emissiveIntensity : 0.2,
             roughness: 0.15,
             metalness: 0.1
         });
         const outlineMat = new THREE.MeshBasicMaterial({
-            color: theme.trim,
+            color: armorTheme.trim,
             side: THREE.BackSide,
             transparent: true,
-            opacity: 0.35
+            opacity: armorTheme.hasGlow ? 0.65 : 0.35
         });
 
-        this.materials = { skinMat, hairMat, armorMat, trimMat, jointMat, glowMat, outlineMat };
+        // Leggings Materials (Separate Rarity Visuals for Legs)
+        const leggingsMat = new THREE.MeshStandardMaterial({
+            color: leggingsTheme.primary,
+            roughness: 0.28,
+            metalness: 0.78
+        });
+        const leggingsTrimMat = new THREE.MeshStandardMaterial({
+            color: leggingsTheme.trim,
+            roughness: 0.22,
+            metalness: 0.88
+        });
+        const leggingsGlowMat = new THREE.MeshStandardMaterial({
+            color: leggingsTheme.glow,
+            emissive: leggingsTheme.glow,
+            emissiveIntensity: leggingsTheme.hasGlow ? leggingsTheme.emissiveIntensity : 0.2,
+            roughness: 0.15,
+            metalness: 0.1
+        });
 
-        // Contact Blob Shadow & Class Aura Ring
+        this.materials = { skinMat, hairMat, armorMat, trimMat, jointMat, glowMat, outlineMat, leggingsMat, leggingsTrimMat, leggingsGlowMat };
+
+        // Contact Blob Shadow & Aura Ring
         const shadowPlane = new THREE.Mesh(
             new THREE.PlaneGeometry(1.75, 1.75),
             new THREE.MeshBasicMaterial({
@@ -241,7 +315,7 @@ export class Character3D {
         const hasClass = this.jobClass && this.jobClass !== 'None' && this.jobClass !== 'No Class';
         const auraRingGeo = new THREE.RingGeometry(0.68, 0.82, 32);
         const auraRingMat = new THREE.MeshBasicMaterial({
-            color: theme.glow,
+            color: armorTheme.glow,
             side: THREE.DoubleSide,
             transparent: true,
             opacity: hasClass ? 0.58 : 0.22
@@ -411,12 +485,24 @@ export class Character3D {
         this.offhandWeaponGroup.position.set(0, -0.08, 0.04);
         this.parts.lHand.add(this.offhandWeaponGroup);
 
-        // Two-Segment Articulated Legs
+        // Two-Segment Articulated Legs (Uses separate Leggings Rarity Materials)
         const hipX = 0.155;
-        this.buildLeg('l', -hipX, hips, armorMat, trimMat, jointMat, glowMat, skinMat);
-        this.buildLeg('r',  hipX, hips, armorMat, trimMat, jointMat, glowMat, skinMat);
+        this.buildLeg('l', -hipX, hips, leggingsMat, leggingsTrimMat, jointMat, leggingsGlowMat, skinMat);
+        this.buildLeg('r',  hipX, hips, leggingsMat, leggingsTrimMat, jointMat, leggingsGlowMat, skinMat);
 
-        this.auraLight = new THREE.PointLight(theme.glow, hasClass ? 1.1 : 0.35, 4.5);
+        // Dynamic Armor & Leggings Glow Lights (Legendary, Godly, Divine)
+        if (armorTheme.hasGlow) {
+            const chestGlowLight = new THREE.PointLight(armorTheme.glow, 2.2, 3.8);
+            chestGlowLight.position.set(0, torsoH * 0.62, 0.28);
+            torso.add(chestGlowLight);
+        }
+        if (leggingsTheme.hasGlow) {
+            const legGlowLight = new THREE.PointLight(leggingsTheme.glow, 1.8, 3.2);
+            legGlowLight.position.set(0, -0.25, 0.12);
+            hips.add(legGlowLight);
+        }
+
+        this.auraLight = new THREE.PointLight(armorTheme.glow, hasClass ? 1.1 : 0.35, 4.5);
         this.auraLight.position.set(0, 1.3, 0.3);
         this.group.add(this.auraLight);
 
@@ -839,26 +925,34 @@ export class Character3D {
             return;
         }
 
-        const rarityColor = RARITY_COLORS[this.weaponRarity] || 0x00e5ff;
+        const theme = EQUIPMENT_RARITY_THEMES[this.weaponRarity] || EQUIPMENT_RARITY_THEMES['Starter'];
+        const rarityColor = theme.glow;
 
         const metalMat = new THREE.MeshStandardMaterial({
-            color: 0xe0e6ed,
+            color: this.weaponRarity === 'Divine' ? 0xffea00 : (this.weaponRarity === 'Godly' ? 0xe0ffff : (this.weaponRarity === 'Legendary' ? 0xffccbc : 0xe0e6ed)),
             metalness: 0.92,
             roughness: 0.16
         });
         const darkMat = new THREE.MeshStandardMaterial({
-            color: 0x1c222d,
+            color: theme.primary,
             metalness: 0.78,
             roughness: 0.32
         });
         const glowMat = new THREE.MeshStandardMaterial({
-            color: rarityColor,
-            emissive: rarityColor,
-            emissiveIntensity: 2.4,
+            color: theme.glow,
+            emissive: theme.glow,
+            emissiveIntensity: theme.hasGlow ? theme.emissiveIntensity : 0.25,
             roughness: 0.15
         });
 
         const mesh = new THREE.Group();
+
+        // 🌟 Legendary & Up Weapons have glowing aura lights & pulses!
+        if (theme.hasGlow) {
+            const wpnLight = new THREE.PointLight(theme.glow, 2.4, 4.0);
+            wpnLight.position.set(0, 0.65, 0.05);
+            mesh.add(wpnLight);
+        }
 
         if (wType === 'sword') {
             const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.032, 0.038, 0.34, 10), darkMat);

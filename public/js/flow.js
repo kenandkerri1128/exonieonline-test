@@ -69,11 +69,11 @@ window.ExonieFlow = {
     // ============================================================
     // GLOBAL LOADING / MAP TRANSITION SCREEN (2D PICTURE LOADINGSCREEN.PNG)
     // ============================================================
-    showLoadingTransition(title = 'Loading Realm...', subtitle = 'Preparing 3D World...', durationMs = 1350, onMidpoint = null) {
-        const screen = document.getElementById('map-transition-screen');
-        const titleEl = document.getElementById('transition-title');
-        const subEl = document.getElementById('transition-subtitle');
-        const fillEl = document.getElementById('transition-bar-fill');
+    showLoadingTransition(title = 'ENTERING EXONIE...', subtitle = 'Preparing 3D Realm...', durationMs = 1350, onMidpoint = null) {
+        const screen = document.getElementById('loading-screen') || document.getElementById('map-transition-screen');
+        const titleEl = document.getElementById('loading-screen-title') || document.getElementById('transition-title');
+        const subEl = document.getElementById('loading-screen-subtitle') || document.getElementById('transition-subtitle');
+        const fillEl = document.getElementById('loading-bar-fill') || document.getElementById('transition-bar-fill');
 
         if (!screen) {
             if (onMidpoint) onMidpoint();
@@ -89,9 +89,8 @@ window.ExonieFlow = {
         }
 
         screen.style.display = 'flex';
-        // Force synchronous reflow so the picture loading screen and progress bar animate smoothly
-        void screen.offsetWidth;
         screen.classList.add('active');
+        void screen.offsetWidth;
         if (fillEl) {
             fillEl.style.transition = `width ${Math.floor(effectiveDuration * 0.82)}ms cubic-bezier(0.22, 1, 0.36, 1)`;
             fillEl.style.width = '100%';

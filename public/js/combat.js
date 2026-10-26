@@ -27,6 +27,15 @@ export class CombatSystem {
             skill3: 0,
             dodge: 0
         };
+
+        // 🐾 Allied Minions & Companions (Summon Slime, etc.)
+        this.alliedMinions = [];
+
+        // 🔥 Persistent Area-of-Effect Zones (Molotov Cocktail, Ice Storm)
+        this.fireZones = [];
+
+        // 🚀 Projectiles in Flight
+        this.projectiles = [];
     }
 
     // Find nearest alive monster in any 360-degree direction for instant Left-Click Auto-Aim
@@ -548,14 +557,28 @@ export class CombatSystem {
             }
         } else if (pClass === 'Summoner') {
             if (skillSlot === 1) {
-                // Summon Slime (Lv.1, Duplicate at Lv.25, Big Boss at Lv.75)
-                player.summonedSlimes = player.level >= 25 ? 2 : 1;
-                player.hasBigBossSlime = player.level >= 75;
-                const label = player.hasBigBossSlime ? '+2 Slimes & BIG BOSS SLIME!' : `+${player.summonedSlimes} Summoned Slime!`;
-                this.engine.spawnGroundShockwave(player.pos, 0x00e5ff, 5.5);
-                this.spawnFloatingDamage(player.pos, label, false, true);
+                // Summon Slime (Lv.1, Duplicate at Lv.25, Big Boss at Lv.75) — Actively summons 3D Slimes that fight!
+                const numSlimes = player.level >= 25 ? 2 : 1;
+                const hasBigBoss = player.level >= 75;
+
+                // Clean up previous slimes if any
+                for (const sm of this.alliedMinions) {
+                    this.engine.scene.remove(sm.group);
+                }
+                this.alliedMinions = [];
+
+                for (let s = 0; s < numSlimes; s++) {
+                    this.spawnSlimeCompanion(player, false, intVal);
+                }
+                if (hasBigBoss) {
+                    this.spawnSlimeCompanion(player, true, intVal);
+                }
+
+                const label = hasBigBoss ? '👑 SUMMONED 2 SLIMES + BIG BOSS SLIME!' : `✨ SUMMONED ${numSlimes} ALLIED SLIME(S)!`;
+                this.engine.spawnGroundShockwave(player.pos, 0x00e5ff, 6.0);
+                this.spawnFloatingDamage(player.pos, label, true, true);
                 if (this.audio) this.audio.playSfx('splash');
-                this.damageMonstersInRadius(player, player.pos, 7.0, intVal * (player.hasBigBossSlime ? 4.0 : 2.2), monsters, onMonsterKilled);
+                this.damageMonstersInRadius(player, player.pos, 6.0, intVal * 1.5, monsters, onMonsterKilled);
             } else {
                 // Enhance! (Lv.50, 100s CD): 4x AoE Earthquake
                 this.engine.addScreenshake(1.0);
@@ -566,16 +589,20 @@ export class CombatSystem {
         } else if (pClass === 'Ice Master') {
             const isSplash = player.level >= 75; // Ice Splash Lv.75 makes skills AoE
             if (skillSlot === 1) {
-                // Icicle Spear (Lv.1, 25s CD): 2x MATK + Freeze
+                // Icicle Spear (Lv.1, 25s CD): 2x MATK + Freeze + Giant Ice Burst
                 if (this.audio) this.audio.playSfx('lightning');
                 const impactPos = player.pos.clone().add(playerForward.clone().multiplyScalar(4.5));
                 this.engine.spawnGroundShockwave(impactPos, 0x00e5ff, isSplash ? 7.5 : 4.5);
+                this.engine.spawnHitSparks(impactPos, 0x80d8ff, 30);
+                this.spawnFloatingDamage(impactPos, '❄️ ICICLE SPEAR!', true);
                 this.damageMonstersInRadius(player, impactPos, isSplash ? 7.5 : 4.5, intVal * 2.5, monsters, onMonsterKilled, true);
             } else {
                 // Icicle Storm (Lv.50, 100s CD): 3 Icicles AoE + Freeze
                 this.engine.addScreenshake(0.95);
                 this.engine.spawnGroundShockwave(player.pos, 0x00e5ff, 9.0);
+                this.engine.spawnHitSparks(player.pos, 0x80d8ff, 45);
                 if (this.audio) this.audio.playSfx('splash');
+                this.spawnFloatingDamage(player.pos, '❄️ ICICLE STORM (FROZEN)!', true);
                 this.damageMonstersInRadius(player, player.pos, 9.0, intVal * 5.0, monsters, onMonsterKilled, true);
             }
         } else if (pClass === 'Sniper') {
@@ -583,32 +610,34 @@ export class CombatSystem {
                 // Silver Bullet (Lv.25, 5s CD): 2x ATK
                 if (this.audio) this.audio.playSfx('gunshot');
                 this.engine.spawnSlashArc(player.pos, player.rotY, 0xffffff, 4.0);
+                this.spawnFloatingDamage(player.pos, '⚡ SILVER BULLET!', true);
                 this.damageMonstersInCone(player, player.pos, playerForward, 20.0, atkVal * 2.2, monsters, onMonsterKilled);
             } else {
                 // Killshot (Lv.50, 50s CD): 4x ATK
                 this.engine.addScreenshake(0.85);
                 if (this.audio) this.audio.playSfx('gunshot');
+                this.spawnFloatingDamage(player.pos, '🎯 KILLSHOT!', true);
                 this.damageMonstersInCone(player, player.pos, playerForward, 24.0, atkVal * 4.5, monsters, onMonsterKilled);
             }
         } else if (pClass === 'Explosives Expert') {
             if (skillSlot === 1) {
-                // Molotov (Lv.1, 12s CD; Improved Oil Lv.25 increases duration)
+                // Molotov (Lv.1, 12s CD; Improved Oil Lv.25 increases duration) — Persistent Burning Fire Zone!
                 if (this.audio) this.audio.playSfx('bump');
-                const firePos = player.pos.clone().add(playerForward.clone().multiplyScalar(4.5));
-                this.engine.spawnGroundShockwave(firePos, 0xff5722, 5.5);
-                const ticks = player.level >= 25 ? 5 : 3;
-                for (let t = 0; t < ticks; t++) {
-                    setTimeout(() => {
-                        this.engine.spawnHitSparks(firePos, 0xff5722, 14);
-                        this.damageMonstersInRadius(player, firePos, 5.5, atkVal * 1.1, monsters, onMonsterKilled);
-                    }, t * 700);
-                }
+                const firePos = player.pos.clone().add(playerForward.clone().multiplyScalar(5.0));
+                const dur = player.level >= 25 ? 6.5 : 4.5;
+                this.spawnMolotovFireZone(firePos, atkVal, dur);
+                this.spawnFloatingDamage(firePos, '🔥 MOLOTOV COCKTAIL (BURNING)!', true, true);
             } else {
                 // Go Boom! (Lv.50, 30s CD; Big Explosion Lv.75 increases AoE)
                 const radius = player.level >= 75 ? 11.0 : 8.0;
                 this.engine.addScreenshake(1.1);
                 const bombPos = player.pos.clone().add(playerForward.clone().multiplyScalar(5));
                 this.engine.spawnGroundShockwave(bombPos, 0xff1744, radius);
+                this.engine.spawnHitSparks(bombPos, 0xff3d00, 40);
+                if (this.audio) this.audio.playSfx('gunshot');
+                this.spawnFloatingDamage(bombPos, '💣 GO BOOM!', true);
+                this.damageMonstersInRadius(player, bombPos, radius, atkVal * 5.0, monsters, onMonsterKilled);
+            }
                 if (this.audio) this.audio.playSfx('gunshot');
                 this.damageMonstersInRadius(player, bombPos, radius, atkVal * 5.0, monsters, onMonsterKilled);
             }
@@ -746,7 +775,217 @@ export class CombatSystem {
         }
     }
 
-    update(delta) {
+    // 🐾 SUMMON SLIME: Active 3D Slime Minion Factory
+    spawnSlimeCompanion(player, isBoss = false, intVal = 10) {
+        const group = new THREE.Group();
+        const scale = isBoss ? 1.6 : 0.85;
+        const color = isBoss ? 0xffd700 : 0x00e5ff;
+        const emissive = isBoss ? 0xff9800 : 0x00b0ff;
+
+        // Slime body
+        const geo = new THREE.SphereGeometry(0.5 * scale, 16, 14);
+        geo.scale(1.0, 0.78, 1.0);
+        const mat = new THREE.MeshStandardMaterial({
+            color: color,
+            emissive: emissive,
+            emissiveIntensity: 0.9,
+            roughness: 0.18,
+            metalness: 0.2,
+            transparent: true,
+            opacity: 0.92
+        });
+        const body = new THREE.Mesh(geo, mat);
+        body.position.y = 0.38 * scale;
+        body.castShadow = true;
+        group.add(body);
+
+        // Eyes
+        const eyeGeo = new THREE.SphereGeometry(0.06 * scale, 8, 8);
+        const eyeMat = new THREE.MeshBasicMaterial({ color: 0x111111 });
+        const leftEye = new THREE.Mesh(eyeGeo, eyeMat);
+        leftEye.position.set(-0.14 * scale, 0.44 * scale, 0.38 * scale);
+        const rightEye = new THREE.Mesh(eyeGeo, eyeMat);
+        rightEye.position.set(0.14 * scale, 0.44 * scale, 0.38 * scale);
+        group.add(leftEye, rightEye);
+
+        // Crown on Boss Slime
+        if (isBoss) {
+            const crownGeo = new THREE.ConeGeometry(0.18, 0.28, 5);
+            const crownMat = new THREE.MeshStandardMaterial({ color: 0xffd700, metalness: 0.9, roughness: 0.1 });
+            const crown = new THREE.Mesh(crownGeo, crownMat);
+            crown.position.set(0, 0.85 * scale, 0);
+            group.add(crown);
+        }
+
+        const angle = Math.random() * Math.PI * 2;
+        group.position.set(
+            player.pos.x + Math.sin(angle) * (1.8 + Math.random()),
+            0,
+            player.pos.z + Math.cos(angle) * (1.8 + Math.random())
+        );
+
+        this.engine.scene.add(group);
+        this.engine.spawnHitSparks(group.position, color, 14);
+
+        const minion = {
+            group: group,
+            isBoss: isBoss,
+            intVal: intVal,
+            lifeTimer: 35.0,
+            attackCooldown: 0.8,
+            hopTime: Math.random() * 5
+        };
+
+        this.alliedMinions.push(minion);
+        return minion;
+    }
+
+    updateAlliedMinions(delta, player, monsters, onMonsterKilled) {
+        if (!this.alliedMinions || this.alliedMinions.length === 0) return;
+
+        for (let i = this.alliedMinions.length - 1; i >= 0; i--) {
+            const m = this.alliedMinions[i];
+            m.lifeTimer -= delta;
+            m.hopTime += delta * 6;
+            m.attackCooldown = Math.max(0, m.attackCooldown - delta);
+
+            if (m.lifeTimer <= 0) {
+                this.engine.spawnHitSparks(m.group.position, 0x00e5ff, 12);
+                this.engine.scene.remove(m.group);
+                this.alliedMinions.splice(i, 1);
+                continue;
+            }
+
+            let target = null;
+            let minDist = 14.0;
+            if (monsters && monsters.length > 0) {
+                for (const mob of monsters) {
+                    if (!mob.isAlive) continue;
+                    const d = m.group.position.distanceTo(mob.group.position);
+                    if (d < minDist) {
+                        minDist = d;
+                        target = mob;
+                    }
+                }
+            }
+
+            const hopY = Math.abs(Math.sin(m.hopTime)) * 0.42;
+
+            if (target) {
+                const dir = target.group.position.clone().sub(m.group.position);
+                dir.y = 0;
+                const dist = dir.length();
+                if (dist > 1.8) {
+                    dir.normalize();
+                    m.group.position.add(dir.multiplyScalar(4.5 * delta));
+                    m.group.rotation.y = Math.atan2(dir.x, dir.z);
+                }
+                m.group.position.y = hopY;
+
+                if (dist <= 2.4 && m.attackCooldown <= 0) {
+                    m.attackCooldown = 1.1;
+                    const mult = m.isBoss ? 3.0 : 1.5;
+                    const dmg = Math.max(5, Math.floor(m.intVal * mult));
+                    target.takeDamage(dmg);
+                    this.engine.spawnHitSparks(target.group.position, m.isBoss ? 0xffd700 : 0x00e5ff, 14);
+                    this.spawnFloatingDamage(target.group.position, `💥 SLIME: ${dmg}`, m.isBoss);
+                    this.registerComboHit(1);
+                    if (!target.isAlive && onMonsterKilled) {
+                        onMonsterKilled(target);
+                    }
+                }
+            } else if (player && player.pos) {
+                const pDist = m.group.position.distanceTo(player.pos);
+                if (pDist > 3.0) {
+                    const pDir = player.pos.clone().sub(m.group.position);
+                    pDir.y = 0;
+                    pDir.normalize();
+                    m.group.position.add(pDir.multiplyScalar(5.5 * delta));
+                    m.group.rotation.y = Math.atan2(pDir.x, pDir.z);
+                }
+                m.group.position.y = hopY;
+            }
+        }
+    }
+
+    // 🔥 MOLOTOV: Persistent AoE Burning Fire Zone
+    spawnMolotovFireZone(firePos, atkVal, durationSec = 5.0) {
+        const ringGeo = new THREE.RingGeometry(0.3, 5.0, 24);
+        ringGeo.rotateX(-Math.PI / 2);
+        const ringMat = new THREE.MeshBasicMaterial({
+            color: 0xff5722,
+            side: THREE.DoubleSide,
+            transparent: true,
+            opacity: 0.65
+        });
+        const firePatch = new THREE.Mesh(ringGeo, ringMat);
+        firePatch.position.copy(firePos);
+        firePatch.position.y = 0.05;
+
+        const fireLight = new THREE.PointLight(0xff5722, 3.5, 7.5);
+        fireLight.position.copy(firePos);
+        fireLight.position.y = 1.0;
+        firePatch.add(fireLight);
+
+        this.engine.scene.add(firePatch);
+        this.engine.spawnGroundShockwave(firePos, 0xff3d00, 5.5);
+        this.engine.spawnHitSparks(firePos, 0xff5722, 25);
+
+        this.fireZones.push({
+            mesh: firePatch,
+            light: fireLight,
+            pos: firePos.clone(),
+            radius: 5.5,
+            atkVal: atkVal,
+            lifeTimer: durationSec,
+            tickTimer: 0.4
+        });
+    }
+
+    updateFireZones(delta, player, monsters, onMonsterKilled) {
+        if (!this.fireZones || this.fireZones.length === 0) return;
+
+        for (let i = this.fireZones.length - 1; i >= 0; i--) {
+            const f = this.fireZones[i];
+            f.lifeTimer -= delta;
+            f.tickTimer -= delta;
+
+            f.light.intensity = 2.5 + Math.random() * 2.0;
+            f.mesh.rotation.y += delta * 0.5;
+
+            if (Math.random() < 0.45) {
+                const ox = (Math.random() - 0.5) * f.radius * 1.2;
+                const oz = (Math.random() - 0.5) * f.radius * 1.2;
+                this.engine.spawnHitSparks(f.pos.clone().add(new THREE.Vector3(ox, 0.4, oz)), 0xff5722, 4);
+            }
+
+            if (f.tickTimer <= 0) {
+                f.tickTimer = 0.65;
+                if (monsters) {
+                    for (const m of monsters) {
+                        if (!m.isAlive) continue;
+                        if (f.pos.distanceTo(m.group.position) <= f.radius) {
+                            const burnDmg = Math.max(2, Math.floor(f.atkVal * 0.95));
+                            m.takeDamage(burnDmg);
+                            this.engine.spawnHitSparks(m.group.position, 0xff5722, 6);
+                            this.spawnFloatingDamage(m.group.position, `🔥 ${burnDmg}`, true);
+                            this.registerComboHit(1);
+                            if (!m.isAlive && onMonsterKilled) {
+                                onMonsterKilled(m);
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (f.lifeTimer <= 0) {
+                this.engine.scene.remove(f.mesh);
+                this.fireZones.splice(i, 1);
+            }
+        }
+    }
+
+    update(delta, player = null, monsters = [], onMonsterKilled = null) {
         for (const k in this.cooldowns) {
             if (this.cooldowns[k] > 0) {
                 this.cooldowns[k] = Math.max(0, this.cooldowns[k] - delta);
@@ -760,6 +999,12 @@ export class CombatSystem {
                 if (this.comboContainer) this.comboContainer.style.display = 'none';
             }
         }
+
+        // Update Active 3D Allied Minions
+        this.updateAlliedMinions(delta, player, monsters, onMonsterKilled);
+
+        // Update Persistent Fire Zones
+        this.updateFireZones(delta, player, monsters, onMonsterKilled);
 
         this.updateTargetReticle();
     }
