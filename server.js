@@ -363,7 +363,8 @@ function convert2DRowToSlot(row, slotIndex = 0) {
         inventory: inventory,
         base_stats: baseStats,
         baseStats: baseStats,
-        playerClass: baseStats.playerClass || null
+        playerClass: baseStats.playerClass || null,
+        title: row.title || baseStats.title || null
     };
 }
 
@@ -417,6 +418,8 @@ function parseAccountSlots(userRow) {
             let styleStr = String(styleParts[i] || '1').trim();
             if (!['1', '2', '3', '4', '5'].includes(styleStr)) styleStr = '1';
 
+            const slotTitle = (slotStats && slotStats.title) || (userRow && userRow.title) || null;
+
             slots[i] = {
                 slotIndex: i,
                 character_name: name,
@@ -436,7 +439,8 @@ function parseAccountSlots(userRow) {
                 inventory: inventorySlots[i] || getStarterItems().starterInventory,
                 base_stats: slotStats,
                 baseStats: slotStats,
-                playerClass: (slotStats && slotStats.playerClass) || null
+                playerClass: (slotStats && slotStats.playerClass) || null,
+                title: slotTitle
             };
         }
     }
@@ -510,7 +514,8 @@ function serializeSlotsToRow(slots, existingRow = {}) {
                 gender: gnd,
                 hairStyle: ['1', '2', '3', '4', '5'].includes(styleNum) ? styleNum : '1',
                 hairColor: c.hair_color || c.hairColor || '#111111',
-                skinColor: c.skin_color || c.skinColor || '#f5c6a5'
+                skinColor: c.skin_color || c.skinColor || '#f5c6a5',
+                title: c.title || (c.base_stats && c.base_stats.title) || null
             });
             statsArr.push(slotStats);
         } else {
@@ -546,7 +551,8 @@ function serializeSlotsToRow(slots, existingRow = {}) {
         exp: Number(exps[0]) || 0,
         equips: equipsArr,
         inventory: invArr,
-        base_stats: statsArr
+        base_stats: statsArr,
+        title: (slots[0]?.title || slots[0]?.base_stats?.title || null)
     };
 }
 
@@ -1282,7 +1288,8 @@ io.on('connection', (socket) => {
                 baseStats: updatedBaseStats,
                 skin_color: charState.skinColor || slots[slotIdx].skin_color,
                 hair_color: charState.hairColor || slots[slotIdx].hair_color,
-                hair_style: safeStyle
+                hair_style: safeStyle,
+                title: charState.title || updatedBaseStats.title || slots[slotIdx].title || null
             });
 
             if (supabase) {
@@ -1299,7 +1306,8 @@ io.on('connection', (socket) => {
                             base_stats: slots[slotIdx].base_stats,
                             skin_color: slots[slotIdx].skin_color,
                             hair_color: slots[slotIdx].hair_color,
-                            hair_style: parseInt(safeStyle, 10) || 1
+                            hair_style: parseInt(safeStyle, 10) || 1,
+                            title: slots[slotIdx].title || slots[slotIdx].base_stats?.title || null
                         }).eq('character_name', rowToUpdate.character_name);
                     }
                 } else {
@@ -1420,7 +1428,8 @@ io.on('connection', (socket) => {
                 y: (data.pos && data.pos.y) || data.y || 0,
                 z: (data.pos && data.pos.z) || data.z || 0,
                 rotY: (data.pos && data.pos.rotY) || data.rotY || 0,
-                anim: 'idle'
+                anim: 'idle',
+                title: pData.title || (pData.base_stats && pData.base_stats.title) || data.title || null
             };
 
             socket.emit('gameState', { self: onlinePlayers[socket.id], players: onlinePlayers });
@@ -1592,6 +1601,57 @@ io.on('connection', (socket) => {
                 console.error('[Supabase Boss Timer Save Error]:', e.message);
             }
         }
+
+        // ==========================================
+        // 🏆 TITLE ENGINE: FLOOR CONQUEROR (Matching 2D Exonie)
+        // Awards & Upgrades <FLOOR CONQUEROR/DOMINATOR/MASTER N> for killer and party!
+        // ==========================================
+        const match = floorId.match(/floor(\d+)/i);
+        const killedFloorNum = match ? parseInt(match[1], 10) : null;
+        if (killedFloorNum && killedFloorNum >= 1) {
+            const killer = onlinePlayers[socket.id];
+            if (killer) {
+                const partyId = playerParty[socket.id];
+                const recipientSids = (partyId && parties[partyId]) ? parties[partyId].members : [socket.id];
+
+                for (const targetSid of recipientSids) {
+                    const targetPlayer = onlinePlayers[targetSid];
+                    if (!targetPlayer) continue;
+
+                    let currentHighestFloor = 0;
+                    let hasCustomTitle = false;
+                    const existingTitle = targetPlayer.title ? String(targetPlayer.title).toUpperCase() : "";
+
+                    if (existingTitle && (existingTitle.startsWith('FLOOR CONQUEROR') || existingTitle.startsWith('FLOOR DOMINATOR') || existingTitle.startsWith('FLOOR MASTER'))) {
+                        const flMatch = existingTitle.match(/(?:FLOOR CONQUEROR|FLOOR DOMINATOR|FLOOR MASTER)\s+(\d+)/);
+                        currentHighestFloor = flMatch ? parseInt(flMatch[1], 10) : 0;
+                    } else if (existingTitle && existingTitle.length > 0) {
+                        hasCustomTitle = true; // Special custom titles (e.g. GM) are preserved
+                    }
+
+                    if (!hasCustomTitle && killedFloorNum > currentHighestFloor) {
+                        const d2Best = targetPlayer.baseStats?.d2HighestDifficulty || 'Normal';
+                        const titlePrefix = d2Best === 'Extreme' ? 'FLOOR MASTER' : (d2Best === 'Hard' ? 'FLOOR DOMINATOR' : 'FLOOR CONQUEROR');
+                        const newTitle = `${titlePrefix} ${killedFloorNum}`;
+                        targetPlayer.title = newTitle;
+                        if (!targetPlayer.baseStats) targetPlayer.baseStats = {};
+                        targetPlayer.baseStats.title = newTitle;
+
+                        io.to(targetSid).emit('titleUnlocked', { title: newTitle, floorNum: killedFloorNum });
+                        io.emit('playerTitleUpdated', { id: targetSid, name: targetPlayer.name, title: newTitle });
+
+                        const tierColor = titlePrefix === 'FLOOR MASTER' ? '#ff4444' : (titlePrefix === 'FLOOR DOMINATOR' ? '#e040fb' : '#ffd700');
+                        const tierGlow = titlePrefix === 'FLOOR MASTER' ? 'rgba(255, 68, 68, 0.7)' : (titlePrefix === 'FLOOR DOMINATOR' ? 'rgba(224, 64, 251, 0.7)' : 'rgba(255, 215, 0, 0.7)');
+                        io.emit('systemMessage', `<span style="color:${tierColor}; font-weight:bold; text-shadow: 0 0 8px ${tierGlow};">🏆 [WORLD] ${targetPlayer.name} has conquered Floor ${killedFloorNum} and earned the title &lt;${newTitle}&gt;!</span>`);
+
+                        // Hard-save title to Supabase Exonians
+                        if (supabase && targetPlayer.name) {
+                            supabase.from('Exonians').update({ title: newTitle }).eq('character_name', targetPlayer.name).then(() => {}).catch(err => console.warn('[Title Supabase Save Error]:', err.message));
+                        }
+                    }
+                }
+            }
+        }
     });
 
     socket.on('neutralBossKilled', async (data) => {
@@ -1656,7 +1716,8 @@ io.on('connection', (socket) => {
                 currentHp: target.hp || target.currentHp || 100,
                 maxHp: target.maxHp || 100,
                 weapon: target.weapon || (target.equips && target.equips.weapon) || null,
-                equips: target.equips || { weapon: null, armor: null, leggings: null, necklace: null, ring: null, earrings: null }
+                equips: target.equips || { weapon: null, armor: null, leggings: null, necklace: null, ring: null, earrings: null },
+                title: target.title || target.baseStats?.title || null
             });
         }
 
@@ -1676,7 +1737,8 @@ io.on('connection', (socket) => {
                         currentHp: matchedSlot.hp || 100,
                         maxHp: (matchedSlot.base_stats && matchedSlot.base_stats.hp) || 100,
                         weapon: matchedSlot.weapon || (matchedSlot.equips && matchedSlot.equips.weapon) || null,
-                        equips: matchedSlot.equips || { weapon: null, armor: null, leggings: null, necklace: null, ring: null, earrings: null }
+                        equips: matchedSlot.equips || { weapon: null, armor: null, leggings: null, necklace: null, ring: null, earrings: null },
+                        title: matchedSlot.title || matchedSlot.base_stats?.title || null
                     });
                 }
             }

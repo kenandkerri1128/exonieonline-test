@@ -579,6 +579,31 @@ export class UIManager {
         if (this.classBadge) this.classBadge.textContent = pClass;
         if (this.goldCounter) this.goldCounter.textContent = Number(player.gold || 0).toLocaleString();
 
+        // Player Title Tag with Tier Colors & Glow
+        const titleTag = document.getElementById('player-title-tag');
+        if (titleTag) {
+            if (player.title) {
+                titleTag.style.display = 'block';
+                titleTag.textContent = `<${player.title}>`;
+                const tUpper = String(player.title).toUpperCase();
+                if (tUpper.includes('FLOOR MASTER')) {
+                    titleTag.style.color = '#ff4444';
+                    titleTag.style.textShadow = '0 0 10px rgba(255, 68, 68, 0.7)';
+                } else if (tUpper.includes('FLOOR DOMINATOR')) {
+                    titleTag.style.color = '#e040fb';
+                    titleTag.style.textShadow = '0 0 10px rgba(224, 64, 251, 0.7)';
+                } else if (tUpper.includes('FLOOR CONQUEROR')) {
+                    titleTag.style.color = '#ffd700';
+                    titleTag.style.textShadow = '0 0 10px rgba(255, 215, 0, 0.7)';
+                } else {
+                    titleTag.style.color = '#00e5ff';
+                    titleTag.style.textShadow = '0 0 10px rgba(0, 229, 255, 0.7)';
+                }
+            } else {
+                titleTag.style.display = 'none';
+            }
+        }
+
         // 🛡️ Distinct Class Logo & Themed Aura Glow in Player Profile Avatar Frame
         const classLogos = {
             'Blademaster':       { icon: '🗡️', color: '#00e5ff', glow: 'rgba(0, 229, 255, 0.45)' },
@@ -1017,7 +1042,7 @@ export class UIManager {
     getItemIcon(type, sprite = '') {
         const s = String(sprite).toLowerCase();
         if (s.includes('sword')) return '🗡️';
-        if (s.includes('staff')) return '🪄';
+        if (s.includes('staff')) return `<svg viewBox="0 0 24 24" width="22" height="22" style="display:inline-block; vertical-align:middle; filter:drop-shadow(0 0 3px #00e5ff);"><line x1="5" y1="21" x2="16" y2="7" stroke="#c084fc" stroke-width="2.2" stroke-linecap="round"/><line x1="4.5" y1="21.5" x2="6.5" y2="19.5" stroke="#facc15" stroke-width="2.5" stroke-linecap="round"/><path d="M13 10 C14 6, 18 4, 21 6 C19 9, 17 11, 13 10 Z" fill="#a855f7" stroke="#e9d5ff" stroke-width="1"/><circle cx="17.5" cy="5.5" r="2.5" fill="#00e5ff" stroke="#ffffff" stroke-width="1"/><circle cx="21" cy="3" r="0.8" fill="#ffd700"/><circle cx="14" cy="2" r="0.8" fill="#ffd700"/></svg>`;
         if (s.includes('pendant')) return '📿';
         if (s.includes('gun')) return '🔫';
         if (s.includes('dagger')) return '🗡️';
@@ -1225,7 +1250,8 @@ export class UIManager {
             const pClass = data.playerClass || 'Novice';
             const lvl = data.level || 1;
             const hpStr = (data.currentHp !== undefined && data.maxHp !== undefined) ? `HP ${data.currentHp} / ${data.maxHp}` : `Level ${lvl}`;
-            vitalsEl.innerHTML = `<strong>Level ${lvl}</strong> &nbsp;|&nbsp; <strong style="color:#38bdf8;">${pClass}</strong> &nbsp;|&nbsp; <strong style="color:#4ade80;">${hpStr}</strong>`;
+            const titleHtml = data.title ? ` &nbsp;|&nbsp; <strong style="color:#ffd700; text-shadow:0 0 6px rgba(255,215,0,0.5);">&lt;${data.title}&gt;</strong>` : '';
+            vitalsEl.innerHTML = `<strong>Level ${lvl}</strong> &nbsp;|&nbsp; <strong style="color:#38bdf8;">${pClass}</strong>${titleHtml} &nbsp;|&nbsp; <strong style="color:#4ade80;">${hpStr}</strong>`;
         }
 
         const gridEl = document.getElementById('inspect-equips-grid');
@@ -1721,6 +1747,11 @@ export class UIManager {
     openMazeGuideModal() {
         if (!this.mazeGuideModal) return;
         document.exitPointerLock?.();
+
+        const titleStr = String((this.game && this.game.player && this.game.player.title) || '').toUpperCase();
+        const match = titleStr.match(/(?:FLOOR CONQUEROR|FLOOR DOMINATOR|FLOOR MASTER)\s+(\d+)/);
+        const maxConqueredFloor = match ? parseInt(match[1], 10) : 0;
+
         const grid = document.getElementById('maze-guide-floors-grid');
         if (grid) {
             grid.innerHTML = '';
@@ -1729,7 +1760,7 @@ export class UIManager {
                 'Floor 2: Mossy Ruins',
                 'Floor 3: Shadow Cavern (🗝️ Dungeon 1)',
                 'Floor 4: Abyssal Grotto',
-                'Floor 5:Infernal Core',
+                'Floor 5: Infernal Core',
                 'Floor 6: Magma Sanctum',
                 'Floor 7: Monolith Depths (🗝️ Dungeon 2)',
                 'Floor 8: Obsidian Vault',
@@ -1737,21 +1768,60 @@ export class UIManager {
                 'Floor 10: The Void Throne'
             ];
             for (let f = 1; f <= 10; f++) {
+                const isUnlocked = (f === 1) || (f <= maxConqueredFloor);
                 const btn = document.createElement('button');
                 btn.className = 'btn-item-action';
-                btn.style.background = (f === 3 || f === 7) ? '#0284c7' : '#1e293b';
-                btn.style.border = '1px solid #38bdf8';
-                btn.style.padding = '10px';
-                btn.style.textAlign = 'left';
-                btn.innerHTML = `<strong style="color:#00e5ff;">🌀 ${floorNames[f - 1]}</strong>`;
-                btn.onclick = () => {
-                    this.mazeGuideModal.style.display = 'none';
-                    this.game.teleportToFloor(`floor${f}`, floorNames[f - 1]);
-                };
+
+                if (isUnlocked) {
+                    btn.style.background = (f === 3 || f === 7) ? '#0284c7' : '#1e293b';
+                    btn.style.border = '1px solid #38bdf8';
+                    btn.style.padding = '10px';
+                    btn.style.textAlign = 'left';
+                    btn.style.cursor = 'pointer';
+                    btn.innerHTML = `<strong style="color:#00e5ff;">🌀 ${floorNames[f - 1]}</strong> <span style="font-size:11px; color:#4ade80; float:right;">[CONQUERED]</span>`;
+                    btn.onclick = () => {
+                        // Party Leader verification
+                        if (this.game && this.game.partyMembers && this.game.partyMembers.length > 0 && !this.game.isPartyLeader()) {
+                            this.showToast('⚠️ Only the Party Leader can use the Maze Guide for the team!');
+                            return;
+                        }
+                        this.mazeGuideModal.style.display = 'none';
+                        this.game.teleportToFloor(`floor${f}`, floorNames[f - 1]);
+                    };
+                } else {
+                    btn.style.background = '#0f172a';
+                    btn.style.border = '1px dashed #475569';
+                    btn.style.opacity = '0.55';
+                    btn.style.padding = '10px';
+                    btn.style.textAlign = 'left';
+                    btn.style.cursor = 'not-allowed';
+                    btn.innerHTML = `<strong style="color:#94a3b8;">🔒 ${floorNames[f - 1]}</strong> <span style="font-size:11px; color:#f87171; float:right;">Requires Floor ${f} Conqueror</span>`;
+                    btn.onclick = () => {
+                        this.showToast(`🔒 You must conquer Floor ${f} first to fast-travel here!`);
+                    };
+                }
                 grid.appendChild(btn);
             }
         }
         this.mazeGuideModal.style.display = 'flex';
+    }
+
+    updateFloorBossTimer(remainingMs) {
+        const el = document.getElementById('floor-boss-timer-ui');
+        const valEl = document.getElementById('floor-boss-timer-val');
+        if (!el || !valEl) return;
+        if (remainingMs <= 0) {
+            el.style.display = 'none';
+            return;
+        }
+        el.style.display = 'inline-flex';
+        const hrs = Math.floor(remainingMs / 3600000);
+        const mins = Math.floor((remainingMs % 3600000) / 60000);
+        const secs = Math.floor((remainingMs % 60000) / 1000);
+        let timeStr = '';
+        if (hrs > 0) timeStr += `${hrs}h `;
+        timeStr += `${String(mins).padStart(2, '0')}m ${String(secs).padStart(2, '0')}s`;
+        valEl.textContent = timeStr;
     }
 
     // ==========================================

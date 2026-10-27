@@ -838,6 +838,7 @@ export class Monster3D {
     }
 
     provoke(targetEntity, duration = 10.0) {
+        if (!this.isAlive || this.state === 'dead' || this.hp <= 0) return;
         this.provokeTarget = targetEntity;
         this.provokeTimer = duration;
         this.state = 'chase';
@@ -914,7 +915,7 @@ export class Monster3D {
     }
 
     takeDamage(amount) {
-        if (this.state === 'dead') return false;
+        if (this.state === 'dead' || this.hp <= 0) return false;
         this.hp = Math.max(0, this.hp - amount);
         this.hitFlashTimer = 0.14;
         if (this.mainMat) {
@@ -937,7 +938,10 @@ export class Monster3D {
     }
 
     get2DRespawnDuration() {
-        if (this.customRespawnDelay > 0) return this.customRespawnDelay;
+        if (this.customRespawnDelay > 0) {
+            // MONSTER_DATABASE stores delays in milliseconds (e.g. 10,000ms = 10s, 120,000ms = 120s)
+            return this.customRespawnDelay > 500 ? (this.customRespawnDelay / 1000) : this.customRespawnDelay;
+        }
         if (this.type === 'floor_boss') return 180; // 3m floor boss respawn cooldown
         if (this.type === 'mini_boss') return 120;  // 2D server.js line 1322: 120,000ms (120s) for Mini-Bosses
         if (this.dbKey.includes('golem') || this.dbKey.includes('minotaur') || this.dbKey.includes('dragon')) {
@@ -1021,6 +1025,12 @@ export class Monster3D {
 
     die() {
         this.state = 'dead';
+        this.hp = 0;
+        this.provokeTarget = null;
+        this.provokeTimer = 0;
+        this.isFrozen = false;
+        this.bleedTimer = 0;
+        this.attackAnimTimer = 0;
         if (this.overheadGroup) this.overheadGroup.visible = false;
         if (window.game && this === window.game.floorBoss) {
             window.game.bossEngaged = false;
@@ -1090,7 +1100,10 @@ export class Monster3D {
     }
 
     update(dt, playerPos, onAttackPlayer) {
-        if (this.state === 'dead') {
+        if (this.state === 'dead' || this.hp <= 0) {
+            this.state = 'dead';
+            this.provokeTarget = null;
+            this.provokeTimer = 0;
             if (this.noRespawn) return;
             this.respawnTimer -= dt;
             if (this.respawnMarkerRing) {
@@ -1238,6 +1251,10 @@ export class Monster3D {
         }
 
         // AI Movement & Attack State
+        if (!this.isAlive || this.state === 'dead' || this.hp <= 0) {
+            return;
+        }
+
         let targetPos = playerPos;
         if (this.provokeTimer > 0 && this.provokeTarget) {
             this.provokeTimer -= dt;
@@ -1288,12 +1305,12 @@ export class Monster3D {
 
             // Universal Earthquake Skill (ALL Mini Bosses & Floor Bosses per 2D Exonie rules!)
             const isFloorBoss = this.type === 'floor_boss' || this.category === 'floor_boss' || this.dbKey.includes('floor_boss') || this.isBattlefieldBoss;
-            if (this.isBoss && distToPlayer <= this.aggroRange && distToSpawn < 90) {
+            if (this.isBoss && this.isAlive && this.hp > 0 && this.state !== 'dead' && distToPlayer <= this.aggroRange && distToSpawn < 90) {
                 this.earthquakeCooldown = (this.earthquakeCooldown || 10.0) - dt;
                 if (this.earthquakeCooldown <= 0) {
                     this.earthquakeCooldown = isFloorBoss ? 8.5 : 12.0;
                     const aoeRadius = isFloorBoss ? 22.0 : 14.0;
-                    if (window.game) {
+                    if (window.game && this.isAlive && this.hp > 0) {
                         let shockColor = 0xffd700;
                         if (this.isDragon || this.dbKey.includes('boss3') || this.dbKey.includes('mobs3')) shockColor = 0xff5722;
                         else if (this.isWraith) shockColor = 0x9c27b0;
@@ -1306,16 +1323,32 @@ export class Monster3D {
                         window.game.audio.playSfx('bump');
                         window.game.combat.spawnFloatingDamage(this.pos, '🌋 EARTHQUAKE!', true);
                         if (distToPlayer <= aoeRadius) {
-                            const rawAtk = Number(this.atk) || Number(this.attackPower) || 10;
-                            const eqDmg = Math.max(5, Math.floor(rawAtk * 1.5));
-                            window.game.onMonsterHitPlayer(eqDmg, 'Earthquake', this);
+                            const player = window.game.player;
+                            // Check if player is airborne (Spacebar jump) or invulnerable (dodge leap)
+                            if (player && (player.pos.y > 0.35 || player.isJumping || player.isInvulnerable)) {
+                                window.game.combat.spawnFloatingDamage(player.pos, '🦘 JUMPED OVER EARTHQUAKE!', true, true);
+                            } else if (player) {
+                                const rawAtk = Number(this.atk) || Number(this.attackPower) || 10;
+                                const pMaxHp = Number(player.maxHp) || 500;
+                                const pDef = Number(player.def) || 0;
+                                const distRatio = Math.min(1.0, distToPlayer / aoeRadius);
+                                const distFalloff = 1.0 - (distRatio * 0.45); // Deals ~55% damage at outer boundary
+
+                                // Authentic balanced damage formula:
+                                // Base damage is atk - def, with falloff, capped at reasonable % of player HP so high level scaling doesn't instant 1-shot!
+                                const baseNet = Math.max(10, (rawAtk - pDef) * distFalloff);
+                                const maxCap = isFloorBoss ? Math.floor(pMaxHp * 0.45) : Math.floor(pMaxHp * 0.30);
+                                const eqDmg = Math.max(5, Math.min(maxCap, Math.floor(baseNet)));
+
+                                window.game.onMonsterHitPlayer(eqDmg, 'Earthquake', this);
+                            }
                         }
                     }
                 }
             }
 
             // Void Blink / Vanish Skill (Spectral Wraiths, Soul Reaper, The Void King)
-            if (this.isWraith && distToPlayer <= this.aggroRange && distToPlayer > 3.0 && distToSpawn < 90) {
+            if (this.isWraith && this.isAlive && this.hp > 0 && this.state !== 'dead' && distToPlayer <= this.aggroRange && distToPlayer > 3.0 && distToSpawn < 90) {
                 this.voidBlinkCooldown = (this.voidBlinkCooldown || 9.0) - dt;
                 if (this.voidBlinkCooldown <= 0) {
                     this.voidBlinkCooldown = this.type === 'floor_boss' ? 7.5 : 11.0;

@@ -1,12 +1,12 @@
 import * as THREE from 'three';
-import { Engine3D } from './engine3d.js?v=2.3';
-import { Character3D } from './character3d.js?v=2.3';
-import { World3D } from './world3d.js?v=2.3';
-import { Monster3D } from './monsters3d.js?v=2.3';
-import { CombatSystem } from './combat.js?v=2.3';
-import { UIManager } from './ui.js?v=2.3';
-import { CLASSES, MONSTER_DATABASE, STARTER_ITEMS, DEFAULT_BASE_STATS, MAX_LEVEL, getExpForNextLevel, generateLoot, getItemSellPrice } from './game_data.js?v=2.3';
-import { MAPS_DATA } from './maps_data.js?v=2.3';
+import { Engine3D } from './engine3d.js?v=2.6';
+import { Character3D } from './character3d.js?v=2.6';
+import { World3D } from './world3d.js?v=2.6';
+import { Monster3D } from './monsters3d.js?v=2.6';
+import { CombatSystem } from './combat.js?v=2.6';
+import { UIManager } from './ui.js?v=2.6';
+import { CLASSES, MONSTER_DATABASE, STARTER_ITEMS, DEFAULT_BASE_STATS, MAX_LEVEL, getExpForNextLevel, generateLoot, getItemSellPrice } from './game_data.js?v=2.6';
+import { MAPS_DATA } from './maps_data.js?v=2.6';
 
 // ==========================================
 // AUDIO MANAGER (EXONIE SOUND EFFECTS & BGM)
@@ -443,6 +443,13 @@ export class GameApp {
                 // Multiplayer Realtime Sync Listeners
                 this.socket.on('gameState', (data) => {
                     console.log('📡 [Multiplayer] Received gameState:', data);
+                    if (data && data.self && data.self.title) {
+                        this.player.title = data.self.title;
+                        this.ui.updatePlayerHUD(this.player);
+                        if (this.player.char3D) {
+                            this.player.char3D.updateOverheadUI(this.player.name, this.player.level, this.player.hp, this.player.maxHp, true, this.player.title);
+                        }
+                    }
                     if (data && data.players) {
                         for (const [sid, pData] of Object.entries(data.players)) {
                             const myName = this.player?.name;
@@ -517,6 +524,30 @@ export class GameApp {
                 this.socket.on('worldAnnouncement', (data) => {
                     if (data && data.html) {
                         this.ui.showWorldAnnouncement(data.html, data.color || '#ffd700', false);
+                    }
+                });
+
+                this.socket.on('titleUnlocked', (data) => {
+                    const newTitle = (typeof data === 'object' && data.title) ? data.title : data;
+                    this.player.title = newTitle;
+                    this.audio.playSfx('levelup');
+                    this.ui.showToast(`🏆 CONQUERED! Unlocked title <${newTitle}>!`);
+                    this.ui.updatePlayerHUD(this.player);
+                    if (this.player.char3D) {
+                        this.player.char3D.updateOverheadUI(this.player.name, this.player.level, this.player.hp, this.player.maxHp, true, this.player.title);
+                    }
+                    this.saveCharacterToAccountSlot();
+                });
+
+                this.socket.on('playerTitleUpdated', (data) => {
+                    if (!data) return;
+                    const lookupId = data.id || data.socketId || data.name;
+                    const rp = this.remotePlayers[lookupId] || Object.values(this.remotePlayers).find(p => p.name === data.name);
+                    if (rp) {
+                        rp.title = data.title;
+                        if (rp.char3D) {
+                            rp.char3D.updateOverheadUI(rp.name, rp.level, rp.hp, rp.maxHp, false, rp.title);
+                        }
                     }
                 });
 
@@ -655,9 +686,10 @@ export class GameApp {
                 existing.className = data.className || data.playerClass || existing.className;
                 existing.playerClass = existing.className;
                 existing.equips = data.equips || existing.equips;
+                if (data.title) existing.title = data.title;
                 const w = (data.equips && data.equips.weapon) || data.weapon || existing.weapon;
                 if (w && existing.char3D) existing.char3D.setWeaponFromObject(w);
-                if (existing.char3D) existing.char3D.updateOverheadUI(existing.name, existing.level, existing.hp, existing.maxHp, false);
+                if (existing.char3D) existing.char3D.updateOverheadUI(existing.name, existing.level, existing.hp, existing.maxHp, false, existing.title || null);
                 return;
             }
         }
@@ -702,9 +734,10 @@ export class GameApp {
             weapon: wpn,
             currentPos: new THREE.Vector3(data.x || 0, data.y || 0, data.z || 0),
             targetPos: new THREE.Vector3(data.x || 0, data.y || 0, data.z || 0),
-            targetRotY: data.rotY || 0
+            targetRotY: data.rotY || 0,
+            title: data.title || null
         };
-        char3D.updateOverheadUI(charName, data.level || 1, data.hp || 500, data.maxHp || 500, false);
+        char3D.updateOverheadUI(charName, data.level || 1, data.hp || 500, data.maxHp || 500, false, data.title || null);
     }
 
     removeRemotePlayer(id) {
@@ -726,7 +759,7 @@ export class GameApp {
             rp.char3D.group.position.copy(rp.currentPos);
             rp.char3D.group.rotation.y = rp.targetRotY;
             rp.char3D.update(delta, isMoving, 1.0);
-            rp.char3D.updateOverheadUI(rp.name, rp.level, rp.hp, rp.maxHp, false);
+            rp.char3D.updateOverheadUI(rp.name, rp.level, rp.hp, rp.maxHp, false, rp.title || null);
         }
     }
 
@@ -1597,6 +1630,12 @@ export class GameApp {
             this.socket.emit('addFriend', { targetId: targetName });
         }
         this.ui.showToast(`🤝 Friend request sent to ${targetName}!`);
+    }
+
+    isPartyLeader() {
+        if (!this.party || !this.party.members || this.party.members.length <= 1) return true;
+        const mySid = this.socket ? this.socket.id : null;
+        return this.party.leaderId === mySid;
     }
 
     inviteParty(targetName) {
@@ -2771,7 +2810,15 @@ export class GameApp {
             }
         }
 
-        // 2. Update Monsters AI, Respawn Timers & Combat
+        // 2. Floor Boss Respawn Timer per floor (displayed whenever that floor's boss is dead)
+        const bossRemaining = (this.bossCooldowns && this.bossCooldowns[this.currentMapId]) ? (this.bossCooldowns[this.currentMapId] - Date.now()) : 0;
+        if (bossRemaining > 0 && (this.currentMapId.startsWith('floor') || this.currentMapId === 'neutralzone' || this.currentMapId === 'battlefield')) {
+            this.ui.updateFloorBossTimer(bossRemaining);
+        } else {
+            this.ui.updateFloorBossTimer(0);
+        }
+
+        // 3. Update Monsters AI, Respawn Timers & Combat
         if (this.tavernTimerActive && this.currentMapId === 'trainingtavern') {
             const elapsedSec = (performance.now() - (this.tavernStartTime || performance.now())) * 0.001;
             this.ui.updateTavernTimer(elapsedSec, true);
@@ -2878,7 +2925,7 @@ export class GameApp {
 
         // 5. Update Local Player Overhead UI
         if (this.player.char3D && this.player.char3D.updateOverheadUI) {
-            this.player.char3D.updateOverheadUI(this.player.name, this.player.level, this.player.hp, this.player.maxHp, true);
+            this.player.char3D.updateOverheadUI(this.player.name, this.player.level, this.player.hp, this.player.maxHp, true, this.player.title || null);
         }
 
         // 6. Update Remote Players & Multiplayer Sync

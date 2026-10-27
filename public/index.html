@@ -6,7 +6,7 @@
     <title>Exonie 3D Remastered</title>
     <link rel="icon" type="image/png" href="favicon.png">
     <link rel="preload" as="image" href="loadingscreen.png">
-    <link rel="stylesheet" href="css/style.css?v=2.5">
+    <link rel="stylesheet" href="css/style.css?v=2.6">
 
     <!-- Native ES Module Import Map for Three.js -->
     <script type="importmap">
@@ -270,6 +270,7 @@
                         <span class="player-name-text">Aria</span>
                         <span class="player-class-badge">Blademaster</span>
                     </div>
+                    <div id="player-title-tag" class="player-title-tag" style="display:none;"></div>
                     <!-- HP Bar -->
                     <div class="bar-wrapper">
                         <div class="bar-fill bar-hp" style="width: 100%;"></div>
@@ -303,6 +304,11 @@
             <span class="floor-subtitle">Safe Haven</span>
             <div id="day-night-indicator" class="day-night-badge">☀️ Morning</div>
             <div id="tavern-timer-ui" style="display:none;">⏱️ 00:00.00</div>
+            <div id="floor-boss-timer-ui" class="floor-boss-timer-badge" style="display:none;">
+                <span class="boss-timer-skull">💀</span>
+                <span class="boss-timer-label">Floor Boss Respawns in:</span>
+                <span id="floor-boss-timer-val">00h 00m 00s</span>
+            </div>
         </div>
 
         <!-- World Announcement Broadcast Banner (Rare Drops, World Boss & Raid Kills) -->
@@ -1166,6 +1172,6 @@
     </div>
 
     <!-- Main Game Orchestrator Script -->
-    <script type="module" src="./js/game.js?v=2.5"></script>
+    <script type="module" src="./js/game.js?v=2.6"></script>
 </body>
 </html>
