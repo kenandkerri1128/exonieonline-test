@@ -1371,19 +1371,38 @@ export class Character3D {
             this.auraRing.rotation.z = this.animTime * 0.9;
         }
 
-        // 1. DODGE ROLL (360 Forward Flip)
+        // 1. DIRECTIONAL LEAP DASH (Agile Aerial Evade Hop)
         if (this.state === 'dodge') {
             this.dodgeTimer -= dt;
-            const prog = 1 - Math.max(0, this.dodgeTimer / 0.36);
-            p.hips.rotation.x = prog * Math.PI * 2;
-            p.hips.position.y = 0.94 + Math.sin(prog * Math.PI) * 0.35;
-            p.lKnee.rotation.x = 1.1;
-            p.rKnee.rotation.x = 1.1;
+            const prog = 1 - Math.max(0, this.dodgeTimer / 0.38);
+            const leapArc = Math.sin(prog * Math.PI);
+
+            // Elevated vertical leap arc (0.55m peak)
+            p.hips.position.y = 1.05 + leapArc * 0.55;
+            // Aerodynamic athletic forward lean without awkward tumble rolling
+            p.hips.rotation.x = -0.32 * leapArc;
+            if (p.torso) p.torso.rotation.x = -0.18 * leapArc;
+
+            // Tucked legs during peak leap, smoothing down on landing
+            if (p.lHip) p.lHip.rotation.x = -0.45 * leapArc;
+            if (p.rHip) p.rHip.rotation.x = -0.25 * leapArc;
+            p.lKnee.rotation.x = 0.75 * leapArc;
+            p.rKnee.rotation.x = 0.55 * leapArc;
+
+            // Trailing swept arms for athletic mid-air balance
+            if (p.lShoulder) p.lShoulder.rotation.set(0.65 * leapArc, 0.15, -0.35);
+            if (p.rShoulder) p.rShoulder.rotation.set(0.65 * leapArc, -0.15, 0.35);
+
             if (this.dodgeTimer <= 0) {
                 p.hips.rotation.set(0, 0, 0);
                 p.hips.position.y = 1.05;
+                if (p.torso) p.torso.rotation.x = 0;
+                if (p.lHip) p.lHip.rotation.x = 0;
+                if (p.rHip) p.rHip.rotation.x = 0;
                 p.lKnee.rotation.x = 0;
                 p.rKnee.rotation.x = 0;
+                if (p.lShoulder) p.lShoulder.rotation.set(0, 0, 0);
+                if (p.rShoulder) p.rShoulder.rotation.set(0, 0, 0);
                 this.state = 'idle';
             }
             return;

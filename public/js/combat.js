@@ -512,6 +512,28 @@ export class CombatSystem {
         const key = cdKeys[skillSlot];
         if (this.cooldowns[key] > 0) return;
 
+        // 🛡️ HEALER PURIFICATION CHECK: Max 5 uses per run & cannot cast inside safe Town
+        if (pClass === 'Healer' && skillSlot === 2) {
+            const currMap = (window.game && window.game.currentMapId) || 'town';
+            if (currMap === 'town') {
+                this.spawnFloatingDamage(player.pos, 'CANNOT CAST IN TOWN!', false);
+                if (window.game && window.game.ui) {
+                    window.game.ui.showToast('⚠️ Purification cannot be cast inside Town!');
+                }
+                if (this.audio) this.audio.playSfx('bump');
+                return;
+            }
+            player.purificationUses = Number(player.purificationUses) || 0;
+            if (player.purificationUses >= 5) {
+                this.spawnFloatingDamage(player.pos, 'PURIFICATION EXHAUSTED (5/5)!', false);
+                if (window.game && window.game.ui) {
+                    window.game.ui.showToast('⚠️ You have exhausted your Purification miracles for this zone (Max 5/5).');
+                }
+                if (this.audio) this.audio.playSfx('bump');
+                return;
+            }
+        }
+
         // Play authentic Exonie class voice shout
         if (this.audio && this.audio.playClassVoice) {
             this.audio.playClassVoice(player.hairStyle || '1', pClass);
@@ -586,9 +608,14 @@ export class CombatSystem {
                 this.engine.spawnHitSparks(player.pos.clone().add(new THREE.Vector3(0, 1.5, 0)), 0x00e676, 28);
                 if (this.audio) this.audio.playSfx('splash');
             } else {
-                // Purification (Lv.50, 100s CD): Full party heal & cleanse
+                // Purification (Lv.50, 100s CD): Full party heal & cleanse (Max 5/5 per run)
+                player.purificationUses = (Number(player.purificationUses) || 0) + 1;
                 player.hp = player.maxHp;
-                this.spawnFloatingDamage(player.pos, '✨ PURIFICATION! (FULL HP)', true, true);
+                if (window.game && window.game.ui) {
+                    window.game.ui.showToast(`✨ Purification used (${player.purificationUses}/5 for this run).`);
+                    window.game.ui.updatePlayerHUD(player);
+                }
+                this.spawnFloatingDamage(player.pos, `✨ PURIFICATION! (${player.purificationUses}/5)`, true, true);
                 this.engine.spawnLevelUpVFX(player.pos);
                 if (this.audio) this.audio.playSfx('splash');
             }

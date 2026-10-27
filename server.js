@@ -671,6 +671,156 @@ async function findAccountRows(identifier) {
 }
 
 // ==========================================
+// ⚔️ GLOBAL PARTY & FRIENDS ENGINE (2D ALIGNMENT)
+// ==========================================
+const playerParty = {}; // Maps character_name -> partyId
+const parties = {};     // Maps partyId -> { id, leaderId, members: Set<character_name> }
+if (!global.playerFriends) global.playerFriends = {}; // Maps character_name -> Set<friendName>
+
+function findSocketIdByPlayerName(name) {
+    if (!name) return null;
+    const clean = String(name).trim().toLowerCase();
+    for (const sid in onlinePlayers) {
+        const p = onlinePlayers[sid];
+        if (p && p.name && p.name.trim().toLowerCase() === clean) return sid;
+    }
+    return null;
+}
+
+function getPlayerByName(name) {
+    if (!name) return null;
+    const clean = String(name).trim().toLowerCase();
+    for (const sid in onlinePlayers) {
+        const p = onlinePlayers[sid];
+        if (p && p.name && p.name.trim().toLowerCase() === clean) return p;
+    }
+    return null;
+}
+
+function emitPartyUpdate(partyId) {
+    const party = parties[partyId];
+    if (!party) return;
+    const members = [];
+    for (const pid of party.members) {
+        const p = getPlayerByName(pid);
+        if (p) {
+            members.push({
+                id: p.name,
+                name: p.name,
+                level: p.level || 1,
+                playerClass: p.className || p.playerClass || (p.baseStats && p.baseStats.playerClass) || 'Novice',
+                currentHp: p.hp !== undefined ? p.hp : (p.maxHp || 100),
+                maxHp: p.maxHp || 100,
+                isGhost: !!p.isGhost
+            });
+        } else {
+            members.push({
+                id: pid,
+                name: pid,
+                level: 1,
+                playerClass: 'Novice',
+                currentHp: 100,
+                maxHp: 100,
+                isGhost: false
+            });
+        }
+    }
+
+    const payload = {
+        partyId: party.id,
+        leaderId: party.leaderId,
+        name: `${party.leaderId}'s Party`,
+        members
+    };
+
+    for (const pid of party.members) {
+        const sid = findSocketIdByPlayerName(pid);
+        if (sid) io.to(sid).emit('partyUpdate', payload);
+    }
+}
+
+function removeFromParty(playerId) {
+    if (!playerId) return;
+    const pid = playerParty[playerId];
+    if (!pid) return;
+    const party = parties[pid];
+    if (!party) {
+        delete playerParty[playerId];
+        return;
+    }
+
+    party.members.delete(playerId);
+    delete playerParty[playerId];
+
+    const sid = findSocketIdByPlayerName(playerId);
+    if (sid) io.to(sid).emit('partyKickedOrLeft');
+
+    if (party.leaderId === playerId) {
+        const next = party.members.values().next().value;
+        party.leaderId = next || null;
+    }
+
+    if (!party.leaderId || party.members.size <= 1) {
+        // Disband party if only 1 member remains
+        for (const rem of party.members) {
+            delete playerParty[rem];
+            const remSid = findSocketIdByPlayerName(rem);
+            if (remSid) io.to(remSid).emit('partyKickedOrLeft');
+        }
+        delete parties[pid];
+        return;
+    }
+
+    emitPartyUpdate(pid);
+}
+
+async function sendFriendsUpdateTo(username) {
+    if (!username) return;
+    const sid = findSocketIdByPlayerName(username);
+    if (!sid) return;
+
+    const myFriends = global.playerFriends[username] ? Array.from(global.playerFriends[username]) : [];
+    if (myFriends.length === 0) {
+        return io.to(sid).emit('friendsListUpdate', []);
+    }
+
+    let dbFriends = [];
+    if (supabase) {
+        try {
+            const { data } = await supabase
+                .from('Exonians')
+                .select('character_name, level, map_id, base_stats')
+                .in('character_name', myFriends);
+            if (data) dbFriends = data;
+        } catch (e) {
+            console.error('[Friends DB Fetch Error]:', e.message);
+        }
+    }
+
+    const friendData = myFriends.map(f => {
+        const onlineP = getPlayerByName(f);
+        const isOnline = !!onlineP;
+        let currentLevel = 1, currentMap = 'Town', currentClass = 'Novice';
+
+        if (onlineP) {
+            currentLevel = onlineP.level || 1;
+            currentMap = onlineP.mapId || 'Town';
+            currentClass = onlineP.className || onlineP.playerClass || (onlineP.baseStats && onlineP.baseStats.playerClass) || 'Novice';
+        } else {
+            const dbF = dbFriends.find(row => row.character_name && row.character_name.toLowerCase() === f.toLowerCase());
+            if (dbF) {
+                currentLevel = dbF.level || 1;
+                currentMap = dbF.map_id || 'Town';
+                currentClass = dbF.base_stats?.playerClass || 'Novice';
+            }
+        }
+        return { id: f, online: isOnline, level: currentLevel, mapId: currentMap, pClass: currentClass };
+    });
+
+    io.to(sid).emit('friendsListUpdate', friendData);
+}
+
+// ==========================================
 // SOCKET.IO REALTIME ENGINE
 // ==========================================
 io.on('connection', (socket) => {
@@ -1276,6 +1426,14 @@ io.on('connection', (socket) => {
             socket.emit('gameState', { self: onlinePlayers[socket.id], players: onlinePlayers });
             socket.broadcast.emit('playerJoined', onlinePlayers[socket.id]);
 
+            // Sync Friends List on world enter
+            sendFriendsUpdateTo(finalName);
+            if (global.playerFriends[finalName]) {
+                for (const fn of global.playerFriends[finalName]) {
+                    sendFriendsUpdateTo(fn);
+                }
+            }
+
             // Sync Floor Boss Cooldowns from Supabase
             let activeCooldowns = Object.assign({}, bossTimersMemory);
             if (supabase) {
@@ -1322,7 +1480,16 @@ io.on('connection', (socket) => {
         onlinePlayers[socket.id].z = data.z;
         onlinePlayers[socket.id].rotY = data.rotY;
         onlinePlayers[socket.id].anim = data.anim;
-        if (data.hp !== undefined) onlinePlayers[socket.id].hp = data.hp;
+        if (data.hp !== undefined) {
+            const oldHp = onlinePlayers[socket.id].hp;
+            onlinePlayers[socket.id].hp = data.hp;
+            if (oldHp !== data.hp) {
+                const pName = onlinePlayers[socket.id].name;
+                if (pName && playerParty[pName]) {
+                    emitPartyUpdate(playerParty[pName]);
+                }
+            }
+        }
         if (data.maxHp !== undefined) onlinePlayers[socket.id].maxHp = data.maxHp;
         if (data.weapon !== undefined) onlinePlayers[socket.id].weapon = data.weapon;
         if (data.equips !== undefined) onlinePlayers[socket.id].equips = data.equips;
@@ -1519,38 +1686,132 @@ io.on('connection', (socket) => {
     });
 
     // ==========================================
+    // 🏆 TAVERN SPEEDRUN LEADERBOARD (SUPABASE ALIGNED)
+    // ==========================================
+    socket.on('getTavernLeaderboard', async () => {
+        if (!supabase) return socket.emit('updateLeaderboardUI', []);
+        try {
+            const { data, error } = await supabase.from('Tavern_Leaderboard').select('*').limit(1000);
+            if (error) {
+                console.error('[Tavern LB] Query error:', error.message);
+                return socket.emit('updateLeaderboardUI', []);
+            }
+            const w = { 'floor_boss': 3, 'mini_boss': 2, 'common_mobs': 1 };
+            let sorted = (data || []).sort((a, b) => {
+                let aW = w[a.mob_type] || 0; let bW = w[b.mob_type] || 0;
+                if (aW !== bW) return bW - aW;
+                if (Number(a.mob_level || 0) !== Number(b.mob_level || 0)) {
+                    return Number(b.mob_level || 0) - Number(a.mob_level || 0);
+                }
+                return Number(a.time_taken || 0) - Number(b.time_taken || 0);
+            });
+            socket.emit('updateLeaderboardUI', sorted.slice(0, 50));
+        } catch (err) {
+            console.error('[Tavern LB] Server error:', err.message);
+            socket.emit('updateLeaderboardUI', []);
+        }
+    });
+
+    // ==========================================
     // 🤝 SOCIAL INTERACTIONS (Party, Raid, Friend)
     // ==========================================
-    socket.on('addFriend', (data) => {
-        if (!data || (!data.targetId && !data.targetName)) return;
-        const targetQuery = String(data.targetId || data.targetName || '').trim().toLowerCase();
+    socket.on('getFriendsList', async () => {
         const me = onlinePlayers[socket.id];
-        const myName = me ? me.name : (socket.characterName || 'A player');
-        for (const sid in onlinePlayers) {
-            const p = onlinePlayers[sid];
-            if (p && p.name && p.name.toLowerCase() === targetQuery && sid !== socket.id) {
-                io.to(sid).emit('friendRequest', { from: myName, fromId: socket.id });
-                socket.emit('chatMessage', { id: 'System', text: `🤝 Friend request sent to ${p.name}.` });
-                return;
-            }
+        const myName = me ? me.name : socket.characterName;
+        if (myName) sendFriendsUpdateTo(myName);
+    });
+
+    socket.on('addFriend', async (data) => {
+        if (!data) return;
+        const targetName = String(data.targetName || data.targetId || '').trim();
+        const me = onlinePlayers[socket.id];
+        const myName = me ? me.name : socket.characterName;
+        if (!myName || !targetName || myName.toLowerCase() === targetName.toLowerCase()) return;
+
+        if (!global.playerFriends[myName]) global.playerFriends[myName] = new Set();
+        global.playerFriends[myName].add(targetName);
+
+        // Mutual friendship registration
+        if (!global.playerFriends[targetName]) global.playerFriends[targetName] = new Set();
+        global.playerFriends[targetName].add(myName);
+
+        sendFriendsUpdateTo(myName);
+        sendFriendsUpdateTo(targetName);
+
+        const targetSid = findSocketIdByPlayerName(targetName);
+        if (targetSid) {
+            io.to(targetSid).emit('friendRequest', { from: myName, fromId: socket.id });
         }
-        socket.emit('chatMessage', { id: 'System', text: `Player ${data.targetId || data.targetName} is not online.` });
+    });
+
+    socket.on('removeFriend', async (data) => {
+        if (!data) return;
+        const targetName = String(data.targetName || data.targetId || '').trim();
+        const me = onlinePlayers[socket.id];
+        const myName = me ? me.name : socket.characterName;
+        if (!myName || !targetName) return;
+
+        if (global.playerFriends[myName]) global.playerFriends[myName].delete(targetName);
+        sendFriendsUpdateTo(myName);
     });
 
     socket.on('partyInvite', (data) => {
-        if (!data || (!data.targetId && !data.targetName)) return;
-        const targetQuery = String(data.targetId || data.targetName || '').trim().toLowerCase();
+        if (!data) return;
+        const targetName = String(data.targetName || data.targetId || '').trim();
         const me = onlinePlayers[socket.id];
-        const myName = me ? me.name : (socket.characterName || 'A player');
-        for (const sid in onlinePlayers) {
-            const p = onlinePlayers[sid];
-            if (p && p.name && p.name.toLowerCase() === targetQuery && sid !== socket.id) {
-                io.to(sid).emit('partyInvite', { from: myName, fromId: socket.id });
-                socket.emit('chatMessage', { id: 'System', text: `⚔️ Party invite sent to ${p.name}.` });
-                return;
-            }
+        const myName = me ? me.name : socket.characterName;
+        if (!myName || !targetName || myName.toLowerCase() === targetName.toLowerCase()) return;
+
+        const targetSid = findSocketIdByPlayerName(targetName);
+        if (!targetSid) {
+            return socket.emit('chatMessage', { id: 'System', text: `Player ${targetName} is not online.` });
         }
-        socket.emit('chatMessage', { id: 'System', text: `Player ${data.targetId || data.targetName} is not online.` });
+
+        io.to(targetSid).emit('partyInviteReceived', { fromId: myName, from: myName });
+        io.to(targetSid).emit('partyInvite', { fromId: myName, from: myName });
+        socket.emit('chatMessage', { id: 'System', text: `⚔️ Party invite sent to ${targetName}.` });
+    });
+
+    socket.on('partyInviteResponse', ({ fromId, accept }) => {
+        const me = onlinePlayers[socket.id];
+        const myName = me ? me.name : socket.characterName;
+        if (!myName || !fromId) return;
+
+        const fromSid = findSocketIdByPlayerName(fromId);
+        if (!fromSid) return;
+
+        if (!accept) {
+            io.to(fromSid).emit('partyError', `${myName} declined your party invite.`);
+            return;
+        }
+
+        let pid = playerParty[fromId];
+        if (pid && parties[pid] && parties[pid].members.size >= 4) {
+            socket.emit('partyError', 'That party is already full (Max 4 players).');
+            io.to(fromSid).emit('partyError', `${myName} tried to join, but your party is full!`);
+            return;
+        }
+
+        // Leave existing party if any
+        if (playerParty[myName]) removeFromParty(myName);
+
+        if (!pid || !parties[pid]) {
+            pid = `party_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+            parties[pid] = { id: pid, leaderId: fromId, members: new Set([fromId, myName]) };
+            playerParty[fromId] = pid;
+            playerParty[myName] = pid;
+        } else {
+            parties[pid].members.add(myName);
+            playerParty[myName] = pid;
+        }
+
+        emitPartyUpdate(pid);
+    });
+
+    socket.on('leaveParty', () => {
+        const me = onlinePlayers[socket.id];
+        const myName = me ? me.name : socket.characterName;
+        if (myName) removeFromParty(myName);
     });
 
     socket.on('raidInvite', (data) => {
@@ -1777,6 +2038,11 @@ io.on('connection', (socket) => {
 
     socket.on('disconnect', () => {
         console.log(`[Socket] Player disconnected: ${socket.id}`);
+        const me = onlinePlayers[socket.id];
+        const myName = me ? me.name : socket.characterName;
+        if (myName) {
+            removeFromParty(myName);
+        }
         delete onlinePlayers[socket.id];
         io.emit('playerLeft', socket.id);
     });

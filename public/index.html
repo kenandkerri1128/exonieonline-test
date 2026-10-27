@@ -6,7 +6,7 @@
     <title>Exonie 3D Remastered</title>
     <link rel="icon" type="image/png" href="favicon.png">
     <link rel="preload" as="image" href="loadingscreen.png">
-    <link rel="stylesheet" href="css/style.css?v=2.2">
+    <link rel="stylesheet" href="css/style.css?v=2.5">
 
     <!-- Native ES Module Import Map for Three.js -->
     <script type="importmap">
@@ -258,31 +258,42 @@
          5. IN-GAME HUD
          ============================================================ -->
     <div id="game-hud" style="display:none;">
-        <!-- Top Left: Player Status -->
-        <div class="hud-top-left">
-            <div class="player-avatar-frame">
-                <span class="player-avatar-icon">⚔️</span>
-                <span class="player-level-badge">Lv.1</span>
+        <!-- Top Left: Player Status & Party HUD (Directly below HP/MP bars) -->
+        <div class="hud-top-left-group">
+            <div class="hud-top-left">
+                <div class="player-avatar-frame">
+                    <span class="player-avatar-icon">⚔️</span>
+                    <span class="player-level-badge">Lv.1</span>
+                </div>
+                <div class="player-bars">
+                    <div class="player-name-row">
+                        <span class="player-name-text">Aria</span>
+                        <span class="player-class-badge">Blademaster</span>
+                    </div>
+                    <!-- HP Bar -->
+                    <div class="bar-wrapper">
+                        <div class="bar-fill bar-hp" style="width: 100%;"></div>
+                        <span class="bar-text" id="hp-text">500 / 500</span>
+                    </div>
+                    <!-- MP Bar -->
+                    <div class="bar-wrapper">
+                        <div class="bar-fill bar-mp" style="width: 100%;"></div>
+                        <span class="bar-text" id="mp-text">200 / 200</span>
+                    </div>
+                    <!-- EXP Bar -->
+                    <div class="bar-wrapper" style="height: 5px;">
+                        <div class="bar-fill bar-exp" style="width: 0%;"></div>
+                    </div>
+                </div>
             </div>
-            <div class="player-bars">
-                <div class="player-name-row">
-                    <span class="player-name-text">Aria</span>
-                    <span class="player-class-badge">Blademaster</span>
+
+            <!-- Party HUD (Directly below HP bar like in 2D Exonie) -->
+            <div id="party-hud" style="display:none;">
+                <div class="party-hud-header">
+                    <span id="party-hud-title">⚔️ Party (0/4)</span>
+                    <button type="button" id="btn-leave-party" class="party-leave-btn">Leave</button>
                 </div>
-                <!-- HP Bar -->
-                <div class="bar-wrapper">
-                    <div class="bar-fill bar-hp" style="width: 100%;"></div>
-                    <span class="bar-text" id="hp-text">500 / 500</span>
-                </div>
-                <!-- MP Bar -->
-                <div class="bar-wrapper">
-                    <div class="bar-fill bar-mp" style="width: 100%;"></div>
-                    <span class="bar-text" id="mp-text">200 / 200</span>
-                </div>
-                <!-- EXP Bar -->
-                <div class="bar-wrapper" style="height: 5px;">
-                    <div class="bar-fill bar-exp" style="width: 0%;"></div>
-                </div>
+                <div id="party-members-list"></div>
             </div>
         </div>
 
@@ -1070,6 +1081,44 @@
     </div>
 
     <!-- ============================================================
+         FRIENDS LIST MODAL (HOTKEY 'F' - AUTHENTIC 2D FEATURE)
+         ============================================================ -->
+    <div class="game-modal" id="friends-modal" style="display:none;">
+        <div class="modal-dialog" style="max-width:440px; width:92vw;">
+            <div class="modal-header">
+                <h3 style="color:#38bdf8;">🤝 Friends List [F]</h3>
+                <button class="btn-close-modal" id="btn-close-friends">✖</button>
+            </div>
+            <div class="confirm-modal-body" style="padding:16px; display:flex; flex-direction:column; gap:12px; text-align:left;">
+                <div style="display:flex; gap:8px;">
+                    <input type="text" id="input-add-friend" placeholder="Enter player character name..." maxlength="16" style="flex:1; background:rgba(15,23,42,0.9); border:1px solid #334155; border-radius:6px; color:#fff; padding:8px 12px; font-size:0.88rem; outline:none;">
+                    <button type="button" id="btn-send-add-friend" class="btn-primary" style="padding:8px 16px; font-size:0.85rem; font-weight:700;">Add</button>
+                </div>
+                <div id="friends-list-container" style="max-height:300px; overflow-y:auto; background:rgba(15,23,42,0.9); border:1px solid #334155; border-radius:8px; padding:10px; display:flex; flex-direction:column; gap:6px;">
+                    <p style="color:#94a3b8; font-size:0.82rem; text-align:center; padding:16px; margin:0;">Loading friends...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============================================================
+         PARTY INVITATION PROMPT DIALOG (ACCEPT / DECLINE)
+         ============================================================ -->
+    <div id="party-invite-prompt" class="party-invite-dialog" style="display:none;">
+        <div class="party-invite-card">
+            <div class="party-invite-header">
+                <span class="party-invite-icon">⚔️</span>
+                <span class="party-invite-title">Party Invitation</span>
+            </div>
+            <div id="party-invite-text" class="party-invite-text">Hero invited you to join their party.</div>
+            <div class="party-invite-actions">
+                <button type="button" id="btn-party-accept" class="party-btn party-btn-accept">Accept</button>
+                <button type="button" id="btn-party-decline" class="party-btn party-btn-decline">Decline</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============================================================
          AUTHENTIC 2D PICTURE LOADING SCREEN & MAP TRANSITION OVERLAY
          ============================================================ -->
     <div id="loading-screen" style="display:none;">
@@ -1117,6 +1166,6 @@
     </div>
 
     <!-- Main Game Orchestrator Script -->
-    <script type="module" src="./js/game.js?v=2.3"></script>
+    <script type="module" src="./js/game.js?v=2.5"></script>
 </body>
 </html>

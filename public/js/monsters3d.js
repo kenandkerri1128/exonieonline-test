@@ -167,6 +167,10 @@ export class Monster3D {
         return this.state !== 'dead' && this.hp > 0;
     }
 
+    get attackPower() {
+        return Number(this.atk) || 10;
+    }
+
     addBorderShell(mesh, borderMat, thickness = 1.075) {
         const shell = new THREE.Mesh(mesh.geometry, borderMat);
         shell.position.copy(mesh.position);
@@ -1264,7 +1268,8 @@ export class Monster3D {
                     if (distToPlayer <= this.attackRange && onAttackPlayer && !this._chargeHitDealt) {
                         this._chargeHitDealt = true;
                         this.triggerAttackAnim();
-                        onAttackPlayer(this.attackPower * 1.5);
+                        const chargeDmg = Math.max(5, Math.floor((Number(this.atk) || 10) * 1.5));
+                        onAttackPlayer(chargeDmg);
                         if (window.game) {
                             if (window.game.combat) {
                                 window.game.combat.spawnFloatingDamage(targetPos, '🐂 BULL RUSH! (STUNNED)', true);
@@ -1301,7 +1306,8 @@ export class Monster3D {
                         window.game.audio.playSfx('bump');
                         window.game.combat.spawnFloatingDamage(this.pos, '🌋 EARTHQUAKE!', true);
                         if (distToPlayer <= aoeRadius) {
-                            const eqDmg = Math.max(5, Math.floor(this.attackPower * 1.5));
+                            const rawAtk = Number(this.atk) || Number(this.attackPower) || 10;
+                            const eqDmg = Math.max(5, Math.floor(rawAtk * 1.5));
                             window.game.onMonsterHitPlayer(eqDmg, 'Earthquake', this);
                         }
                     }

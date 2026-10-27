@@ -3045,6 +3045,297 @@ html, body {
     font-size: 1rem;
 }
 
+/* ============================================================
+   PARTY HUD (DIRECTLY BELOW HP/MP BAR - 2D EXONIE ALIGNMENT)
+   ============================================================ */
+.hud-top-left-group {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+    pointer-events: auto;
+    z-index: 20;
+}
+
+#party-hud {
+    background: rgba(15, 23, 42, 0.92);
+    border: 1px solid rgba(56, 189, 248, 0.45);
+    border-radius: 8px;
+    padding: 6px 10px;
+    min-width: 230px;
+    max-width: 280px;
+    box-shadow: 0 4px 18px rgba(0, 0, 0, 0.7);
+    pointer-events: auto;
+    backdrop-filter: blur(8px);
+}
+
+.party-hud-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-bottom: 4px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+    margin-bottom: 6px;
+    font-size: 0.75rem;
+    font-weight: 800;
+    color: #38bdf8;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.party-leave-btn {
+    background: #ef4444;
+    border: none;
+    color: #fff;
+    font-size: 0.65rem;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background 0.15s, transform 0.1s;
+}
+
+.party-leave-btn:hover {
+    background: #dc2626;
+    transform: scale(1.05);
+}
+
+.party-member-card {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    padding: 4px 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.party-member-card:last-child {
+    border-bottom: none;
+}
+
+.party-member-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.74rem;
+}
+
+.party-member-name {
+    color: #f8fafc;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.party-member-leader {
+    color: #ffd700;
+    font-size: 0.75rem;
+}
+
+.party-member-class {
+    color: #94a3b8;
+    font-size: 0.68rem;
+}
+
+.party-hp-bar {
+    width: 100%;
+    height: 6px;
+    background: rgba(0, 0, 0, 0.65);
+    border-radius: 3px;
+    overflow: hidden;
+    position: relative;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.party-hp-fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.25s ease-out;
+}
+
+/* ============================================================
+   PARTY INVITATION PROMPT MODAL
+   ============================================================ */
+.party-invite-dialog {
+    position: fixed;
+    top: 22%;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10000;
+    pointer-events: auto;
+    animation: bounceInPrompt 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+@keyframes bounceInPrompt {
+    0% { opacity: 0; transform: translate(-50%, -20px) scale(0.92); }
+    100% { opacity: 1; transform: translate(-50%, 0) scale(1); }
+}
+
+.party-invite-card {
+    background: linear-gradient(135deg, rgba(15, 23, 42, 0.98), rgba(30, 41, 59, 0.98));
+    border: 2px solid #38bdf8;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.85), 0 0 20px rgba(56, 189, 248, 0.35);
+    border-radius: 12px;
+    padding: 16px 22px;
+    min-width: 290px;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    backdrop-filter: blur(10px);
+}
+
+.party-invite-header {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+.party-invite-icon {
+    font-size: 1.3rem;
+}
+
+.party-invite-title {
+    font-size: 1rem;
+    font-weight: 800;
+    color: #38bdf8;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.party-invite-text {
+    font-size: 0.85rem;
+    color: #e2e8f0;
+}
+
+.party-invite-actions {
+    display: flex;
+    justify-content: center;
+    gap: 12px;
+}
+
+.party-btn {
+    padding: 7px 18px;
+    border-radius: 6px;
+    font-size: 0.82rem;
+    font-weight: 700;
+    cursor: pointer;
+    border: none;
+    transition: transform 0.15s, background 0.15s;
+}
+
+.party-btn:hover {
+    transform: scale(1.05);
+}
+
+.party-btn-accept {
+    background: linear-gradient(135deg, #22c55e, #16a34a);
+    color: #fff;
+    box-shadow: 0 0 10px rgba(34, 197, 94, 0.4);
+}
+
+.party-btn-decline {
+    background: linear-gradient(135deg, #ef4444, #dc2626);
+    color: #fff;
+}
+
+/* ============================================================
+   FRIENDS LIST MODAL (HOTKEY 'F')
+   ============================================================ */
+.friend-item-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 10px;
+    background: rgba(30, 41, 59, 0.5);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 6px;
+    transition: background 0.15s;
+}
+
+.friend-item-row:hover {
+    background: rgba(30, 41, 59, 0.85);
+}
+
+.friend-meta-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.friend-status-dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.friend-status-dot.online {
+    background: #22c55e;
+    box-shadow: 0 0 8px #22c55e;
+}
+
+.friend-status-dot.offline {
+    background: #64748b;
+}
+
+.friend-name-col {
+    display: flex;
+    flex-direction: column;
+}
+
+.friend-name-text {
+    font-weight: 700;
+    font-size: 0.88rem;
+    color: #f8fafc;
+}
+
+.friend-sub-text {
+    font-size: 0.72rem;
+    color: #94a3b8;
+}
+
+.friend-actions-right {
+    display: flex;
+    gap: 6px;
+}
+
+.friend-act-btn {
+    padding: 4px 10px;
+    border-radius: 4px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    cursor: pointer;
+    border: none;
+    transition: background 0.15s, transform 0.1s;
+}
+
+.friend-act-btn:hover {
+    transform: scale(1.05);
+}
+
+.friend-party-btn {
+    background: #0284c7;
+    color: #fff;
+}
+
+.friend-party-btn:hover {
+    background: #0369a1;
+}
+
+.friend-remove-btn {
+    background: rgba(239, 68, 68, 0.18);
+    color: #ef4444;
+    border: 1px solid rgba(239, 68, 68, 0.4);
+}
+
+.friend-remove-btn:hover {
+    background: #ef4444;
+    color: #fff;
+}
+
+
 
 
 

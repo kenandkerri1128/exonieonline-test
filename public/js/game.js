@@ -584,8 +584,43 @@ export class GameApp {
                 });
 
                 this.socket.on('partyInvite', (data) => {
-                    if (this.ui) this.ui.showToast(`⚔️ [PARTY INVITE] ${data.from} invited you to join their party!`);
+                    if (this.ui) {
+                        this.ui.showToast(`⚔️ [PARTY INVITE] ${data.from} invited you to join their party!`);
+                        this.ui.showPartyInvitePrompt(data);
+                    }
                     this.appendChatLine('system', `⚔️ <b>${data.from}</b> invited you to join their party.`);
+                });
+
+                this.socket.on('partyInviteReceived', (data) => {
+                    if (this.ui) {
+                        this.ui.showToast(`⚔️ [PARTY INVITE] ${data.fromId || data.from} invited you to join their party!`);
+                        this.ui.showPartyInvitePrompt(data);
+                    }
+                });
+
+                this.socket.on('partyUpdate', (partyData) => {
+                    this.party = partyData;
+                    if (this.ui) this.ui.updatePartyHUD(partyData);
+                });
+
+                this.socket.on('partyKickedOrLeft', () => {
+                    this.party = null;
+                    if (this.ui) {
+                        this.ui.updatePartyHUD(null);
+                        this.ui.showToast('You left the party.');
+                    }
+                });
+
+                this.socket.on('partyError', (msg) => {
+                    if (this.ui) this.ui.showToast(`⚠️ ${msg}`);
+                });
+
+                this.socket.on('friendsListUpdate', (friendsList) => {
+                    if (this.ui) this.ui.renderFriendsList(friendsList);
+                });
+
+                this.socket.on('updateLeaderboardUI', (rows) => {
+                    if (this.ui) this.ui.renderLeaderboardData(rows);
                 });
 
                 this.socket.on('raidInvite', (data) => {
@@ -1580,6 +1615,14 @@ export class GameApp {
         this.ui.showToast(`🏰 Raid invitation sent to ${targetName}!`);
     }
 
+    removeFriend(targetName) {
+        if (!targetName) return;
+        if (this.socket) {
+            this.socket.emit('removeFriend', { targetName, targetId: targetName });
+        }
+        if (this.ui) this.ui.showToast(`Removed ${targetName} from friends.`);
+    }
+
     checkPlayerRaycast(clientX, clientY) {
         if (!this.remotePlayers || !this.engine || !this.engine.camera || !this.engine.renderer) return null;
         const rect = this.engine.renderer.domElement.getBoundingClientRect();
@@ -1787,6 +1830,8 @@ export class GameApp {
                 this.ui.toggleInventory();
             } else if (e.code === kb.skills) {
                 this.ui.toggleSkills();
+            } else if (e.code === 'KeyF') {
+                this.ui.toggleFriendsModal();
             } else if (e.code === 'Space') {
                 e.preventDefault();
                 this.onJumpTrigger();
@@ -1815,27 +1860,22 @@ export class GameApp {
             this.keys[e.code] = false;
         });
 
-        // Desktop mouse left-click primary attack combo or remote player interaction click
+        // Desktop mouse left-click: ALWAYS Primary Attack combo (Never opens player menus during combat/aim mode)
         window.addEventListener('mousedown', (e) => {
             if (e.target && e.target.id === 'canvas-3d') {
-                const hitPlayer = this.checkPlayerRaycast(e.clientX, e.clientY);
-                if (hitPlayer) {
-                    e.preventDefault();
-                    if (this.ui) this.ui.openPlayerInteractionMenu(hitPlayer, e.clientX, e.clientY);
-                    return;
-                }
                 if (this.ui) this.ui.closePlayerInteractionMenu();
-
                 if (e.button === 0) {
                     this.onAttackTrigger();
                 }
             }
         });
 
-        // Right-click player interaction context popup on 3D canvas
+        // Right-click: Player Interaction Context Menu (ONLY when not aiming with pointer lock)
         window.addEventListener('contextmenu', (e) => {
             if (e.target && e.target.id === 'canvas-3d') {
                 e.preventDefault();
+                // When in active Dragon Nest pointer lock aim mode, right click should not interrupt aiming
+                if (this.engine && this.engine.isPointerLocked) return;
                 const hitPlayer = this.checkPlayerRaycast(e.clientX, e.clientY);
                 if (hitPlayer) {
                     if (this.ui) this.ui.openPlayerInteractionMenu(hitPlayer, e.clientX, e.clientY);
@@ -1957,6 +1997,11 @@ export class GameApp {
         // Build the 3D map from 2D Exonie dataset
         const data = this.world.loadMap(mapId, targetX, targetY);
         this.player.pos.copy(data.spawn);
+
+        // 🛡️ Authentic 2D: Purification uses reset to 0 upon entering Town
+        if (mapId === 'town' && this.player) {
+            this.player.purificationUses = 0;
+        }
 
         // Safety check: ensure player is never spawned inside a wall or pillar collider
         if (this.world.checkCollision(this.player.pos.x, this.player.pos.z, 0.7)) {
@@ -2297,7 +2342,9 @@ export class GameApp {
     onMonsterHitPlayer(rawDmg, attackType = 'Attack', monster = null) {
         if (this.isGhost || this.player.isInvulnerable) return;
 
-        let dmg = Math.max(1, rawDmg - this.player.def);
+        const cleanRaw = (typeof rawDmg === 'number' && Number.isFinite(rawDmg)) ? rawDmg : 15;
+        const playerDef = (typeof this.player.def === 'number' && Number.isFinite(this.player.def)) ? this.player.def : 0;
+        let dmg = Math.max(1, Math.floor(cleanRaw - playerDef));
         if (monster && monster.isDragon && monster.level > this.player.level) {
             dmg += (monster.level - this.player.level);
         }
@@ -2315,13 +2362,14 @@ export class GameApp {
             if (dmg <= 0) return;
         }
 
-        this.player.hp = Math.max(this.player.isImmortal ? 1 : 0, this.player.hp - dmg);
+        const currHp = (typeof this.player.hp === 'number' && Number.isFinite(this.player.hp)) ? this.player.hp : (this.player.maxHp || 105);
+        this.player.hp = Math.max(this.player.isImmortal ? 1 : 0, currHp - dmg);
         this.audio.playSfx('bump');
         this.combat.spawnFloatingDamage(this.player.pos, `-${dmg} (${attackType})`, false);
         this.engine.addScreenshake(0.4);
         this.ui.updatePlayerHUD(this.player);
 
-        if (this.player.hp <= 0) {
+        if (Number.isNaN(this.player.hp) || this.player.hp <= 0) {
             this.player.hp = 0;
             this.isGhost = true;
             this.destroyPlayerShieldVFX();

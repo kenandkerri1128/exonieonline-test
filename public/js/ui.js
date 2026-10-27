@@ -35,6 +35,11 @@ export class UIManager {
         this.dailyMissionsModal = document.getElementById('daily-missions-modal');
         this.tavernModal = document.getElementById('tavern-modal');
         this.leaderboardModal = document.getElementById('leaderboard-modal');
+        this.friendsModal = document.getElementById('friends-modal');
+        this.partyHud = document.getElementById('party-hud');
+        this.partyMembersList = document.getElementById('party-members-list');
+        this.partyInvitePrompt = document.getElementById('party-invite-prompt');
+        this.pendingPartyInviteFrom = null;
         this.dungeonModal = document.getElementById('dungeon-modal');
         this.mazeGuideModal = document.getElementById('maze-guide-modal');
         this.deathScreen = document.getElementById('death-screen');
@@ -432,6 +437,38 @@ export class UIManager {
             if (this.mazeGuideModal) this.mazeGuideModal.style.display = 'none';
             if (this.game) this.game.portalCooldown = 4.0;
         };
+
+        // 🤝 Friends List [F] & Party Event Listeners
+        const btnCloseFriends = document.getElementById('btn-close-friends');
+        if (btnCloseFriends) btnCloseFriends.onclick = () => this.closeFriendsModal();
+
+        const btnSendAddFriend = document.getElementById('btn-send-add-friend');
+        const inputAddFriend = document.getElementById('input-add-friend');
+        if (btnSendAddFriend) {
+            btnSendAddFriend.onclick = () => {
+                const targetName = inputAddFriend ? inputAddFriend.value.trim() : '';
+                if (!targetName) return;
+                if (this.game) this.game.addFriend(targetName);
+                if (inputAddFriend) inputAddFriend.value = '';
+            };
+        }
+        if (inputAddFriend) {
+            inputAddFriend.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    if (btnSendAddFriend) btnSendAddFriend.click();
+                }
+            });
+        }
+
+        const btnPartyAccept = document.getElementById('btn-party-accept');
+        if (btnPartyAccept) btnPartyAccept.onclick = () => this.respondPartyInvite(true);
+
+        const btnPartyDecline = document.getElementById('btn-party-decline');
+        if (btnPartyDecline) btnPartyDecline.onclick = () => this.respondPartyInvite(false);
+
+        const btnLeaveParty = document.getElementById('btn-leave-party');
+        if (btnLeaveParty) btnLeaveParty.onclick = () => this.leaveParty();
     }
 
     setupMobileControls() {
@@ -541,6 +578,29 @@ export class UIManager {
         const pClass = (player.baseStats && player.baseStats.playerClass) || 'No Class';
         if (this.classBadge) this.classBadge.textContent = pClass;
         if (this.goldCounter) this.goldCounter.textContent = Number(player.gold || 0).toLocaleString();
+
+        // 🛡️ Distinct Class Logo & Themed Aura Glow in Player Profile Avatar Frame
+        const classLogos = {
+            'Blademaster':       { icon: '🗡️', color: '#00e5ff', glow: 'rgba(0, 229, 255, 0.45)' },
+            'Berserker':         { icon: '⚔️', color: '#ff1744', glow: 'rgba(255, 23, 68, 0.45)' },
+            'Healer':            { icon: '🌿', color: '#00e676', glow: 'rgba(0, 230, 118, 0.45)' },
+            'Summoner':          { icon: '🔮', color: '#2979ff', glow: 'rgba(41, 121, 255, 0.45)' },
+            'Ice Master':        { icon: '❄️', color: '#00b0ff', glow: 'rgba(0, 176, 255, 0.45)' },
+            'Sniper':            { icon: '🎯', color: '#ffd600', glow: 'rgba(255, 214, 0, 0.45)' },
+            'Explosives Expert': { icon: '💣', color: '#ff6d00', glow: 'rgba(255, 109, 0, 0.45)' },
+            'Phantom Striker':   { icon: '🌘', color: '#d500f9', glow: 'rgba(213, 0, 249, 0.45)' },
+            'Ninja Assassin':    { icon: '⚡', color: '#ffea00', glow: 'rgba(255, 234, 0, 0.45)' },
+            'Tech Genius':       { icon: '🤖', color: '#1de9b6', glow: 'rgba(29, 233, 182, 0.45)' },
+            'Novice':            { icon: '🛡️', color: '#94a3b8', glow: 'rgba(148, 163, 184, 0.3)' }
+        };
+        const logoInfo = classLogos[pClass] || classLogos['Novice'];
+        const avatarIcon = document.querySelector('.player-avatar-icon');
+        const avatarFrame = document.querySelector('.player-avatar-frame');
+        if (avatarIcon) avatarIcon.textContent = logoInfo.icon;
+        if (avatarFrame) {
+            avatarFrame.style.borderColor = logoInfo.color;
+            avatarFrame.style.boxShadow = `0 0 14px ${logoInfo.glow}`;
+        }
 
         // Potion Quantity in Hotbar
         const potCount = this.game.getPotionCount();
@@ -1409,36 +1469,234 @@ export class UIManager {
         if (!this.leaderboardModal) return;
         document.exitPointerLock?.();
         this.activeLeaderboardTab = tab;
-        this.renderLeaderboard(tab);
-        this.leaderboardModal.style.display = 'flex';
-    }
-
-    renderLeaderboard(tab = 'floor') {
         ['floor', 'mini', 'common'].forEach(t => {
             const btn = document.getElementById(`lb-tab-${t}`);
             if (btn) btn.classList.toggle('active', t === tab);
         });
         const tbody = document.getElementById('leaderboard-tbody');
+        if (tbody) {
+            tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:22px; color:#94a3b8;">Loading Supabase Tavern Rankings...</td></tr>';
+        }
+        if (this.game && this.game.socket) {
+            this.game.socket.emit('getTavernLeaderboard');
+        }
+        this.leaderboardModal.style.display = 'flex';
+    }
+
+    renderLeaderboard(tab = 'floor') {
+        this.openLeaderboardModal(tab);
+    }
+
+    renderLeaderboardData(rows) {
+        const tbody = document.getElementById('leaderboard-tbody');
         if (!tbody) return;
-        const rows = this.game ? this.game.getTavernLeaderboard(tab) : [];
         tbody.innerHTML = '';
+
+        if (!Array.isArray(rows) || rows.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:22px; color:#94a3b8;">No Tavern Speedruns recorded yet in Supabase!</td></tr>';
+            return;
+        }
+
+        const classLogos = {
+            'Blademaster': '🗡️', 'Berserker': '⚔️', 'Healer': '🌿',
+            'Summoner': '🔮', 'Ice Master': '❄️', 'Sniper': '🎯',
+            'Explosives Expert': '💣', 'Phantom Striker': '🌘',
+            'Ninja Assassin': '⚡', 'Tech Genius': '🤖', 'Novice': '🛡️'
+        };
+
+        const catLabels = {
+            'floor_boss': '👑 Floor Boss',
+            'mini_boss': '⭐ Mini Boss',
+            'common_mobs': '👾 Common'
+        };
+
+        const myName = (this.game && this.game.player && this.game.player.name) || '';
 
         rows.forEach((r, idx) => {
             const tr = document.createElement('tr');
             const isTop3 = idx < 3;
             const rankMedal = idx === 0 ? '🥇 1' : (idx === 1 ? '🥈 2' : (idx === 2 ? '🥉 3' : `${idx + 1}`));
+            const pName = r.character_name || r.name || 'Hero';
+            const isSelf = myName && (pName === myName);
+            const pClass = r.player_class || r.playerClass || 'Novice';
+            const icon = classLogos[pClass] || '🛡️';
+            const pLvl = r.player_level || r.level || 1;
+            const mobLvl = r.mob_level || 1;
+            const oppStr = `${catLabels[r.mob_type] || 'Boss'} (Lv.${mobLvl})`;
+
+            const rawVal = Number(r.time_taken !== undefined ? r.time_taken : (r.timeMs / 1000 || 0));
+            const sec = (rawVal > 500) ? (rawVal / 1000) : rawVal;
+            const mins = Math.floor(sec / 60);
+            const remainSec = (sec % 60).toFixed(2);
+            const timeFormatted = mins > 0 ? `${mins}m ${remainSec}s` : `${remainSec}s`;
+
             tr.style.borderBottom = '1px solid rgba(51,65,85,0.6)';
-            if (r.isSelf) {
-                tr.style.background = 'rgba(0, 229, 255, 0.14)';
+            if (isSelf) {
+                tr.style.background = 'rgba(0, 229, 255, 0.15)';
             }
             tr.innerHTML = `
                 <td style="padding:7px 8px; font-weight:900; color:${isTop3 ? '#ffd700' : '#94a3b8'};">${rankMedal}</td>
-                <td style="padding:7px 8px; font-weight:800; color:${r.isSelf ? '#00e5ff' : '#fff'};">${r.name}</td>
-                <td style="padding:7px 8px; color:#4ade80;">${r.playerClass || 'Blademaster'}</td>
-                <td style="padding:7px 8px; color:#fbbf24; font-weight:800;">Lv.${r.level}</td>
-                <td style="padding:7px 8px; text-align:right; font-family:var(--font-pixel); color:#38bdf8; font-weight:900;">${(r.timeMs / 1000).toFixed(2)}s</td>
+                <td style="padding:7px 8px; font-weight:800; color:${isSelf ? '#00e5ff' : '#fff'};">${pName} <span style="font-size:0.75rem; color:#ffd700; font-weight:normal;">Lv.${pLvl}</span></td>
+                <td style="padding:7px 8px; color:#4ade80;">${icon} ${pClass}</td>
+                <td style="padding:7px 8px; color:#fbbf24; font-weight:700;">${oppStr}</td>
+                <td style="padding:7px 8px; text-align:right; font-family:var(--font-pixel); color:#38bdf8; font-weight:900;">${timeFormatted}</td>
             `;
             tbody.appendChild(tr);
+        });
+    }
+
+    // ==========================================
+    // 🤝 FRIENDS SYSTEM (HOTKEY 'F')
+    // ==========================================
+    openFriendsModal() {
+        if (!this.friendsModal) return;
+        document.exitPointerLock?.();
+        this.friendsModal.style.display = 'flex';
+        if (this.game && this.game.socket) {
+            this.game.socket.emit('getFriendsList');
+        }
+    }
+
+    closeFriendsModal() {
+        if (this.friendsModal) this.friendsModal.style.display = 'none';
+    }
+
+    toggleFriendsModal() {
+        if (!this.friendsModal) return;
+        if (this.friendsModal.style.display === 'flex') {
+            this.closeFriendsModal();
+        } else {
+            this.openFriendsModal();
+        }
+    }
+
+    renderFriendsList(friendsList) {
+        const container = document.getElementById('friends-list-container');
+        if (!container) return;
+        container.innerHTML = '';
+
+        if (!Array.isArray(friendsList) || friendsList.length === 0) {
+            container.innerHTML = '<p style="color:#94a3b8; font-size:0.85rem; text-align:center; padding:20px; margin:0;">Your friends list is empty. Add friends by name above!</p>';
+            return;
+        }
+
+        const classLogos = {
+            'Blademaster': '🗡️', 'Berserker': '⚔️', 'Healer': '🌿',
+            'Summoner': '🔮', 'Ice Master': '❄️', 'Sniper': '🎯',
+            'Explosives Expert': '💣', 'Phantom Striker': '🌘',
+            'Ninja Assassin': '⚡', 'Tech Genius': '🤖', 'Novice': '🛡️'
+        };
+
+        friendsList.forEach(f => {
+            const row = document.createElement('div');
+            row.className = 'friend-item-row';
+            const isOnline = !!f.online;
+            const pClass = f.pClass || 'Novice';
+            const icon = classLogos[pClass] || '🛡️';
+            const mapStr = isOnline ? `[${f.mapId || 'Town'}]` : '(Offline)';
+
+            row.innerHTML = `
+                <div class="friend-meta-left">
+                    <div class="friend-status-dot ${isOnline ? 'online' : 'offline'}" title="${isOnline ? 'Online' : 'Offline'}"></div>
+                    <div class="friend-name-col">
+                        <span class="friend-name-text">${f.id} <span style="font-size:0.75rem; color:#ffd700; font-weight:normal;">Lv.${f.level || 1}</span></span>
+                        <span class="friend-sub-text">${icon} ${pClass} • ${mapStr}</span>
+                    </div>
+                </div>
+                <div class="friend-actions-right">
+                    ${isOnline ? `<button type="button" class="friend-act-btn friend-party-btn" onclick="window.game && window.game.inviteParty('${f.id}')">Party</button>` : ''}
+                    <button type="button" class="friend-act-btn friend-remove-btn" onclick="window.game && window.game.removeFriend('${f.id}')">Remove</button>
+                </div>
+            `;
+            container.appendChild(row);
+        });
+    }
+
+    // ==========================================
+    // ⚔️ PARTY SYSTEM (PROMPT & HUD)
+    // ==========================================
+    showPartyInvitePrompt(data) {
+        if (!data || !this.partyInvitePrompt) return;
+        this.pendingPartyInviteFrom = data.fromId || data.from || 'Adventurer';
+        const txt = document.getElementById('party-invite-text');
+        if (txt) txt.textContent = `${this.pendingPartyInviteFrom} has invited you to join their party!`;
+        this.partyInvitePrompt.style.display = 'block';
+    }
+
+    closePartyInvitePrompt() {
+        if (this.partyInvitePrompt) this.partyInvitePrompt.style.display = 'none';
+        this.pendingPartyInviteFrom = null;
+    }
+
+    respondPartyInvite(accept) {
+        if (this.pendingPartyInviteFrom && this.game && this.game.socket) {
+            this.game.socket.emit('partyInviteResponse', { fromId: this.pendingPartyInviteFrom, accept });
+        }
+        this.closePartyInvitePrompt();
+    }
+
+    leaveParty() {
+        if (this.game && this.game.socket) {
+            this.game.socket.emit('leaveParty');
+        }
+        this.updatePartyHUD(null);
+    }
+
+    updatePartyHUD(partyData) {
+        const hud = this.partyHud || document.getElementById('party-hud');
+        const list = this.partyMembersList || document.getElementById('party-members-list');
+        const title = document.getElementById('party-hud-title');
+        if (!hud || !list) return;
+
+        if (!partyData || !Array.isArray(partyData.members) || partyData.members.length <= 1) {
+            hud.style.display = 'none';
+            list.innerHTML = '';
+            return;
+        }
+
+        hud.style.display = 'block';
+        if (title) title.textContent = `⚔️ Party (${partyData.members.length}/4)`;
+        list.innerHTML = '';
+
+        const classLogos = {
+            'Blademaster': '🗡️', 'Berserker': '⚔️', 'Healer': '🌿',
+            'Summoner': '🔮', 'Ice Master': '❄️', 'Sniper': '🎯',
+            'Explosives Expert': '💣', 'Phantom Striker': '🌘',
+            'Ninja Assassin': '⚡', 'Tech Genius': '🤖', 'Novice': '🛡️'
+        };
+
+        const myName = (this.game && this.game.player && this.game.player.name) || '';
+
+        partyData.members.forEach(m => {
+            const card = document.createElement('div');
+            card.className = 'party-member-card';
+
+            const isLeader = partyData.leaderId === m.id;
+            const isMe = m.name === myName || m.id === myName;
+            const pClass = m.playerClass || 'Novice';
+            const icon = classLogos[pClass] || '🛡️';
+
+            const maxHp = Number(m.maxHp) || 100;
+            const curHp = (typeof m.currentHp === 'number') ? m.currentHp : maxHp;
+            const hpPct = Math.max(0, Math.min(100, Math.round((curHp / maxHp) * 100)));
+            const isGhost = !!m.isGhost;
+            const barBg = isGhost ? '#64748b' : (hpPct < 30 ? '#ef4444' : '#22c55e');
+
+            card.innerHTML = `
+                <div class="party-member-row">
+                    <span class="party-member-name" style="color:${isMe ? '#38bdf8' : '#f8fafc'};">
+                        ${isLeader ? '<span class="party-member-leader" title="Party Leader">👑</span>' : ''}
+                        ${m.name || m.id}
+                        <span style="font-size:0.68rem; color:#ffd700; font-weight:normal;">Lv.${m.level || 1}</span>
+                        ${isGhost ? '<span style="color:#ef4444; font-size:0.65rem;">(DEAD)</span>' : ''}
+                    </span>
+                    <span class="party-member-class">${icon} ${pClass}</span>
+                </div>
+                <div class="party-hp-bar">
+                    <div class="party-hp-fill" style="width:${hpPct}%; background:${barBg};"></div>
+                </div>
+            `;
+            list.appendChild(card);
         });
     }
 
