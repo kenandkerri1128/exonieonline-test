@@ -1183,41 +1183,59 @@ io.on('connection', (socket) => {
     // 7. ENTER 3D WORLD
     socket.on('enterWorld', async (data) => {
         try {
-            const charName = (data && (data.character_name || data.name)) ? String(data.character_name || data.name).trim() : null;
-            const explicitSlot = (data && data.slotIndex !== undefined && data.slotIndex !== null && !isNaN(data.slotIndex)) ? Number(data.slotIndex) : null;
-            const identifier = (data && (data.email || data.username || data.character_name)) || socket.accountIdentifier || socket.email || socket.primaryCharName;
+            if (!data) return;
+            const charName = (data.character_name || data.name) ? String(data.character_name || data.name).trim() : null;
+            const explicitSlot = (data.slotIndex !== undefined && data.slotIndex !== null && !isNaN(data.slotIndex)) ? Number(data.slotIndex) : null;
+            const identifier = data.email || data.username || socket.email || socket.accountIdentifier;
             let slotData = null;
 
-            if (identifier) {
+            // PRIORITY 1: Exact match on character_name directly in Supabase (2D single-row schema & 3D pipe schema)
+            if (supabase && charName && charName !== 'Hero') {
+                try {
+                    const { data: dbChar } = await supabase.from('Exonians').select('*').ilike('character_name', charName).maybeSingle();
+                    if (dbChar) {
+                        if (String(dbChar.character_name).includes('|')) {
+                            const slots = parseAccountSlots(dbChar);
+                            slotData = slots.find(s => s && s.name && s.name.toLowerCase() === charName.toLowerCase()) || (explicitSlot !== null ? slots[explicitSlot] : null);
+                        } else {
+                            slotData = convert2DRowToSlot(dbChar, explicitSlot !== null ? explicitSlot : 0);
+                        }
+                    }
+                } catch (e) {
+                    console.warn('[ENTER WORLD] Supabase direct lookup notice:', e.message);
+                }
+            }
+
+            // PRIORITY 2: If not found yet and identifier provided, query account rows
+            if (!slotData && identifier) {
                 const dbRows = await findAccountRows(identifier);
                 if (dbRows && dbRows.length > 0) {
                     const slots = parseRowsToSlots(dbRows);
-                    // Match Priority 1: exact character name match
                     if (charName && charName !== 'Hero') {
                         slotData = slots.find(s => s && s.name && s.name.toLowerCase() === charName.toLowerCase());
                     }
-                    // Match Priority 2: explicit slot index
-                    if (!slotData && explicitSlot !== null && explicitSlot >= 0 && explicitSlot < slots.length) {
+                    if (!slotData && explicitSlot !== null && explicitSlot >= 0 && explicitSlot < slots.length && slots[explicitSlot]) {
                         slotData = slots[explicitSlot];
-                    }
-                    // Match Priority 3: first non-null slot
-                    if (!slotData) {
-                        slotData = slots.find(s => s !== null) || slots[0];
                     }
                 }
             }
 
-            const pData = slotData || data || {};
-            const finalName = (charName && charName !== 'Hero') ? charName : (pData.name || pData.character_name || 'Hero');
-            const userEmail = socket.email || (data && data.email) || (slotData && slotData.email) || '';
-            const slotIdx = (slotData && slotData.slotIndex !== undefined) ? slotData.slotIndex : (explicitSlot !== null ? explicitSlot : 0);
+            const pData = slotData || {};
+            const finalName = charName || pData.name || pData.character_name || (data && data.name) || 'Exonian';
+            const userEmail = socket.email || data.email || pData.email || '';
+            const slotIdx = (explicitSlot !== null && explicitSlot >= 0) ? explicitSlot : (pData.slotIndex || 0);
 
-            const equips = (data && data.equips && Object.keys(data.equips).length > 0) ? data.equips : (pData.equips || {});
-            const weapon = (data && data.weapon) || (equips && equips.weapon) || pData.weapon || null;
-            const className = (data && data.playerClass) || (pData.base_stats && pData.base_stats.playerClass) || pData.playerClass || pData.className || 'Novice';
-            const level = (data && data.level) || pData.level || 1;
-            const hp = (data && data.hp) || pData.hp || 500;
-            const maxHp = (data && data.maxHp) || (pData.base_stats && pData.base_stats.hp) || 500;
+            // Client data is authoritative for cosmetic choices (gender, hair, skin) configured in character selection
+            const gender = data.gender || pData.gender || 'female';
+            const hairStyle = String(data.hairStyle || pData.hairStyle || pData.hair_style || '1');
+            const hairColor = data.hairColor || pData.hairColor || pData.hair_color || '#111111';
+            const skinColor = data.skinColor || pData.skinColor || pData.skin_color || '#f5c6a5';
+            const equips = (data.equips && Object.keys(data.equips).length > 0) ? data.equips : (pData.equips || {});
+            const weapon = data.weapon || (equips && equips.weapon) || pData.weapon || null;
+            const className = data.playerClass || pData.playerClass || (pData.base_stats && pData.base_stats.playerClass) || 'Novice';
+            const level = Number(data.level) || Number(pData.level) || 1;
+            const hp = Number(data.hp) || Number(pData.hp) || 500;
+            const maxHp = Number(data.maxHp) || Number(pData.maxHp) || (pData.base_stats && pData.base_stats.hp) || 500;
 
             socket.accountIdentifier = userEmail || finalName;
             socket.characterName = finalName;
@@ -1226,13 +1244,13 @@ io.on('connection', (socket) => {
                 socketId: socket.id,
                 email: userEmail,
                 slotIndex: slotIdx,
-                id: finalName,
+                id: socket.id,
                 name: finalName,
                 character_name: finalName,
-                gender: (data && data.gender) || pData.gender || 'female',
-                hairStyle: (data && data.hairStyle) || pData.hair_style || pData.hairStyle || '1',
-                hairColor: (data && data.hairColor) || pData.hair_color || pData.hairColor || '#111111',
-                skinColor: (data && data.skinColor) || pData.skin_color || pData.skinColor || '#f5c6a5',
+                gender: gender,
+                hairStyle: hairStyle,
+                hairColor: hairColor,
+                skinColor: skinColor,
                 className: className,
                 playerClass: className,
                 level: level,
@@ -1240,7 +1258,7 @@ io.on('connection', (socket) => {
                 gold: pData.gold !== undefined ? pData.gold : 500,
                 equips: equips,
                 weapon: weapon,
-                inventory: pData.inventory || [],
+                inventory: data.inventory || pData.inventory || [],
                 baseStats: pData.base_stats || pData.baseStats || {},
                 hp: hp,
                 maxHp: maxHp,
@@ -1248,10 +1266,10 @@ io.on('connection', (socket) => {
                 maxMp: 200,
                 atk: 50,
                 def: 10,
-                x: (data && data.pos && data.pos.x) || data.x || 0,
-                y: (data && data.pos && data.pos.y) || data.y || 0,
-                z: (data && data.pos && data.pos.z) || data.z || 0,
-                rotY: (data && data.pos && data.pos.rotY) || data.rotY || 0,
+                x: (data.pos && data.pos.x) || data.x || 0,
+                y: (data.pos && data.pos.y) || data.y || 0,
+                z: (data.pos && data.pos.z) || data.z || 0,
+                rotY: (data.pos && data.pos.rotY) || data.rotY || 0,
                 anim: 'idle'
             };
 
@@ -1335,9 +1353,12 @@ io.on('connection', (socket) => {
 
     socket.on('chatMessage', (data) => {
         if (!data) return;
-        const author = (onlinePlayers[socket.id] && onlinePlayers[socket.id].name) || socket.characterName || data.id || 'Hero';
+        const sender = onlinePlayers[socket.id];
+        const author = (sender && sender.name) || socket.characterName || (data && data.name) || (data && data.id) || 'Exonian';
         socket.broadcast.emit('chatMessage', {
             id: author,
+            name: author,
+            socketId: socket.id,
             text: data.text
         });
     });
@@ -1364,10 +1385,11 @@ io.on('connection', (socket) => {
         }
 
         const safeText = String(data.text).slice(0, 120);
-        const name = (onlinePlayers[socket.id] && onlinePlayers[socket.id].name) || socket.characterName || data.id || 'Hero';
+        const sender = onlinePlayers[socket.id];
+        const name = (sender && sender.name) || socket.characterName || (data && data.name) || (data && data.id) || 'Exonian';
 
         // Broadcast to all other sockets without double-sending to sender
-        socket.broadcast.emit('worldChatMessage', { id: name, text: safeText });
+        socket.broadcast.emit('worldChatMessage', { id: name, name: name, socketId: socket.id, text: safeText });
     });
 
     // ==========================================
@@ -1447,7 +1469,11 @@ io.on('connection', (socket) => {
         let target = null;
         for (const sid in onlinePlayers) {
             const p = onlinePlayers[sid];
-            if (p && ((p.name && p.name.toLowerCase() === targetQuery) || (p.id && p.id.toLowerCase() === targetQuery) || (p.character_name && p.character_name.toLowerCase() === targetQuery) || sid === targetQuery)) {
+            if (p && (sid.toLowerCase() === targetQuery || 
+                     (p.socketId && p.socketId.toLowerCase() === targetQuery) ||
+                     (p.name && p.name.toLowerCase() === targetQuery) || 
+                     (p.character_name && p.character_name.toLowerCase() === targetQuery) || 
+                     (p.id && String(p.id).toLowerCase() === targetQuery))) {
                 target = p;
                 break;
             }
@@ -1455,8 +1481,9 @@ io.on('connection', (socket) => {
 
         if (target) {
             return socket.emit('inspectData', {
-                id: target.id || target.name,
-                name: target.name || 'Hero',
+                id: target.socketId || target.id || target.name,
+                socketId: target.socketId || target.id,
+                name: target.name || target.character_name || 'Exonian',
                 level: target.level || 1,
                 playerClass: target.className || target.playerClass || target.baseStats?.playerClass || 'Novice',
                 currentHp: target.hp || target.currentHp || 100,

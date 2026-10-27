@@ -163,7 +163,10 @@ export class UIManager {
                 e.stopPropagation();
                 const target = this.selectedTargetPlayer;
                 this.closePlayerInteractionMenu();
-                if (target && this.game) this.game.inspectPlayer(target.name);
+                if (target && this.game) {
+                    const lookup = target.socketId || target.id || target.name;
+                    this.game.inspectPlayer(lookup);
+                }
             };
         }
         const btnCtxFriend = document.getElementById('btn-ctx-friend');
@@ -172,7 +175,10 @@ export class UIManager {
                 e.stopPropagation();
                 const target = this.selectedTargetPlayer;
                 this.closePlayerInteractionMenu();
-                if (target && this.game) this.game.addFriend(target.name);
+                if (target && this.game) {
+                    const lookup = target.name || target.character_name || target.socketId;
+                    this.game.addFriend(lookup);
+                }
             };
         }
         const btnCtxParty = document.getElementById('btn-ctx-party');
@@ -181,7 +187,10 @@ export class UIManager {
                 e.stopPropagation();
                 const target = this.selectedTargetPlayer;
                 this.closePlayerInteractionMenu();
-                if (target && this.game) this.game.inviteParty(target.name);
+                if (target && this.game) {
+                    const lookup = target.name || target.character_name || target.socketId;
+                    this.game.inviteParty(lookup);
+                }
             };
         }
         const btnCtxRaid = document.getElementById('btn-ctx-raid');
@@ -190,7 +199,10 @@ export class UIManager {
                 e.stopPropagation();
                 const target = this.selectedTargetPlayer;
                 this.closePlayerInteractionMenu();
-                if (target && this.game) this.game.inviteRaid(target.name);
+                if (target && this.game) {
+                    const lookup = target.name || target.character_name || target.socketId;
+                    this.game.inviteRaid(lookup);
+                }
             };
         }
         const btnCloseCtx = document.getElementById('btn-close-player-ctx');
@@ -1238,7 +1250,8 @@ export class UIManager {
 
         const nameEl = document.getElementById('player-ctx-name');
         const lvlEl = document.getElementById('player-ctx-level');
-        if (nameEl) nameEl.textContent = targetPlayer.name || 'Hero';
+        const charName = targetPlayer.name || targetPlayer.character_name || 'Exonian';
+        if (nameEl) nameEl.textContent = charName;
         if (lvlEl) {
             const pClass = targetPlayer.className || targetPlayer.playerClass || 'Novice';
             lvlEl.textContent = `Lv.${targetPlayer.level || 1} • ${pClass}`;

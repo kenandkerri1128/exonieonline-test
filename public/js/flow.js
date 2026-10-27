@@ -918,11 +918,12 @@ window.ExonieFlow = {
 
         const s = this.getSocket();
         if (s && s.connected) {
-            s.emit('enterWorld', {
+            s.emit('enterWorld', Object.assign({}, savedChar, {
                 email: this.accountEmail,
                 slotIndex: slotIdx,
-                character_name: charName
-            });
+                character_name: charName,
+                name: charName
+            }));
         }
 
         this.showLoadingTransition('Town of Exonie', `Welcome back, ${charName} (Lv.${savedChar.level || 1})!`, 1350, () => {

@@ -1,12 +1,12 @@
 import * as THREE from 'three';
-import { Engine3D } from './engine3d.js?v=2.2';
-import { Character3D } from './character3d.js?v=2.2';
-import { World3D } from './world3d.js?v=2.2';
-import { Monster3D } from './monsters3d.js?v=2.2';
-import { CombatSystem } from './combat.js?v=2.2';
-import { UIManager } from './ui.js?v=2.2';
-import { CLASSES, MONSTER_DATABASE, STARTER_ITEMS, DEFAULT_BASE_STATS, MAX_LEVEL, getExpForNextLevel, generateLoot, getItemSellPrice } from './game_data.js?v=2.2';
-import { MAPS_DATA } from './maps_data.js?v=2.2';
+import { Engine3D } from './engine3d.js?v=2.3';
+import { Character3D } from './character3d.js?v=2.3';
+import { World3D } from './world3d.js?v=2.3';
+import { Monster3D } from './monsters3d.js?v=2.3';
+import { CombatSystem } from './combat.js?v=2.3';
+import { UIManager } from './ui.js?v=2.3';
+import { CLASSES, MONSTER_DATABASE, STARTER_ITEMS, DEFAULT_BASE_STATS, MAX_LEVEL, getExpForNextLevel, generateLoot, getItemSellPrice } from './game_data.js?v=2.3';
+import { MAPS_DATA } from './maps_data.js?v=2.3';
 
 // ==========================================
 // AUDIO MANAGER (EXONIE SOUND EFFECTS & BGM)
@@ -142,8 +142,9 @@ export class GameApp {
         this.jumpForce = 9.5;
 
         // Player State strictly conforming to 2D Exonie rules
+        this.hasEnteredWorld = false;
         this.player = {
-            name: 'Hero',
+            name: '',
             gender: 'female',
             hairStyle: '1',
             hairColor: '#111111',
@@ -426,7 +427,8 @@ export class GameApp {
                         : 'active server';
                     console.log(`[Socket] Connected to Exonie server (Socket ID: ${this.socket.id})`);
                     this.appendChatLine('system', `📡 Connected to Exonie Server (${activeUrl.replace(/https?:\/\//, '')})`);
-                    if (this.player && this.player.name) {
+                    // Only send enterWorld if the player has actually chosen a character and entered the game
+                    if (this.hasEnteredWorld && this.player && this.player.name) {
                         this.sendEnterWorld();
                     }
                 });
@@ -443,7 +445,8 @@ export class GameApp {
                     console.log('📡 [Multiplayer] Received gameState:', data);
                     if (data && data.players) {
                         for (const [sid, pData] of Object.entries(data.players)) {
-                            if (pData.name !== this.player.name && sid !== this.socket.id) {
+                            const myName = this.player?.name;
+                            if (sid !== this.socket.id && (!myName || pData.name !== myName)) {
                                 this.addRemotePlayer(sid, pData);
                             }
                         }
@@ -451,15 +454,18 @@ export class GameApp {
                 });
 
                 this.socket.on('playerJoined', (pData) => {
-                    if (!pData || pData.name === this.player.name || pData.socketId === this.socket.id) return;
-                    console.log(`👋 [Multiplayer] Remote player joined: ${pData.name}`);
-                    this.addRemotePlayer(pData.socketId || pData.id, pData);
+                    if (!pData) return;
+                    const sid = pData.socketId || pData.id;
+                    if (sid === this.socket.id || (this.player.name && pData.name === this.player.name)) return;
+                    console.log(`👋 [Multiplayer] Remote player joined/updated: ${pData.name} (Socket: ${sid})`);
+                    this.addRemotePlayer(sid, pData);
                     this.appendChatLine('system', `👋 Player ${pData.name} joined the realm.`);
                 });
 
                 this.socket.on('playerMoved', (pData) => {
-                    if (!pData || pData.name === this.player.name) return;
+                    if (!pData || (this.player.name && pData.name === this.player.name)) return;
                     const sid = pData.socketId || pData.id;
+                    if (sid === this.socket.id) return;
                     const rp = this.remotePlayers[sid];
                     if (rp) {
                         rp.targetPos.set(pData.x || 0, pData.y || 0, pData.z || 0);
@@ -484,19 +490,21 @@ export class GameApp {
                 // 2D Exonie Chat Message Listeners (server.js lines 4795-4799)
                 this.socket.on('chatMessage', (data) => {
                     if (data && data.text) {
-                        const name = data.id || 'Player';
-                        if (name !== this.player.name) {
+                        const name = data.name || data.id || 'Player';
+                        const senderSid = data.socketId;
+                        if (senderSid !== this.socket.id && name !== this.player.name) {
                             this.appendChatLine('local', `<b>${name}:</b> ${escapeHtml(data.text)}`);
-                            this.showSpeechBubble(name, data.text);
+                            this.showSpeechBubble(name, data.text, senderSid);
                         }
                     }
                 });
 
                 this.socket.on('worldChatMessage', (data) => {
                     if (data && data.text) {
-                        const name = data.id || 'Player';
+                        const name = data.name || data.id || 'Player';
+                        const senderSid = data.socketId;
                         // Do not duplicate self-sent messages
-                        if (name !== this.player.name) {
+                        if (senderSid !== this.socket.id && name !== this.player.name) {
                             this.appendChatLine('world', `<b>[W] ${name}:</b> ${escapeHtml(data.text)}`);
                             if (this.activeChatTab !== 'world') {
                                 const dot = document.getElementById('world-unread-dot');
@@ -596,10 +604,32 @@ export class GameApp {
     }
 
     addRemotePlayer(id, data) {
-        if (this.remotePlayers[id]) return;
+        if (!id || !data) return;
+        const charName = data.name || data.character_name || 'Exonian';
+
+        // If player already exists, check if their model needs to be re-created (e.g. name or appearance changed)
+        if (this.remotePlayers[id]) {
+            const existing = this.remotePlayers[id];
+            if (existing.name !== charName || existing.gender !== data.gender || String(existing.hairStyle) !== String(data.hairStyle || '1') || existing.hairColor !== data.hairColor) {
+                this.removeRemotePlayer(id);
+            } else {
+                // Otherwise refresh stats, equips and weapon
+                existing.level = data.level || existing.level || 1;
+                existing.hp = data.hp || existing.hp || 500;
+                existing.maxHp = data.maxHp || existing.maxHp || 500;
+                existing.className = data.className || data.playerClass || existing.className;
+                existing.playerClass = existing.className;
+                existing.equips = data.equips || existing.equips;
+                const w = (data.equips && data.equips.weapon) || data.weapon || existing.weapon;
+                if (w && existing.char3D) existing.char3D.setWeaponFromObject(w);
+                if (existing.char3D) existing.char3D.updateOverheadUI(existing.name, existing.level, existing.hp, existing.maxHp, false);
+                return;
+            }
+        }
+
         const wpn = (data.equips && data.equips.weapon) || data.weapon || null;
         const char3D = new Character3D({
-            name: data.name || 'Exonian',
+            name: charName,
             gender: data.gender || 'female',
             hairStyle: String(data.hairStyle || '1'),
             hairColor: data.hairColor || '#111111',
@@ -620,10 +650,18 @@ export class GameApp {
 
         this.remotePlayers[id] = {
             id: id,
-            name: data.name || 'Exonian',
+            socketId: data.socketId || id,
+            name: charName,
+            character_name: charName,
+            gender: data.gender || 'female',
+            hairStyle: String(data.hairStyle || '1'),
+            hairColor: data.hairColor || '#111111',
+            skinColor: data.skinColor || '#f5c6a5',
             level: data.level || 1,
             hp: data.hp || 500,
             maxHp: data.maxHp || 500,
+            className: data.className || data.playerClass || 'Novice',
+            playerClass: data.className || data.playerClass || 'Novice',
             char3D: char3D,
             equips: data.equips || {},
             weapon: wpn,
@@ -631,7 +669,7 @@ export class GameApp {
             targetPos: new THREE.Vector3(data.x || 0, data.y || 0, data.z || 0),
             targetRotY: data.rotY || 0
         };
-        char3D.updateOverheadUI(data.name || 'Exonian', data.level || 1, data.hp || 500, data.maxHp || 500, false);
+        char3D.updateOverheadUI(charName, data.level || 1, data.hp || 500, data.maxHp || 500, false);
     }
 
     removeRemotePlayer(id) {
@@ -658,7 +696,8 @@ export class GameApp {
     }
 
     sendEnterWorld() {
-        if (!this.socket || !this.socket.connected) return;
+        if (!this.socket || !this.socket.connected || !this.player || !this.player.name) return;
+        this.hasEnteredWorld = true;
         const pClass = this.player.baseStats?.playerClass || 'Novice';
         const activeSlot = (this.player.slotIndex !== undefined && this.player.slotIndex !== null)
             ? Number(this.player.slotIndex)
@@ -775,14 +814,14 @@ export class GameApp {
             const formatted = `<b>[W] ${playerName}:</b> ${escapeHtml(text)}`;
             this.appendChatLine('world', formatted);
             if (this.socket) {
-                this.socket.emit('worldChatMessage', { id: playerName, text });
+                this.socket.emit('worldChatMessage', { id: playerName, name: playerName, socketId: this.socket.id, text });
             }
         } else {
             const formatted = `<b>${playerName}:</b> ${escapeHtml(text)}`;
             this.appendChatLine('local', formatted);
-            this.showSpeechBubble(playerName, text);
+            this.showSpeechBubble(playerName, text, this.socket?.id);
             if (this.socket) {
-                this.socket.emit('chatMessage', { id: playerName, text });
+                this.socket.emit('chatMessage', { id: playerName, name: playerName, socketId: this.socket.id, text });
             }
         }
     }
@@ -804,18 +843,26 @@ export class GameApp {
         }
     }
 
-    showSpeechBubble(speakerName, text) {
+    showSpeechBubble(speakerName, text, speakerSocketId = null) {
         const bubble = document.createElement('div');
         bubble.className = 'overhead-chat-bubble';
         bubble.innerText = text;
 
         const getTargetPos = () => {
-            if (!speakerName || speakerName === this.player.name) {
+            if ((!speakerName && !speakerSocketId) || (speakerName && speakerName === this.player.name) || (speakerSocketId && speakerSocketId === this.socket?.id)) {
                 return this.player.pos;
             }
-            const rp = Object.values(this.remotePlayers).find(p => p && p.name === speakerName);
-            if (rp && rp.currentPos) return rp.currentPos;
-            return this.player.pos;
+            // 1. Match remote player by exact socketId
+            if (speakerSocketId && this.remotePlayers[speakerSocketId]) {
+                return this.remotePlayers[speakerSocketId].currentPos;
+            }
+            // 2. Match remote player by character name
+            if (speakerName) {
+                const rp = Object.values(this.remotePlayers).find(p => p && (p.name === speakerName || p.character_name === speakerName));
+                if (rp && rp.currentPos) return rp.currentPos;
+            }
+            // NEVER fallback to local player if it is another player's message!
+            return null;
         };
 
         const updateBubblePos = () => {
@@ -1493,7 +1540,7 @@ export class GameApp {
 
     // Inspect Player System (2D Exonie port)
     inspectPlayer(targetId) {
-        if (!targetId || targetId === this.player.name) {
+        if (!targetId || targetId === this.player.name || targetId === this.socket?.id) {
             this.ui.openInspectModal({
                 name: this.player.name,
                 level: this.player.level,
