@@ -1443,8 +1443,8 @@ io.on('connection', (socket) => {
                 }
             }
 
-            // Sync Floor Boss Cooldowns from Supabase
-            let activeCooldowns = Object.assign({}, bossTimersMemory);
+            // Sync Boss Cooldowns strictly from Supabase boss_timers
+            let activeCooldowns = {};
             if (supabase) {
                 try {
                     const { data: bTimers } = await supabase.from('boss_timers').select('*');
@@ -1465,7 +1465,11 @@ io.on('connection', (socket) => {
                             }
                         });
                     }
-                } catch (e) {}
+                } catch (e) {
+                    activeCooldowns = Object.assign({}, bossTimersMemory);
+                }
+            } else {
+                activeCooldowns = Object.assign({}, bossTimersMemory);
             }
             socket.emit('bossCooldownSync', activeCooldowns);
 
@@ -1474,6 +1478,37 @@ io.on('connection', (socket) => {
         } catch (e) {
             console.error('[ENTER WORLD ERROR]', e);
         }
+    });
+
+    socket.on('requestBossCooldownSync', async () => {
+        let activeCooldowns = {};
+        if (supabase) {
+            try {
+                const { data: bTimers } = await supabase.from('boss_timers').select('*');
+                if (bTimers) {
+                    const now = Date.now();
+                    bTimers.forEach(t => {
+                        const deathTime = parseInt(t.last_death_time) || 0;
+                        let rem = 0;
+                        if (t.boss_id === 'neutralzone_boss') {
+                            rem = (deathTime + (5 * 60 * 60 * 1000)) - now;
+                        } else if (t.boss_id === 'battlefield_boss') {
+                            rem = deathTime - now;
+                        } else {
+                            rem = (deathTime + (24 * 60 * 60 * 1000)) - now;
+                        }
+                        if (rem > 0) {
+                            activeCooldowns[t.boss_id] = now + rem;
+                        }
+                    });
+                }
+            } catch (e) {
+                activeCooldowns = Object.assign({}, bossTimersMemory);
+            }
+        } else {
+            activeCooldowns = Object.assign({}, bossTimersMemory);
+        }
+        socket.emit('bossCooldownSync', activeCooldowns);
     });
 
     socket.on('joinGame', (playerData) => {

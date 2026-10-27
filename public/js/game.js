@@ -1,12 +1,12 @@
 import * as THREE from 'three';
-import { Engine3D } from './engine3d.js?v=2.6';
-import { Character3D } from './character3d.js?v=2.6';
-import { World3D } from './world3d.js?v=2.6';
-import { Monster3D } from './monsters3d.js?v=2.6';
-import { CombatSystem } from './combat.js?v=2.6';
-import { UIManager } from './ui.js?v=2.6';
-import { CLASSES, MONSTER_DATABASE, STARTER_ITEMS, DEFAULT_BASE_STATS, MAX_LEVEL, getExpForNextLevel, generateLoot, getItemSellPrice } from './game_data.js?v=2.6';
-import { MAPS_DATA } from './maps_data.js?v=2.6';
+import { Engine3D } from './engine3d.js?v=2.7';
+import { Character3D } from './character3d.js?v=2.7';
+import { World3D } from './world3d.js?v=2.7';
+import { Monster3D } from './monsters3d.js?v=2.7';
+import { CombatSystem } from './combat.js?v=2.7';
+import { UIManager } from './ui.js?v=2.7';
+import { CLASSES, MONSTER_DATABASE, STARTER_ITEMS, DEFAULT_BASE_STATS, MAX_LEVEL, getExpForNextLevel, generateLoot, generateHauntedLoot, getItemSellPrice } from './game_data.js?v=2.7';
+import { MAPS_DATA } from './maps_data.js?v=2.7';
 
 // ==========================================
 // AUDIO MANAGER (EXONIE SOUND EFFECTS & BGM)
@@ -1350,6 +1350,50 @@ export class GameApp {
         }
     }
 
+    enterHauntedHouse(difficulty = 'easy') {
+        if (this.partyMembers && this.partyMembers.length > 0) {
+            this.audio.playSfx('bump');
+            this.ui.showToast('👻 The Haunted House is a solo challenge. Please leave your party.');
+            return;
+        }
+        let cost = 1000;
+        let minLvl = 1;
+        let maxLvl = 15;
+        if (difficulty === 'normal') {
+            cost = 10000;
+            minLvl = 16;
+            maxLvl = 30;
+        } else if (difficulty === 'hard') {
+            cost = 500000;
+            minLvl = 31;
+            maxLvl = 80;
+        }
+
+        if ((this.player.gold || 0) < cost) {
+            this.audio.playSfx('bump');
+            this.ui.showToast(`⚠️ Not enough gold! You need ${cost.toLocaleString()} G.`);
+            return;
+        }
+
+        this.player.gold -= cost;
+        this.saveCharacterToAccountSlot();
+        this.ui.updatePlayerHUD(this.player);
+
+        const randomLevel = Math.floor(Math.random() * (maxLvl - minLvl + 1)) + minLvl;
+        this.world.hauntedHouseLevel = randomLevel;
+
+        const modal = document.getElementById('haunted-house-modal');
+        if (modal) modal.style.display = 'none';
+
+        if (window.showLoadingTransition) {
+            window.showLoadingTransition('Haunted House', `Entering (${difficulty.toUpperCase()})... Boss Level: ${randomLevel}`, 1350, () => {
+                this.loadMap('hauntedhouse');
+            });
+        } else {
+            this.loadMap('hauntedhouse');
+        }
+    }
+
     teleportToFloor(floorMapId, floorTitle) {
         if (window.showLoadingTransition) {
             window.showLoadingTransition(floorTitle, 'Maze Guide Fast Travel...', 1300, () => {
@@ -1448,6 +1492,15 @@ export class GameApp {
         const item = this.player.inventory[slotIndex];
         const validSlots = ['weapon', 'armor', 'leggings', 'necklace', 'ring', 'earrings'];
         if (!item || !validSlots.includes(item.type)) return;
+
+        // 2D Exonie Level Requirement Check (Full Exonie public/game.js line 3359)
+        const reqLevel = Number(item.level || item.levelReq || item.minLevel) || 1;
+        const playerLevel = Number(this.player.level) || 1;
+        if (reqLevel > playerLevel) {
+            this.audio.playSfx('bump');
+            this.ui.showToast(`⛔ Level ${reqLevel} required to equip ${item.name}! (You are Lv.${playerLevel})`);
+            return;
+        }
 
         const slot = item.type;
         const oldEquip = this.player.equips[slot];
@@ -2009,6 +2062,9 @@ export class GameApp {
     // MAP LOADING & AUTHENTIC 2D DATA INGESTION
     // ==========================================
     loadMap(mapId, targetX, targetY) {
+        if (this.socket) {
+            this.socket.emit('requestBossCooldownSync');
+        }
         // Clear old monsters
         for (const m of this.monsters) {
             this.engine.scene.remove(m.group);
@@ -2249,7 +2305,6 @@ export class GameApp {
         // ============================================================
         if (mob.isBattlefieldBoss) {
             this.audio.playSfx('lightning');
-            this.bossCooldowns['battlefield_boss'] = Date.now() + (24 * 60 * 60 * 1000);
             if (this.socket) {
                 this.socket.emit('battlefieldBossKilled', { bossName: mob.name, killerName: this.player.name });
             }
@@ -2289,7 +2344,6 @@ export class GameApp {
         // 2D NEUTRAL ZONE WORLD BOSS ANNOUNCEMENT
         // ============================================================
         if (mob.isNeutralBoss) {
-            this.bossCooldowns['neutralzone_boss'] = Date.now() + (5 * 60 * 60 * 1000);
             this.ui.showWorldAnnouncement(
                 `🌲 <strong style="color:#4ade80;">[NEUTRAL ZONE]</strong> <strong style="color:#00e5ff;">${this.player.name}</strong> has defeated the Wild Woods World Boss <strong>${mob.name} (Lv.${mob.level})</strong>!`,
                 '#4ade80'
@@ -2297,6 +2351,24 @@ export class GameApp {
             if (this.socket) {
                 this.socket.emit('neutralBossKilled', { bossName: mob.name, killerName: this.player.name });
             }
+        }
+
+        // ============================================================
+        // 2D HAUNTED HOUSE SOLO CHALLENGE VICTORY & LOOT
+        // ============================================================
+        if (mob.isHauntedBoss || this.currentMapId === 'hauntedhouse') {
+            this.audio.playSfx('lightning');
+            this.ui.showHauntedHouseClear();
+            const loot = generateHauntedLoot(mob.level);
+            if (loot) {
+                this.addItemToInventory(loot);
+                this.ui.showToast(`🎁 Wraith King dropped: ${loot.name}!`);
+            }
+            setTimeout(() => {
+                if (this.currentMapId === 'hauntedhouse') {
+                    this.loadMap('town');
+                }
+            }, 4200);
         }
 
         // Boss defeat check
@@ -2491,6 +2563,13 @@ export class GameApp {
                 this.portalCooldown = 4.0;
                 this.audio.playSfx('bump');
                 this.ui.openMazeGuideModal();
+                return;
+            }
+            if (tid === 'hauntedhouse') {
+                if (this.ui.hauntedHouseModal && this.ui.hauntedHouseModal.style.display === 'flex') return;
+                this.portalCooldown = 4.0;
+                this.audio.playSfx('bump');
+                this.ui.openHauntedHouseModal();
                 return;
             }
             if (tid === 'dungeon1' || tid === 'dungeon2a') {

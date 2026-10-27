@@ -58,9 +58,10 @@ export class World3D {
     }
 
     get2DBackgroundTexture(filename) {
-        const key = `bg2d_${filename}`;
+        const cleanName = String(filename || '').replace(/^backgrounds\//, '');
+        const key = `bg2d_${cleanName}`;
         if (this.texCache[key]) return this.texCache[key];
-        const tex = this.textureLoader.load(`backgrounds/${filename}`);
+        const tex = this.textureLoader.load(cleanName);
         tex.colorSpace = THREE.SRGBColorSpace;
         this.texCache[key] = tex;
         return tex;
@@ -2009,12 +2010,12 @@ export class World3D {
             this.createPortal(`FLOOR ${floorNum + 1}`, 'Ascend Spire Maze', `floor${floorNum + 1}`, 0, -112, 0xff5252);
         }
 
-        // DUNGEON 1 (Slime Dungeon) is located on Spire Floor 3!
+        // DUNGEON 1 (Slime Dungeon) is located on Spire Floor 3 per 2D Exonie!
         if (floorNum === 3) {
             this.createPortal('SLIME DUNGEON (D1)', 'Select Difficulty (7/7 Weekly)', 'dungeon1', 72, -34, 0x76ff03);
         }
-        // DUNGEON 2 (Ancient Cave) is located on Spire Floor 7!
-        if (floorNum === 7) {
+        // DUNGEON 2 (Ancient Cave) is located on Spire Floor 9 per 2D Exonie!
+        if (floorNum === 9) {
             this.createPortal('ANCIENT CAVE (D2)', 'Select Difficulty (7/7 Weekly)', 'dungeon2a', 72, -34, 0xd500f9);
         }
         if (floorNum === 8) {
@@ -2082,7 +2083,16 @@ export class World3D {
         bossRing.position.set(0, 0.05, -90);
         this.worldGroup.add(bossRing);
 
-        // 2. Central Labyrinth Compass Rose Medallion at (0, 0)
+        // 2. Central Labyrinth Compass Rose Medallion & 2D Emblem at (0, 0)
+        const centerArt = new THREE.Mesh(
+            new THREE.CircleGeometry(14.5, 36),
+            new THREE.MeshStandardMaterial({ map: bgTex, roughness: 0.55, metalness: 0.2 })
+        );
+        centerArt.rotation.x = -Math.PI / 2;
+        centerArt.position.set(0, 0.03, 0);
+        centerArt.receiveShadow = true;
+        this.worldGroup.add(centerArt);
+
         const centerRings = [8, 15, 22];
         centerRings.forEach((r, idx) => {
             const ring = new THREE.Mesh(
@@ -2244,7 +2254,7 @@ export class World3D {
 
             this.queueSpawn(monsterSpawns, `nz_world_boss`, randomKey, 'floor_boss', randomLevel, 0, -22, {
                 isNeutralBoss: true,
-                respawnDelay: 18000 // 5-hour respawn cooldown matching 2D server.js (5 * 60 * 60s)
+                noRespawn: true // 2D server.js respawnDelayMs: -1 (Controlled strictly by Supabase boss_timers!)
             });
             // Matching 2D Neutral Zone: 1 Solo World Boss in the center clearing, NO gold slimes (Golden Slime is ultra-rare Spire event)
         } else if (mapName === 'battlefield') {
@@ -2321,7 +2331,7 @@ export class World3D {
         if (mapName === 'dungeon1') {
             this.createPortal('EXIT TO FLOOR 3', 'Return to Shadow Cavern', 'floor3', 0, 39, 0x00e676);
         } else if (mapName.startsWith('dungeon2')) {
-            this.createPortal('EXIT TO FLOOR 7', 'Return to Monolith Depths', 'floor7', 0, 39, 0x00e676);
+            this.createPortal('EXIT TO FLOOR 9', 'Return to Astral Nexus', 'floor9', 0, 39, 0x00e676);
         } else {
             const exitX = mapName === 'event_cave' ? -86 : 0;
             const exitZ = mapName === 'event_cave' ? -12 : 22;
@@ -2436,9 +2446,15 @@ export class World3D {
             this.worldGroup.add(shelf);
             this.colliders.push({ x: 15, z: -18.5, r: 2.8 });
 
-            const rug = new THREE.Mesh(new THREE.CylinderGeometry(6.5, 6.5, 0.06, 32), clothRedMat);
-            rug.position.set(0, 0.04, -5);
-            this.worldGroup.add(rug);
+            // Royal velvet woven rug with gold bullion fringe border
+            const royalRug = new THREE.Mesh(new THREE.BoxGeometry(15.5, 0.05, 11.5), clothRedMat);
+            royalRug.position.set(0, 0.035, -5);
+            royalRug.receiveShadow = true;
+            this.worldGroup.add(royalRug);
+            const rugFringe = new THREE.Mesh(new THREE.BoxGeometry(16.2, 0.04, 12.2), goldMat);
+            rugFringe.position.set(0, 0.03, -5);
+            this.worldGroup.add(rugFringe);
+
             const table = new THREE.Mesh(chamferBox(5.4, 1.5, 3.4, 0.08), woodMat);
             table.position.set(0, 0.75, -5);
             this.worldGroup.add(table);
@@ -2502,9 +2518,26 @@ export class World3D {
             });
 
         } else if (mapName === 'guildbase') {
+            // Grand velvet ceremonial runner with gold embroidered borders
             const runner = new THREE.Mesh(new THREE.BoxGeometry(6.5, 0.06, 44), clothRedMat);
             runner.position.set(0, 0.04, 0);
             this.worldGroup.add(runner);
+
+            const runnerBorder = new THREE.Mesh(new THREE.BoxGeometry(7.2, 0.045, 44.4), goldMat);
+            runnerBorder.position.set(0, 0.035, 0);
+            this.worldGroup.add(runnerBorder);
+
+            // Grand concentric guild crest dais rings on floor
+            const guildRingMat = new THREE.MeshBasicMaterial({ color: 0x1e88e5, side: THREE.DoubleSide });
+            const gRing1 = new THREE.Mesh(new THREE.RingGeometry(16, 17.2, 48), goldMat);
+            gRing1.rotation.x = -Math.PI / 2;
+            gRing1.position.set(0, 0.048, -10);
+            this.worldGroup.add(gRing1);
+
+            const gRing2 = new THREE.Mesh(new THREE.RingGeometry(11, 12, 36), guildRingMat);
+            gRing2.rotation.x = -Math.PI / 2;
+            gRing2.position.set(0, 0.049, -10);
+            this.worldGroup.add(gRing2);
 
             const dais = new THREE.Mesh(chamferBox(14, 1.1, 7.5, 0.1), new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.4 }));
             dais.position.set(0, 0.55, -23);
@@ -2576,6 +2609,44 @@ export class World3D {
             });
 
         } else if (mapName === 'hauntedhouse') {
+            // Eldritch Necrotic Ritual Summoning Circle & Arcane Rune Circles
+            const purpleGlowMat = new THREE.MeshStandardMaterial({
+                color: 0xba68c8,
+                emissive: 0x9c27b0,
+                emissiveIntensity: 1.8,
+                roughness: 0.2
+            });
+            const darkStoneMat = new THREE.MeshStandardMaterial({ color: 0x1f162b, roughness: 0.75, metalness: 0.3 });
+
+            // Concentric Glowing Arcane Runic Rings on the Haunted House Floor
+            [8, 14, 20].forEach((r, idx) => {
+                const ring = new THREE.Mesh(
+                    new THREE.RingGeometry(r - 0.35, r, 48),
+                    idx === 1 ? purpleGlowMat : new THREE.MeshBasicMaterial({ color: 0x7b1fa2, side: THREE.DoubleSide })
+                );
+                ring.rotation.x = -Math.PI / 2;
+                ring.position.set(0, 0.05, -14);
+                this.worldGroup.add(ring);
+            });
+
+            // 4 Gothic Stone Brazier Pillars with Levitating Soul Crystals
+            [[-16, -26], [16, -26], [-16, -2], [16, -2]].forEach(([px, pz]) => {
+                const pillar = new THREE.Mesh(chamferBox(2.2, 5.5, 2.2, 0.12), darkStoneMat);
+                pillar.position.set(px, 2.75, pz);
+                pillar.castShadow = true;
+                this.worldGroup.add(pillar);
+
+                const soulCrystal = new THREE.Mesh(new THREE.OctahedronGeometry(0.85, 0), purpleGlowMat);
+                soulCrystal.position.set(px, 6.4, pz);
+                this.worldGroup.add(soulCrystal);
+                this.animatedProps.push({ mesh: soulCrystal, type: 'float_spin', baseY: 6.4 });
+
+                const soulLight = new THREE.PointLight(0xba68c8, 1.8, 18);
+                soulLight.position.set(px, 6.4, pz);
+                this.worldGroup.add(soulLight);
+                this.colliders.push({ x: px, z: pz, r: 1.8 });
+            });
+
             const hLevel = this.hauntedHouseLevel || 15;
             this.queueSpawn(monsterSpawns, `hh_wraith_king`, 'floor_boss_wraith', 'floor_boss', hLevel, 0, -18, {
                 isHauntedBoss: true,

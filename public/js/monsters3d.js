@@ -58,7 +58,8 @@ export class Monster3D {
             this.isTavernBoss = !!sp.isTavernBoss;
             this.isNeutralBoss = !!sp.isNeutralBoss;
             this.isBattlefieldBoss = !!sp.isBattlefieldBoss;
-            this.noRespawn = !!sp.noRespawn;
+            this.isHauntedBoss = !!sp.isHauntedBoss;
+            this.noRespawn = !!sp.noRespawn || this.isNeutralBoss || this.isBattlefieldBoss || this.isHauntedBoss || this.isTavernBoss;
             this.customRespawnDelay = sp.respawnDelay || 0;
         } else {
             // Signature 2: new Monster3D(id, dbKey, targetLevel, x, z)
@@ -1328,19 +1329,9 @@ export class Monster3D {
                             if (player && (player.pos.y > 0.35 || player.isJumping || player.isInvulnerable)) {
                                 window.game.combat.spawnFloatingDamage(player.pos, '🦘 JUMPED OVER EARTHQUAKE!', true, true);
                             } else if (player) {
+                                // Authentic 2D Exonie calculation (Full Exonie server.js line 1957: Math.max(1, m.atk - player.def))
                                 const rawAtk = Number(this.atk) || Number(this.attackPower) || 10;
-                                const pMaxHp = Number(player.maxHp) || 500;
-                                const pDef = Number(player.def) || 0;
-                                const distRatio = Math.min(1.0, distToPlayer / aoeRadius);
-                                const distFalloff = 1.0 - (distRatio * 0.45); // Deals ~55% damage at outer boundary
-
-                                // Authentic balanced damage formula:
-                                // Base damage is atk - def, with falloff, capped at reasonable % of player HP so high level scaling doesn't instant 1-shot!
-                                const baseNet = Math.max(10, (rawAtk - pDef) * distFalloff);
-                                const maxCap = isFloorBoss ? Math.floor(pMaxHp * 0.45) : Math.floor(pMaxHp * 0.30);
-                                const eqDmg = Math.max(5, Math.min(maxCap, Math.floor(baseNet)));
-
-                                window.game.onMonsterHitPlayer(eqDmg, 'Earthquake', this);
+                                window.game.onMonsterHitPlayer(rawAtk, 'Earthquake', this);
                             }
                         }
                     }

@@ -42,6 +42,7 @@ export class UIManager {
         this.pendingPartyInviteFrom = null;
         this.dungeonModal = document.getElementById('dungeon-modal');
         this.mazeGuideModal = document.getElementById('maze-guide-modal');
+        this.hauntedHouseModal = document.getElementById('haunted-house-modal');
         this.deathScreen = document.getElementById('death-screen');
         this.toastEl = document.getElementById('system-toast');
         this.lootBroadcastEl = document.getElementById('loot-broadcast');
@@ -436,6 +437,17 @@ export class UIManager {
         if (btnCloseMazeGuide) btnCloseMazeGuide.onclick = () => {
             if (this.mazeGuideModal) this.mazeGuideModal.style.display = 'none';
             if (this.game) this.game.portalCooldown = 4.0;
+        };
+
+        const btnCloseHaunted = document.getElementById('btn-close-haunted-house');
+        if (btnCloseHaunted) btnCloseHaunted.onclick = () => {
+            if (this.hauntedHouseModal) this.hauntedHouseModal.style.display = 'none';
+            if (this.game) this.game.portalCooldown = 4.0;
+        };
+
+        window.enterHauntedHouseChallenge = (difficulty) => {
+            if (this.hauntedHouseModal) this.hauntedHouseModal.style.display = 'none';
+            if (this.game) this.game.enterHauntedHouse(difficulty);
         };
 
         // 🤝 Friends List [F] & Party Event Listeners
@@ -852,8 +864,15 @@ export class UIManager {
         };
         const rColor = rarityColors[item.rarity] || item.color || '#38bdf8';
 
+        const reqLevel = Number(item.level || item.levelReq || item.minLevel) || 1;
+        const pLevel = Number(this.game?.player?.level) || 1;
+
         let html = `<div class="tip-title" style="color:${rColor}; text-shadow:0 0 10px ${rColor};">${item.name}</div>`;
-        html += `<div class="tip-subtitle">Lv.${item.level || 1} ${item.rarity || 'Basic'} ${String(item.type).toUpperCase()}</div>`;
+        html += `<div class="tip-subtitle">Lv.${reqLevel} ${item.rarity || 'Basic'} ${String(item.type).toUpperCase()}`;
+        if (pLevel < reqLevel) {
+            html += ` <span style="color:#f87171; font-weight:bold;">(Requires Lv.${reqLevel})</span>`;
+        }
+        html += `</div>`;
 
         // Fixed Stats
         if (item.fixedStat) {
@@ -1066,7 +1085,12 @@ export class UIManager {
         const actionsEl = document.getElementById('detail-item-actions');
         if (!titleEl || !descEl || !actionsEl) return;
 
-        titleEl.innerHTML = `<span style="color:${item.color || '#38bdf8'}; font-weight:900;">${item.name}</span> <span style="font-size:0.75rem; color:#94a3b8;">[${item.rarity || 'Basic'}]</span>`;
+        const reqLevel = Number(item.level || item.levelReq || item.minLevel) || 1;
+        const playerLevel = Number(this.game?.player?.level) || 1;
+        const canEquip = playerLevel >= reqLevel;
+        const levelBadge = `<span style="font-size:0.75rem; color:${canEquip ? '#4ade80' : '#f87171'}; margin-left:6px; font-weight:bold;">[Lv.${reqLevel}${!canEquip ? ' - REQ LV.' + reqLevel : ''}]</span>`;
+
+        titleEl.innerHTML = `<span style="color:${item.color || '#38bdf8'}; font-weight:900;">${item.name}</span> <span style="font-size:0.75rem; color:#94a3b8;">[${item.rarity || 'Basic'}]</span> ${levelBadge}`;
 
         let statsStr = '';
         if (item.fixedStat) {
@@ -1084,12 +1108,25 @@ export class UIManager {
         if (['weapon', 'armor', 'leggings', 'necklace', 'ring', 'earrings'].includes(item.type)) {
             const btnEquip = document.createElement('button');
             btnEquip.className = 'btn-item-action';
-            btnEquip.textContent = `⚔️ Equip ${item.type.charAt(0).toUpperCase() + item.type.slice(1)}`;
-            btnEquip.onclick = () => {
-                this.game.equipItemFromInventory(index);
-                this.selectedInventoryIndex = null;
-                this.renderInventory();
-            };
+            if (canEquip) {
+                btnEquip.textContent = `⚔️ Equip ${item.type.charAt(0).toUpperCase() + item.type.slice(1)}`;
+                btnEquip.onclick = () => {
+                    this.game.equipItemFromInventory(index);
+                    this.selectedInventoryIndex = null;
+                    this.renderInventory();
+                };
+            } else {
+                btnEquip.textContent = `🔒 Requires Lv.${reqLevel}`;
+                btnEquip.style.opacity = '0.75';
+                btnEquip.style.background = '#450a0a';
+                btnEquip.style.border = '1px solid #ef4444';
+                btnEquip.style.color = '#fca5a5';
+                btnEquip.style.cursor = 'not-allowed';
+                btnEquip.onclick = () => {
+                    this.game.audio.playSfx('bump');
+                    this.showToast(`⛔ Level ${reqLevel} required to equip ${item.name}! (You are Lv.${playerLevel})`);
+                };
+            }
             actionsEl.appendChild(btnEquip);
         } else if (item.type === 'potion') {
             const btnUse = document.createElement('button');
@@ -1744,6 +1781,41 @@ export class UIManager {
         this.dungeonModal.style.display = 'flex';
     }
 
+    openHauntedHouseModal() {
+        if (!this.hauntedHouseModal) {
+            this.hauntedHouseModal = document.getElementById('haunted-house-modal');
+        }
+        if (!this.hauntedHouseModal) return;
+        document.exitPointerLock?.();
+
+        // 2D Solo-only check
+        if (this.game && this.game.partyMembers && this.game.partyMembers.length > 0) {
+            this.showToast('👻 The Haunted House is a solo challenge. Please leave your party.');
+            return;
+        }
+
+        this.hauntedHouseModal.style.display = 'flex';
+    }
+
+    showHauntedHouseClear() {
+        const vText = document.createElement('div');
+        vText.innerHTML = `
+            <h1 style="font-size:70px; margin:0; text-shadow:0 0 35px #E040FB, 0 0 70px #9c27b0, 4px 4px 0 #000; letter-spacing: 6px; font-weight:900; animation: pulseText 1s infinite alternate; font-family:'Cinzel Decorative', 'Cinzel', serif;">HOUSE CLEAR!</h1>
+        `;
+        vText.style.position = 'fixed';
+        vText.style.top = '40%';
+        vText.style.left = '50%';
+        vText.style.transform = 'translate(-50%, -50%)';
+        vText.style.textAlign = 'center';
+        vText.style.color = '#E040FB';
+        vText.style.zIndex = '9999';
+        vText.style.pointerEvents = 'none';
+        document.body.appendChild(vText);
+        setTimeout(() => {
+            if (vText.parentNode) vText.parentNode.removeChild(vText);
+        }, 4000);
+    }
+
     openMazeGuideModal() {
         if (!this.mazeGuideModal) return;
         document.exitPointerLock?.();
@@ -1758,11 +1830,11 @@ export class UIManager {
             const floorNames = [
                 'Floor 1: Verdant Labyrinth',
                 'Floor 2: Mossy Ruins',
-                'Floor 3: Shadow Cavern (🗝️ Dungeon 1)',
+                'Floor 3: Shadow Cavern',
                 'Floor 4: Abyssal Grotto',
                 'Floor 5: Infernal Core',
                 'Floor 6: Magma Sanctum',
-                'Floor 7: Monolith Depths (🗝️ Dungeon 2)',
+                'Floor 7: Monolith Depths',
                 'Floor 8: Obsidian Vault',
                 'Floor 9: Astral Nexus',
                 'Floor 10: The Void Throne'
@@ -1773,7 +1845,7 @@ export class UIManager {
                 btn.className = 'btn-item-action';
 
                 if (isUnlocked) {
-                    btn.style.background = (f === 3 || f === 7) ? '#0284c7' : '#1e293b';
+                    btn.style.background = '#1e293b';
                     btn.style.border = '1px solid #38bdf8';
                     btn.style.padding = '10px';
                     btn.style.textAlign = 'left';
