@@ -311,7 +311,7 @@ function parseSlotArray(fieldValue, defaultFactory) {
 function convert2DRowToSlot(row, slotIndex = 0) {
     if (!row) return null;
     const charName = String(row.character_name || '').trim();
-    if (!charName || charName === 'none' || charName === 'null' || charName === 'undefined') return null;
+    if (!charName || charName.toLowerCase().startsWith('none') || charName.toLowerCase().startsWith('__empty') || charName === 'null' || charName === 'undefined') return null;
 
     let baseStats = safeParseJson(row.base_stats, null);
     if (!baseStats || typeof baseStats !== 'object') {
@@ -408,7 +408,7 @@ function parseAccountSlots(userRow) {
         const name = (nameParts[i] || '').trim();
         const skin = (skinParts[i] || '').trim();
 
-        if (name && name !== 'none' && name !== 'null' && name !== 'undefined') {
+        if (name && !name.toLowerCase().startsWith('none') && !name.toLowerCase().startsWith('__empty') && name !== 'null' && name !== 'undefined') {
             const slotStats = statsSlots[i] || { hp: 100, attack: 5, str: 10, int: 10, playerClass: null };
             const lvl = (slotStats && slotStats.level) ? Number(slotStats.level) : (Number(levelParts[i]) || Number(levelParts[0]) || 1);
             const gld = (slotStats && slotStats.gold !== undefined) ? Number(slotStats.gold) : (Number(goldParts[i]) || Number(goldParts[0]) || 500);
@@ -530,6 +530,12 @@ function serializeSlotsToRow(slots, existingRow = {}) {
 
     const firstValidStyle = styles.find(s => ['1', '2', '3', '4', '5'].includes(s)) || '1';
 
+    // If all character slots are empty, ensure slot 0 has a unique none placeholder to avoid Supabase unique constraint conflicts
+    if (names.every(n => !n || n.startsWith('none'))) {
+        const uId = existingRow.email ? existingRow.email.split('@')[0] : (existingRow.id || 'usr');
+        names[0] = `none_${uId}_1`;
+    }
+
     return {
         character_name: names.join('|'),
         skin_color: skins.join('|'),
@@ -619,6 +625,12 @@ async function findAccountRows(identifier) {
                 .select('*')
                 .ilike('email', clean);
             if (!errEmail && byEmail && byEmail.length > 0) return byEmail;
+        } else {
+            const { data: byAutoEmail } = await supabase
+                .from('Exonians')
+                .select('*')
+                .ilike('email', `${clean}@exonie.com`);
+            if (byAutoEmail && byAutoEmail.length > 0) return byAutoEmail;
         }
 
         // 2. Query by character_name exact match (case-insensitive)
@@ -695,6 +707,16 @@ io.on('connection', (socket) => {
                     if (errEmail) fetchError = errEmail;
                     if (byEmail && byEmail.length > 0) {
                         matchedRows = byEmail;
+                    }
+                } else {
+                    const { data: byAutoEmail, error: errAutoEmail } = await supabase
+                        .from('Exonians')
+                        .select('*')
+                        .ilike('email', `${cleanInput}@exonie.com`)
+                        .eq('password', password);
+                    if (errAutoEmail) fetchError = errAutoEmail;
+                    if (byAutoEmail && byAutoEmail.length > 0) {
+                        matchedRows = byAutoEmail;
                     }
                 }
 
@@ -829,6 +851,11 @@ io.on('connection', (socket) => {
 
             const clientIp = socket.handshake.headers['x-forwarded-for']?.split(',')[0] || socket.handshake.address;
 
+            const basePart = rawInput.includes('@') ? rawInput.split('@')[0] : rawInput;
+            const cleanBase = basePart.replace(/[^a-zA-Z0-9_]/g, '').slice(0, 16) || 'user';
+            const accountEmail = rawInput.includes('@') ? rawInput : `${cleanBase}@exonie.com`;
+            const uniquePlaceholder = `none_${cleanBase}_${Date.now() % 100000}|none|none`;
+
             if (supabase) {
                 // Check if account already exists
                 const existing = await findAccountRows(rawInput);
@@ -837,15 +864,13 @@ io.on('connection', (socket) => {
                 }
 
                 const insertPayload = {
-                    character_name: 'none|none|none',
+                    email: accountEmail,
+                    character_name: uniquePlaceholder,
                     password: password,
                     email_verified: true,
                     ip_address: clientIp,
                     device_id: deviceId
                 };
-                if (rawInput.includes('@')) {
-                    insertPayload.email = rawInput;
-                }
 
                 const { error: insErr } = await supabase.from('Exonians').insert([insertPayload]);
                 if (insErr) {
@@ -854,15 +879,16 @@ io.on('connection', (socket) => {
                 }
             } else {
                 const key = rawInput.toLowerCase();
-                if (memoryDb.users[key]) {
+                if (memoryDb.users[key] || memoryDb.users[accountEmail.toLowerCase()]) {
                     return socket.emit('authError', 'An account with this Email/Username already exists!');
                 }
                 const newRec = {
-                    email: rawInput.includes('@') ? rawInput : `${rawInput}@exonie.com`,
+                    email: accountEmail,
                     password: password,
-                    character_name: 'none|none|none'
+                    character_name: uniquePlaceholder
                 };
                 memoryDb.users[key] = newRec;
+                memoryDb.users[accountEmail.toLowerCase()] = newRec;
                 saveLocalDb();
             }
 
@@ -988,6 +1014,8 @@ io.on('connection', (socket) => {
                     let q = supabase.from('Exonians').update(updatePayload);
                     if (dbRows[0].id) {
                         q = q.eq('id', dbRows[0].id);
+                    } else if (dbRows[0].email) {
+                        q = q.eq('email', dbRows[0].email);
                     } else {
                         q = q.eq('character_name', dbRows[0].character_name);
                     }
@@ -1039,6 +1067,8 @@ io.on('connection', (socket) => {
                     let q = supabase.from('Exonians').update(updatePayload);
                     if (dbRows[0].id) {
                         q = q.eq('id', dbRows[0].id);
+                    } else if (dbRows[0].email) {
+                        q = q.eq('email', dbRows[0].email);
                     } else {
                         q = q.eq('character_name', dbRows[0].character_name);
                     }
@@ -1127,6 +1157,8 @@ io.on('connection', (socket) => {
                     let q = supabase.from('Exonians').update(updatePayload);
                     if (dbRows[0].id) {
                         q = q.eq('id', dbRows[0].id);
+                    } else if (dbRows[0].email) {
+                        q = q.eq('email', dbRows[0].email);
                     } else {
                         q = q.eq('character_name', dbRows[0].character_name);
                     }

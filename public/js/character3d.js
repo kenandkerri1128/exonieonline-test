@@ -617,6 +617,18 @@ export class Character3D {
         this.auraLight.position.set(0, 1.3, 0.3);
         this.group.add(this.auraLight);
 
+        // Invisible Interaction Hitbox for remote player clicking, inspecting, and raycasting
+        const hitboxGeo = new THREE.CylinderGeometry(0.75, 0.75, 2.4, 8);
+        const hitboxMat = new THREE.MeshBasicMaterial({
+            visible: false,
+            transparent: true,
+            opacity: 0
+        });
+        this.hitboxMesh = new THREE.Mesh(hitboxGeo, hitboxMat);
+        this.hitboxMesh.position.set(0, 1.2, 0);
+        this.hitboxMesh.userData = { isPlayerHitbox: true, char3D: this };
+        this.group.add(this.hitboxMesh);
+
         this.applyCombatReadyPose();
     }
 
@@ -1002,6 +1014,10 @@ export class Character3D {
     // ========================================================================
     // 3D WEAPONS & TECH GENIUS HOVERING MAGITECH DRONE
     // ========================================================================
+    setWeaponFromObject(weaponObj) {
+        return this.equipWeapon(weaponObj);
+    }
+
     equipWeapon(weaponObj) {
         if (!weaponObj) {
             this.setWeapon(null);

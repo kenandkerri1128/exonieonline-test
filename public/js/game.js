@@ -1,12 +1,12 @@
 import * as THREE from 'three';
-import { Engine3D } from './engine3d.js';
-import { Character3D } from './character3d.js';
-import { World3D } from './world3d.js';
-import { Monster3D } from './monsters3d.js';
-import { CombatSystem } from './combat.js';
-import { UIManager } from './ui.js';
-import { CLASSES, MONSTER_DATABASE, STARTER_ITEMS, DEFAULT_BASE_STATS, MAX_LEVEL, getExpForNextLevel, generateLoot, getItemSellPrice } from './game_data.js';
-import { MAPS_DATA } from './maps_data.js';
+import { Engine3D } from './engine3d.js?v=2.2';
+import { Character3D } from './character3d.js?v=2.2';
+import { World3D } from './world3d.js?v=2.2';
+import { Monster3D } from './monsters3d.js?v=2.2';
+import { CombatSystem } from './combat.js?v=2.2';
+import { UIManager } from './ui.js?v=2.2';
+import { CLASSES, MONSTER_DATABASE, STARTER_ITEMS, DEFAULT_BASE_STATS, MAX_LEVEL, getExpForNextLevel, generateLoot, getItemSellPrice } from './game_data.js?v=2.2';
+import { MAPS_DATA } from './maps_data.js?v=2.2';
 
 // ==========================================
 // AUDIO MANAGER (EXONIE SOUND EFFECTS & BGM)
@@ -809,10 +809,25 @@ export class GameApp {
         bubble.className = 'overhead-chat-bubble';
         bubble.innerText = text;
 
+        const getTargetPos = () => {
+            if (!speakerName || speakerName === this.player.name) {
+                return this.player.pos;
+            }
+            const rp = Object.values(this.remotePlayers).find(p => p && p.name === speakerName);
+            if (rp && rp.currentPos) return rp.currentPos;
+            return this.player.pos;
+        };
+
         const updateBubblePos = () => {
-            if (!this.player || !this.player.pos || !this.engine || !this.engine.camera) return;
-            const p = this.player.pos.clone().add(new THREE.Vector3(0, 2.3, 0));
+            const pos = getTargetPos();
+            if (!pos || !this.engine || !this.engine.camera) return;
+            const p = pos.clone().add(new THREE.Vector3(0, 2.3, 0));
             p.project(this.engine.camera);
+            if (p.z > 1.0) {
+                bubble.style.display = 'none';
+                return;
+            }
+            bubble.style.display = 'block';
             const x = (p.x * 0.5 + 0.5) * window.innerWidth;
             const y = (-(p.y * 0.5) + 0.5) * window.innerHeight;
             bubble.style.left = `${x}px`;
@@ -1530,22 +1545,35 @@ export class GameApp {
         const raycaster = new THREE.Raycaster();
         raycaster.setFromCamera(mouse, this.engine.camera);
 
-        const remoteMeshes = [];
-        const meshToPlayer = new Map();
+        const targetCandidates = [];
+        const objToPlayer = new Map();
+
         for (const sid in this.remotePlayers) {
             const rp = this.remotePlayers[sid];
             if (rp && rp.char3D && rp.char3D.group) {
+                // Priority 1: dedicated invisible interaction hitbox cylinder
+                if (rp.char3D.hitboxMesh) {
+                    targetCandidates.push(rp.char3D.hitboxMesh);
+                    objToPlayer.set(rp.char3D.hitboxMesh, rp);
+                }
+                // Priority 2: overhead UI nameplate sprite
+                if (rp.char3D.overheadSprite) {
+                    targetCandidates.push(rp.char3D.overheadSprite);
+                    objToPlayer.set(rp.char3D.overheadSprite, rp);
+                }
+                // Priority 3: all mesh parts
                 rp.char3D.group.traverse((child) => {
-                    if (child.isMesh) {
-                        remoteMeshes.push(child);
-                        meshToPlayer.set(child, rp);
+                    if (child.isMesh || child.isSprite) {
+                        targetCandidates.push(child);
+                        objToPlayer.set(child, rp);
                     }
                 });
             }
         }
-        const hits = raycaster.intersectObjects(remoteMeshes, false);
+
+        const hits = raycaster.intersectObjects(targetCandidates, false);
         if (hits.length > 0) {
-            return meshToPlayer.get(hits[0].object) || null;
+            return objToPlayer.get(hits[0].object) || null;
         }
         return null;
     }
