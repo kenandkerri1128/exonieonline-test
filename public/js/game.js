@@ -516,7 +516,24 @@ export class GameApp {
 
                 this.socket.on('bossCooldownActive', (data) => {
                     if (data && data.floorId) {
-                        this.bossCooldowns[data.floorId] = Date.now() + (data.remaining || (24 * 60 * 60 * 1000));
+                        if (data.remaining > 0) {
+                            this.bossCooldowns[data.floorId] = Date.now() + data.remaining;
+                        } else {
+                            delete this.bossCooldowns[data.floorId];
+                        }
+                    }
+                });
+
+                this.socket.on('inspectData', (data) => {
+                    if (data && this.ui) {
+                        this.ui.openInspectModal(data);
+                    }
+                });
+
+                this.socket.on('forceTownTeleport', () => {
+                    if (this.currentMapId === 'battlefield') {
+                        this.ui.showToast('🏰 The Battlefield threat has retreated. Returning to Town.');
+                        this.loadMap('town');
                     }
                 });
 
@@ -690,6 +707,13 @@ export class GameApp {
 
     sendChatMessage(text) {
         if (!text) return;
+
+        if (text.startsWith('/inspect')) {
+            const targetName = text.replace('/inspect', '').trim();
+            this.inspectPlayer(targetName || this.player.name);
+            return;
+        }
+
         const now = performance.now();
         if (this.lastChatTime && (now - this.lastChatTime) < 2500) {
             this.appendChatLine('system', '⚠️ Please wait before sending another chat message (2.5s anti-spam limit).');
@@ -1254,7 +1278,8 @@ export class GameApp {
 
     equipItemFromInventory(slotIndex) {
         const item = this.player.inventory[slotIndex];
-        if (!item || !['weapon', 'armor', 'leggings'].includes(item.type)) return;
+        const validSlots = ['weapon', 'armor', 'leggings', 'necklace', 'ring', 'earrings'];
+        if (!item || !validSlots.includes(item.type)) return;
 
         const slot = item.type;
         const oldEquip = this.player.equips[slot];
@@ -1339,9 +1364,9 @@ export class GameApp {
 
     addItemToInventory(newItem) {
         if (!newItem) return false;
-        // Stack potions if possible
+        // Stack potions if possible across all 30 slots
         if (newItem.type === 'potion') {
-            for (let i = 0; i < 20; i++) {
+            for (let i = 0; i < 30; i++) {
                 const it = this.player.inventory[i];
                 if (it && it.type === 'potion' && it.name === newItem.name) {
                     it.quantity = (it.quantity || 1) + (newItem.quantity || 1);
@@ -1349,7 +1374,7 @@ export class GameApp {
                 }
             }
         }
-        for (let i = 0; i < 20; i++) {
+        for (let i = 0; i < 30; i++) {
             if (!this.player.inventory[i]) {
                 this.player.inventory[i] = newItem;
                 return true;
@@ -1358,12 +1383,13 @@ export class GameApp {
         return false;
     }
 
-    // Unequip currently equipped weapon back into the bag
-    unequipWeapon() {
-        if (!this.player.equips.weapon) return;
+    // Unequip any currently equipped slot back into the 30-slot bag
+    unequipItem(slot) {
+        const validSlots = ['weapon', 'armor', 'leggings', 'necklace', 'ring', 'earrings'];
+        if (!validSlots.includes(slot) || !this.player.equips || !this.player.equips[slot]) return;
 
         let emptyIdx = -1;
-        for (let i = 0; i < 20; i++) {
+        for (let i = 0; i < 30; i++) {
             if (!this.player.inventory[i]) {
                 emptyIdx = i;
                 break;
@@ -1371,26 +1397,57 @@ export class GameApp {
         }
 
         if (emptyIdx === -1) {
-            this.ui.showToast("Your inventory bag is full!");
+            this.ui.showToast("🎒 Your inventory bag is full! Cannot unequip.");
             return;
         }
 
-        const unequipped = this.player.equips.weapon;
+        const unequipped = this.player.equips[slot];
         this.player.inventory[emptyIdx] = unequipped;
-        this.player.equips.weapon = null;
+        this.player.equips[slot] = null;
 
-        if (this.player.char3D) {
+        if (slot === 'weapon' && this.player.char3D) {
             this.player.char3D.setWeapon(null);
         }
 
         this.recalculateStats();
+        this.saveCharacterToAccountSlot();
         this.audio.playSfx('bump');
         this.ui.showToast(`Unequipped ${unequipped.name}`);
         this.ui.renderInventory();
 
-        if (this.ui.skillModal && this.ui.skillModal.style.display !== 'none') {
+        if (slot === 'weapon' && this.ui.skillModal && this.ui.skillModal.style.display !== 'none') {
             this.ui.renderSkills();
         }
+    }
+
+    unequipWeapon() {
+        this.unequipItem('weapon');
+    }
+
+    // Inspect Player System (2D Exonie port)
+    inspectPlayer(targetId) {
+        if (!targetId || targetId === this.player.name) {
+            this.ui.openInspectModal({
+                name: this.player.name,
+                level: this.player.level,
+                playerClass: this.player.baseStats?.playerClass || 'Novice',
+                currentHp: this.player.hp,
+                maxHp: this.player.maxHp,
+                equips: this.player.equips
+            });
+            return;
+        }
+        if (this.socket) {
+            this.socket.emit('inspectRequest', { targetId });
+        }
+    }
+
+    // Player Stun system (Minotaur Bull Rush Charge & status effects)
+    applyPlayerStun(duration = 3.0) {
+        if (this.isGhost || this.player.isInvulnerable) return;
+        this.playerStunTimer = Math.max(this.playerStunTimer || 0, duration);
+        this.combat.spawnFloatingDamage(this.player.pos, `💫 STUNNED! (${duration}s)`, true, true);
+        this.ui.showToast(`💫 You are stunned for ${duration}s!`);
     }
 
     // Use Health Potion from inventory or hotbar
@@ -1403,7 +1460,7 @@ export class GameApp {
         let potItem = null;
         let potIndex = -1;
 
-        for (let i = 0; i < 20; i++) {
+        for (let i = 0; i < 30; i++) {
             const it = this.player.inventory[i];
             if (it && it.type === 'potion') {
                 potItem = it;
@@ -1436,7 +1493,7 @@ export class GameApp {
 
     getPotionCount() {
         let count = 0;
-        for (let i = 0; i < 20; i++) {
+        for (let i = 0; i < 30; i++) {
             const it = this.player.inventory[i];
             if (it && it.type === 'potion') {
                 count += it.quantity || 1;
@@ -1582,6 +1639,43 @@ export class GameApp {
             }
         });
 
+        // Right-click player inspection raycast on 3D canvas
+        window.addEventListener('contextmenu', (e) => {
+            if (e.target && e.target.id === 'canvas-3d') {
+                e.preventDefault();
+                if (this.remotePlayers && this.engine && this.engine.camera) {
+                    const rect = e.target.getBoundingClientRect();
+                    const mouse = new THREE.Vector2(
+                        ((e.clientX - rect.left) / rect.width) * 2 - 1,
+                        -((e.clientY - rect.top) / rect.height) * 2 + 1
+                    );
+                    const raycaster = new THREE.Raycaster();
+                    raycaster.setFromCamera(mouse, this.engine.camera);
+
+                    const remoteMeshes = [];
+                    const meshToPlayer = new Map();
+                    for (const id in this.remotePlayers) {
+                        const rp = this.remotePlayers[id];
+                        if (rp && rp.char3D && rp.char3D.group) {
+                            rp.char3D.group.traverse((child) => {
+                                if (child.isMesh) {
+                                    remoteMeshes.push(child);
+                                    meshToPlayer.set(child, rp);
+                                }
+                            });
+                        }
+                    }
+                    const hits = raycaster.intersectObjects(remoteMeshes, false);
+                    if (hits.length > 0) {
+                        const hitPlayer = meshToPlayer.get(hits[0].object);
+                        if (hitPlayer) {
+                            this.inspectPlayer(hitPlayer.name || hitPlayer.id);
+                        }
+                    }
+                }
+            }
+        });
+
         // Ensure clicking game canvas or HUD blurs any lingering inputs so keyboard controls are always responsive
         window.addEventListener('pointerdown', (e) => {
             if (e.target && e.target.id !== 'chat-input' && document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA')) {
@@ -1591,7 +1685,7 @@ export class GameApp {
     }
 
     onAttackTrigger() {
-        if (!this.player.char3D || this.isGhost) return;
+        if (!this.player.char3D || this.isGhost || (this.playerStunTimer > 0)) return;
         if (this.player.char3D.isDodging) return; // Prevent attack during dodge roll
         this.combat.executePrimaryAttack(this.player, this.monsters, (deadMob) => {
             this.onMonsterDefeated(deadMob);
@@ -1599,7 +1693,7 @@ export class GameApp {
     }
 
     onJumpTrigger() {
-        if (!this.player.char3D || this.isGhost) return;
+        if (!this.player.char3D || this.isGhost || (this.playerStunTimer > 0)) return;
         if (this.player.pos.y <= 0.05 && !this.player.isJumping) {
             this.player.isJumping = true;
             this.player.velocityY = this.jumpForce;
@@ -1609,7 +1703,7 @@ export class GameApp {
     }
 
     onDodgeTrigger() {
-        if (!this.player.char3D || this.isGhost || this.combat.cooldowns.dodge > 0) return;
+        if (!this.player.char3D || this.isGhost || this.combat.cooldowns.dodge > 0 || (this.playerStunTimer > 0)) return;
         this.combat.cooldowns.dodge = 1.2;
         this.player.isInvulnerable = true;
         setTimeout(() => { this.player.isInvulnerable = false; }, 420);
@@ -1619,7 +1713,7 @@ export class GameApp {
     }
 
     onSkillTrigger(slot) {
-        if (!this.player.char3D || this.isGhost) return;
+        if (!this.player.char3D || this.isGhost || (this.playerStunTimer > 0)) return;
         if (this.player.char3D.isDodging) return; // Prevent skills during dodge roll
 
         // 1. Weapon requirement
@@ -1740,19 +1834,39 @@ export class GameApp {
         const isDungeon = mapId.startsWith('dungeon');
         const now = Date.now();
         const bossRemaining = (this.bossCooldowns && this.bossCooldowns[mapId]) ? (this.bossCooldowns[mapId] - now) : 0;
+        const neutralRemaining = (this.bossCooldowns && this.bossCooldowns['neutralzone_boss']) ? (this.bossCooldowns['neutralzone_boss'] - now) : 0;
+        const battlefieldRemaining = (this.bossCooldowns && this.bossCooldowns['battlefield_boss']) ? (this.bossCooldowns['battlefield_boss'] - now) : 0;
 
         if (Array.isArray(data.monsterSpawns)) {
             for (const sp of data.monsterSpawns) {
-                // If this is a floor boss and its 24h Supabase cooldown is active, skip spawning it
+                // If this is a floor boss and its Supabase cooldown is active, skip spawning it
                 if (sp.category === 'floor_boss' && mapId.startsWith('floor') && bossRemaining > 0) {
                     const hrs = Math.ceil(bossRemaining / 3600000);
                     this.ui.showToast(`⏳ [FLOOR BOSS COOLDOWN] ${sp.name} respawns in ~${hrs} hours.`);
+                    continue;
+                }
+                // Neutral Zone boss cooldown check
+                if (mapId === 'neutralzone' && (sp.category === 'floor_boss' || sp.isNeutralBoss) && neutralRemaining > 0) {
+                    const hrs = (neutralRemaining / 3600000).toFixed(1);
+                    this.ui.showToast(`⏳ [NEUTRAL ZONE WORLD BOSS] Respawns in ~${hrs} hours.`);
+                    continue;
+                }
+                // Battlefield boss cooldown check
+                if (mapId === 'battlefield' && (sp.category === 'floor_boss' || sp.isBattlefieldBoss) && battlefieldRemaining > 0) {
+                    const hrs = (battlefieldRemaining / 3600000).toFixed(1);
+                    this.ui.showToast(`⏳ [BATTLEFIELD RAID BOSS] Next assault in ~${hrs} hours.`);
                     continue;
                 }
 
                 const mob = new Monster3D(sp, sp.position);
                 if (isDungeon) {
                     mob.noRespawn = true;
+                }
+                if (mapId === 'neutralzone' && sp.category === 'floor_boss') {
+                    mob.isNeutralBoss = true;
+                }
+                if (mapId === 'battlefield' && (sp.category === 'floor_boss' || sp.isBattlefieldBoss)) {
+                    mob.isBattlefieldBoss = true;
                 }
                 this.engine.scene.add(mob.group);
                 this.monsters.push(mob);
@@ -1882,6 +1996,10 @@ export class GameApp {
         // ============================================================
         if (mob.isBattlefieldBoss) {
             this.audio.playSfx('lightning');
+            this.bossCooldowns['battlefield_boss'] = Date.now() + (24 * 60 * 60 * 1000);
+            if (this.socket) {
+                this.socket.emit('battlefieldBossKilled', { bossName: mob.name, killerName: this.player.name });
+            }
             if (Math.random() < 0.5) {
                 this.player.gold += 500000;
                 this.combat.spawnFloatingDamage(this.player.pos, `+500,000 GOLD (HUGE NUGGET)!`, true, true);
@@ -1918,10 +2036,14 @@ export class GameApp {
         // 2D NEUTRAL ZONE WORLD BOSS ANNOUNCEMENT
         // ============================================================
         if (mob.isNeutralBoss) {
+            this.bossCooldowns['neutralzone_boss'] = Date.now() + (5 * 60 * 60 * 1000);
             this.ui.showWorldAnnouncement(
                 `🌲 <strong style="color:#4ade80;">[NEUTRAL ZONE]</strong> <strong style="color:#00e5ff;">${this.player.name}</strong> has defeated the Wild Woods World Boss <strong>${mob.name} (Lv.${mob.level})</strong>!`,
                 '#4ade80'
             );
+            if (this.socket) {
+                this.socket.emit('neutralBossKilled', { bossName: mob.name, killerName: this.player.name });
+            }
         }
 
         // Boss defeat check
@@ -2003,10 +2125,13 @@ export class GameApp {
         this.combat.spawnGolemBuster(this.player, intVal, matk);
     }
 
-    onMonsterHitPlayer(rawDmg, attackType = 'Attack') {
+    onMonsterHitPlayer(rawDmg, attackType = 'Attack', monster = null) {
         if (this.isGhost || this.player.isInvulnerable) return;
 
         let dmg = Math.max(1, rawDmg - this.player.def);
+        if (monster && monster.isDragon && monster.level > this.player.level) {
+            dmg += (monster.level - this.player.level);
+        }
 
         // Tech Genius Gamma Shield absorption
         if ((this.player.shieldHp || 0) > 0) {
@@ -2119,6 +2244,17 @@ export class GameApp {
                 return;
             }
 
+            if (tid === 'battlefield') {
+                const bfRemaining = (this.bossCooldowns && this.bossCooldowns['battlefield_boss']) ? (this.bossCooldowns['battlefield_boss'] - Date.now()) : 0;
+                if (bfRemaining > 0) {
+                    this.portalCooldown = 3.0;
+                    this.audio.playSfx('bump');
+                    const hrs = (bfRemaining / 3600000).toFixed(1);
+                    this.ui.showToast(`🏰 [BATTLEFIELD] No threat outside the castle yet. Next assault in ~${hrs} hours.`);
+                    return;
+                }
+            }
+
             this.portalCooldown = 3.2;
             this.audio.playSfx('splash');
             this.ui.showToast(`Entering ${triggeredPortal.label}...`);
@@ -2139,7 +2275,7 @@ export class GameApp {
 
     // Check if player has Revival Juice in bag
     hasRevivalJuice() {
-        for (let i = 0; i < 20; i++) {
+        for (let i = 0; i < 30; i++) {
             const it = this.player.inventory[i];
             if (it && (it.name === 'Revival Juice' || it.sprite === 'revival_juice')) {
                 return true;
@@ -2150,7 +2286,7 @@ export class GameApp {
 
     // Use Revival Juice on Death Screen to revive on the spot with 100% HP
     useRevivalJuice() {
-        for (let i = 0; i < 20; i++) {
+        for (let i = 0; i < 30; i++) {
             const it = this.player.inventory[i];
             if (it && (it.name === 'Revival Juice' || it.sprite === 'revival_juice')) {
                 it.quantity = (it.quantity || 1) - 1;
@@ -2282,6 +2418,7 @@ export class GameApp {
 
         if (this.portalCooldown > 0) this.portalCooldown -= delta;
         if (this.combat.cooldowns.dodge > 0) this.combat.cooldowns.dodge -= delta;
+        if (this.playerStunTimer > 0) this.playerStunTimer -= delta;
 
         // Sync Skill 1 & Skill 2 Frontend Hotbar Cooldown Overlays with actual Cooldowns
         const cd1 = this.combat.cooldowns.skill1;
@@ -2369,7 +2506,7 @@ export class GameApp {
             inputZ = this.ui.joystick.vectorY;
         }
 
-        const isMoving = Math.hypot(inputX, inputZ) > 0.1;
+        const isMoving = (!this.playerStunTimer || this.playerStunTimer <= 0) && Math.hypot(inputX, inputZ) > 0.1;
 
         if (isMoving && !this.player.char3D.isAttacking) {
             const camYaw = this.engine.cameraYaw;
@@ -2425,7 +2562,7 @@ export class GameApp {
 
         for (const m of this.monsters) {
             // Always update monster so dead monsters tick down their 2D respawn timer & floating countdown UI!
-            m.update(delta, this.player.pos);
+            m.update(delta, this.player.pos, (dmg) => this.onMonsterHitPlayer(dmg, 'Charge', m));
             if (!m.isAlive) continue;
 
             // Dynamic Boss BGM shift when approaching Floor Boss / World Boss
@@ -2466,6 +2603,9 @@ export class GameApp {
                     }
 
                     let dmg = Math.max(1, m.atk - this.player.def);
+                    if (m.isDragon && m.level > this.player.level) {
+                        dmg += (m.level - this.player.level);
+                    }
 
                     // 4. Berserker Lv.75 Passive: I love PAIN (15% chance to heal 1/3 of incoming damage)
                     if (pClass === 'Berserker' && this.player.level >= 75 && Math.random() < 0.15) {

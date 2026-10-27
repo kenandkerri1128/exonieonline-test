@@ -1501,10 +1501,15 @@ html, body {
 }
 
 .equip-section {
-    flex: 0 0 170px;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
+    flex: 0 0 240px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    align-content: start;
+}
+
+.equip-section .section-title {
+    grid-column: 1 / -1;
 }
 
 .section-title {
@@ -1518,13 +1523,14 @@ html, body {
 .equip-slot-card {
     background: #1e293b;
     border: 2px dashed #475569;
-    border-radius: 12px;
-    padding: 10px;
+    border-radius: 10px;
+    padding: 8px;
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 3px;
     cursor: pointer;
     transition: 0.2s;
+    min-height: 52px;
 }
 
 .equip-slot-card:hover {
@@ -1546,9 +1552,71 @@ html, body {
 }
 
 .slot-item-view {
-    font-size: 0.88rem;
+    font-size: 0.82rem;
     font-weight: 700;
     color: #f1f5f9;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* ============================================================
+   INSPECT PLAYER MODAL STYLES (2D EXONIE INSPECT SYSTEM)
+   ============================================================ */
+.inspect-equip-card {
+    background: rgba(15, 23, 42, 0.88);
+    border: 1px solid #334155;
+    border-radius: 10px;
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    transition: 0.2s;
+}
+
+.inspect-equip-card:hover {
+    border-color: #38bdf8;
+    background: rgba(30, 41, 59, 0.95);
+}
+
+.inspect-equip-slot-name {
+    font-size: 0.68rem;
+    font-weight: 800;
+    color: #ffd700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+}
+
+.inspect-item-name {
+    font-size: 0.88rem;
+    font-weight: 700;
+    margin-bottom: 2px;
+}
+
+.inspect-item-sub {
+    font-size: 0.72rem;
+    color: #94a3b8;
+    margin-bottom: 4px;
+}
+
+.inspect-item-stat {
+    font-size: 0.75rem;
+    color: #cbd5e1;
+    line-height: 1.35;
+}
+
+.inspect-empty {
+    font-size: 0.78rem;
+    color: #64748b;
+    font-style: italic;
+    padding: 4px 0;
+}
+
+.inspect-sockets {
+    color: #00ffff;
+    font-size: 0.8rem;
+    letter-spacing: 2px;
+    margin-bottom: 3px;
 }
 
 .bag-section {

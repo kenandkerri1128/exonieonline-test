@@ -119,7 +119,10 @@ const ITEM_TEMPLATES = {
     dagger:   { slot: 'weapon', statKey: 'attack',  baseName: 'Dagger',   spriteName: 'dagger' },
     touchpad: { slot: 'weapon', statKey: 'magic',   baseName: 'Touchpad', spriteName: 'touchpad' },
     armor:    { slot: 'armor',  statKey: 'defense', baseName: 'Armor',    spriteName: 'armor' },
-    leggings: { slot: 'leggings', statKey: 'hp',    baseName: 'Leggings', spriteName: 'leggings' }
+    leggings: { slot: 'leggings', statKey: 'hp',    baseName: 'Leggings', spriteName: 'leggings' },
+    necklace: { slot: 'necklace', statKey: 'magic', baseName: 'Necklace', spriteName: 'necklace' },
+    ring:     { slot: 'ring',     statKey: 'attack', baseName: 'Ring',    spriteName: 'ring' },
+    earrings: { slot: 'earrings', statKey: 'defense', baseName: 'Earrings', spriteName: 'earrings' }
 };
 
 function getBaseStat(lvl) {
@@ -172,7 +175,7 @@ function generateDrop(mLevel, category) {
         randomStat[sKey] = Math.floor(Math.random() * getBaseStat(mLevel)) + 1;
     }
 
-    const isWpn = !['armor', 'leggings'].includes(typeKey);
+    const isWpn = template.slot === 'weapon';
     return {
         id: 'drop_' + Date.now() + '_' + Math.floor(Math.random() * 10000),
         name: `${rarity} ${template.baseName}`,
@@ -194,7 +197,10 @@ function getStarterItems() {
     const starterEquips = {
         weapon: null,
         armor: { id: 'eq_armor_' + Date.now(), name: "Starter Armor", type: "armor", sprite: "starterarmor", level: 1, rarity: "Starter", color: "#aaaaaa", fixedStat: { defense: 2 } },
-        leggings: { id: 'eq_leg_' + Date.now(), name: "Starter Leggings", type: "leggings", sprite: "starterleggings", level: 1, rarity: "Starter", color: "#aaaaaa", fixedStat: { hp: 5 } }
+        leggings: { id: 'eq_leg_' + Date.now(), name: "Starter Leggings", type: "leggings", sprite: "starterleggings", level: 1, rarity: "Starter", color: "#aaaaaa", fixedStat: { hp: 5 } },
+        necklace: null,
+        ring: null,
+        earrings: null
     };
 
     const starterInventory = [];
@@ -1267,7 +1273,14 @@ io.on('connection', (socket) => {
                         const now = Date.now();
                         bTimers.forEach(t => {
                             const deathTime = parseInt(t.last_death_time) || 0;
-                            const rem = (deathTime + (24 * 60 * 60 * 1000)) - now;
+                            let rem = 0;
+                            if (t.boss_id === 'neutralzone_boss') {
+                                rem = (deathTime + (5 * 60 * 60 * 1000)) - now;
+                            } else if (t.boss_id === 'battlefield_boss') {
+                                rem = deathTime - now;
+                            } else {
+                                rem = (deathTime + (24 * 60 * 60 * 1000)) - now;
+                            }
                             if (rem > 0) {
                                 activeCooldowns[t.boss_id] = now + rem;
                             }
@@ -1373,6 +1386,93 @@ io.on('connection', (socket) => {
                 }
             } catch (e) {
                 console.error('[Supabase Boss Timer Save Error]:', e.message);
+            }
+        }
+    });
+
+    socket.on('neutralBossKilled', async (data) => {
+        const now = Date.now();
+        bossTimersMemory['neutralzone_boss'] = now + (5 * 60 * 60 * 1000);
+        io.emit('bossCooldownActive', { floorId: 'neutralzone_boss', remaining: 5 * 60 * 60 * 1000 });
+
+        clearTimeout(global.neutralBossDespawnTimer);
+        clearTimeout(global.neutralBossSpawnTimer);
+        global.neutralBossSpawnTimer = setTimeout(spawnNeutralBoss, 5 * 60 * 60 * 1000);
+
+        if (supabase) {
+            try {
+                await supabase.from('boss_timers').upsert(
+                    { boss_id: 'neutralzone_boss', last_death_time: now },
+                    { onConflict: 'boss_id' }
+                );
+            } catch (e) {
+                console.error('[Neutral Boss Save Error]:', e.message);
+            }
+        }
+    });
+
+    socket.on('battlefieldBossKilled', async (data) => {
+        io.emit('worldAnnouncement', {
+            html: `🏰 <strong style="color:#ff1744;">[BATTLEFIELD RAID]</strong> Castle defense successful! The colossal raid boss has been vanquished by <strong>${data?.killerName || 'Heroes'}</strong>!`,
+            color: '#ff1744'
+        });
+        clearTimeout(global.bfBossDespawnTimer);
+        clearTimeout(global.bfBossSpawnTimer);
+        scheduleBattlefieldBoss();
+    });
+
+    // ==========================================
+    // 🔍 INSPECT PLAYER SYSTEM (2D Exonie port)
+    // ==========================================
+    socket.on('inspectRequest', async (data) => {
+        if (!data || !data.targetId) return;
+        const targetQuery = String(data.targetId).trim().toLowerCase();
+
+        // 1. Search online players first
+        let target = null;
+        for (const sid in onlinePlayers) {
+            const p = onlinePlayers[sid];
+            if (p && ((p.name && p.name.toLowerCase() === targetQuery) || (p.id && p.id.toLowerCase() === targetQuery) || sid === targetQuery)) {
+                target = p;
+                break;
+            }
+        }
+
+        if (target) {
+            return socket.emit('inspectData', {
+                id: target.id || target.name,
+                name: target.name || 'Hero',
+                level: target.level || 1,
+                playerClass: target.className || target.playerClass || target.baseStats?.playerClass || 'Novice',
+                currentHp: target.hp || target.currentHp || 100,
+                maxHp: target.maxHp || 100,
+                equips: target.equips || { weapon: null, armor: null, leggings: null, necklace: null, ring: null, earrings: null }
+            });
+        }
+
+        // 2. Fallback to Supabase if player is offline
+        if (supabase) {
+            try {
+                const { data: dbRow } = await supabase.from('Exonians')
+                    .select('character_name, level, equips, base_stats, hp')
+                    .ilike('character_name', targetQuery)
+                    .maybeSingle();
+
+                if (dbRow) {
+                    const parsedEquips = safeParseJson(dbRow.equips, {});
+                    const parsedStats = safeParseJson(dbRow.base_stats, {});
+                    return socket.emit('inspectData', {
+                        id: dbRow.character_name,
+                        name: dbRow.character_name,
+                        level: dbRow.level || 1,
+                        playerClass: (parsedStats && parsedStats.playerClass) || 'Novice',
+                        currentHp: dbRow.hp || 100,
+                        maxHp: (parsedStats && parsedStats.hp) || 100,
+                        equips: parsedEquips
+                    });
+                }
+            } catch (err) {
+                console.error('[Inspect Error]:', err.message);
             }
         }
     });
@@ -1589,6 +1689,143 @@ io.on('connection', (socket) => {
         io.emit('playerLeft', socket.id);
     });
 });
+
+// ==========================================
+// ⚔️ NEUTRAL ZONE & BATTLEFIELD ENGINE
+// ==========================================
+global.neutralBossDespawnTimer = null;
+global.neutralBossSpawnTimer = null;
+const NEUTRAL_SPAWN_CD = 5 * 60 * 60 * 1000; // 5 hours
+const NEUTRAL_DESPAWN_TIME = 12 * 60 * 60 * 1000; // 12 hours
+
+async function checkNeutralBoss() {
+    if (!supabase) return;
+    try {
+        const { data: timer } = await supabase.from('boss_timers').select('last_death_time').eq('boss_id', 'neutralzone_boss').maybeSingle();
+        let remaining = 0;
+        if (timer && timer.last_death_time) {
+            remaining = (parseInt(timer.last_death_time) + NEUTRAL_SPAWN_CD) - Date.now();
+        }
+        if (remaining > 0) {
+            bossTimersMemory['neutralzone_boss'] = Date.now() + remaining;
+            clearTimeout(global.neutralBossSpawnTimer);
+            global.neutralBossSpawnTimer = setTimeout(spawnNeutralBoss, remaining);
+        } else {
+            spawnNeutralBoss();
+        }
+    } catch (err) {
+        console.error('[Neutral Boss Init Error]:', err.message);
+    }
+}
+
+function spawnNeutralBoss() {
+    delete bossTimersMemory['neutralzone_boss'];
+    if (supabase) {
+        supabase.from('boss_timers').delete().eq('boss_id', 'neutralzone_boss').then(() => {});
+    }
+    io.emit('bossCooldownActive', { floorId: 'neutralzone_boss', remaining: 0 });
+    io.emit('worldAnnouncement', {
+        html: `🌲 <strong style="color:#4ade80;">[NEUTRAL ZONE]</strong> A powerful World Boss has appeared in the Neutral Zone Wilds!`,
+        color: '#4ade80'
+    });
+
+    clearTimeout(global.neutralBossDespawnTimer);
+    global.neutralBossDespawnTimer = setTimeout(async () => {
+        io.emit('worldAnnouncement', {
+            html: `🌲 <strong style="color:#888888;">[NEUTRAL ZONE]</strong> The Neutral Zone World Boss has despawned after 12 hours.`,
+            color: '#aaaaaa'
+        });
+        const now = Date.now();
+        bossTimersMemory['neutralzone_boss'] = now + NEUTRAL_SPAWN_CD;
+        io.emit('bossCooldownActive', { floorId: 'neutralzone_boss', remaining: NEUTRAL_SPAWN_CD });
+        if (supabase) {
+            await supabase.from('boss_timers').upsert({ boss_id: 'neutralzone_boss', last_death_time: now }, { onConflict: 'boss_id' });
+        }
+        clearTimeout(global.neutralBossSpawnTimer);
+        global.neutralBossSpawnTimer = setTimeout(spawnNeutralBoss, NEUTRAL_SPAWN_CD);
+    }, NEUTRAL_DESPAWN_TIME);
+}
+
+// 🏰 BATTLEFIELD CO-OP RAID BOSS ENGINE
+global.bfBossDespawnTimer = null;
+global.bfBossSpawnTimer = null;
+
+async function scheduleBattlefieldBoss() {
+    const minMs = 1 * 60 * 60 * 1000; // 1 hour
+    const maxMs = 48 * 60 * 60 * 1000; // 48 hours
+    const delay = Math.floor(Math.random() * (maxMs - minMs + 1)) + minMs;
+    const nextSpawnTs = Date.now() + delay;
+
+    bossTimersMemory['battlefield_boss'] = nextSpawnTs;
+    io.emit('bossCooldownActive', { floorId: 'battlefield_boss', remaining: delay });
+
+    if (supabase) {
+        try {
+            const { data } = await supabase.from('boss_timers').select('boss_id').eq('boss_id', 'battlefield_boss').maybeSingle();
+            if (data) {
+                await supabase.from('boss_timers').update({ last_death_time: nextSpawnTs }).eq('boss_id', 'battlefield_boss');
+            } else {
+                await supabase.from('boss_timers').insert([{ boss_id: 'battlefield_boss', last_death_time: nextSpawnTs }]);
+            }
+        } catch (e) {
+            console.error('[Battlefield Schedule Error]:', e.message);
+        }
+    }
+
+    clearTimeout(global.bfBossSpawnTimer);
+    global.bfBossSpawnTimer = setTimeout(spawnBattlefieldBoss, delay);
+}
+
+function spawnBattlefieldBoss() {
+    delete bossTimersMemory['battlefield_boss'];
+    if (supabase) {
+        supabase.from('boss_timers').delete().eq('boss_id', 'battlefield_boss').then(() => {});
+    }
+    io.emit('bossCooldownActive', { floorId: 'battlefield_boss', remaining: 0 });
+
+    const randomLevel = Math.floor(Math.random() * (1000 - 500 + 1)) + 500;
+    io.emit('worldAnnouncement', {
+        html: `🏰 <strong style="color:#ff1744;">[WORLD ALERT]</strong> A Level ${randomLevel} Colossal Raid Boss is assaulting the Castle! Enter the Battle Field to defend!`,
+        color: '#ff1744'
+    });
+
+    clearTimeout(global.bfBossDespawnTimer);
+    global.bfBossDespawnTimer = setTimeout(() => {
+        io.emit('worldAnnouncement', {
+            html: `🏰 <strong style="color:#888888;">[BATTLEFIELD]</strong> The Battlefield threat has retreated after 1 week.`,
+            color: '#aaaaaa'
+        });
+        io.emit('forceTownTeleport');
+        scheduleBattlefieldBoss();
+    }, 7 * 24 * 60 * 60 * 1000);
+}
+
+async function initBattlefieldEngine() {
+    if (!supabase) return;
+    try {
+        const { data: timer } = await supabase.from('boss_timers').select('last_death_time').eq('boss_id', 'battlefield_boss').maybeSingle();
+        if (timer && timer.last_death_time) {
+            const remaining = parseInt(timer.last_death_time) - Date.now();
+            if (remaining > 0) {
+                bossTimersMemory['battlefield_boss'] = Date.now() + remaining;
+                clearTimeout(global.bfBossSpawnTimer);
+                global.bfBossSpawnTimer = setTimeout(spawnBattlefieldBoss, remaining);
+            } else {
+                spawnBattlefieldBoss();
+            }
+        } else {
+            console.log('[BATTLEFIELD] No DB timer. Spawning boss in 2 seconds...');
+            clearTimeout(global.bfBossSpawnTimer);
+            global.bfBossSpawnTimer = setTimeout(spawnBattlefieldBoss, 2000);
+        }
+    } catch (err) {
+        console.error('[Battlefield Init Error]:', err.message);
+    }
+}
+
+// Start Neutral & Battlefield Engines on boot
+setTimeout(checkNeutralBoss, 2500);
+setTimeout(initBattlefieldEngine, 3500);
 
 server.listen(PORT, "0.0.0.0", () => {
     console.log(`===============================================`);

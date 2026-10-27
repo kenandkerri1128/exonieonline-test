@@ -105,11 +105,19 @@ export class Monster3D {
 
         this.state = 'idle'; // idle, chase, attack, dead
 
-        // Monster Subtypes & Classification
-        this.isRanged = this.dbKey.includes('mobs3') || this.dbKey.includes('boss3') || this.dbKey.includes('wraith') || this.dbKey.includes('dragon');
-        this.isGolem = this.dbKey.includes('golem');
-        this.isSlime = this.dbKey.includes('slime') || this.dbKey.includes('mobs1') || this.dbKey.includes('boss1');
-        this.isWraith = this.dbKey.includes('wraith');
+        // Monster Subtypes & Classification (Authoritative 2D Exonie recognition)
+        const keyLower = String(this.dbKey || '').toLowerCase();
+        const origLower = String(this.originalKey || '').toLowerCase();
+        const nameLower = String(this.name || '').toLowerCase();
+        const catLower = String(this.category || '').toLowerCase();
+
+        this.isRanged = keyLower.includes('mobs3') || keyLower.includes('boss3') || keyLower.includes('wraith') || keyLower.includes('dragon') || keyLower.includes('bat') || keyLower.includes('mobs2') || keyLower.includes('boss2');
+        this.isGolem = keyLower.includes('golem') || nameLower.includes('golem') || nameLower.includes('behemoth') || nameLower.includes('titan');
+        this.isSlime = keyLower.includes('slime') || keyLower.includes('mobs1') || keyLower.includes('boss1') || nameLower.includes('slime');
+        this.isWraith = keyLower.includes('wraith') || origLower.includes('wraith') || nameLower.includes('wraith') || nameLower.includes('void') || nameLower.includes('reaper');
+        this.isMinotaur = keyLower.includes('minotaur') || origLower.includes('minotaur') || nameLower.includes('minotaur') || nameLower.includes('gorehorn') || nameLower.includes('asterion');
+        this.isDragon = keyLower.includes('dragon') || origLower.includes('dragon') || nameLower.includes('dragon') || nameLower.includes('drake') || nameLower.includes('ignis');
+        this.isBoss = this.type === 'mini_boss' || this.type === 'floor_boss' || catLower === 'mini_boss' || catLower === 'floor_boss' || keyLower.includes('mini_boss') || keyLower.includes('floor_boss') || this.isTavernBoss || this.isNeutralBoss || this.isBattlefieldBoss;
 
         // Aggro & Attack Range (Significantly expanded per user request, especially ranged mobs)
         if (this.isRanged) {
@@ -1257,8 +1265,13 @@ export class Monster3D {
                         this._chargeHitDealt = true;
                         this.triggerAttackAnim();
                         onAttackPlayer(this.attackPower * 1.5);
-                        if (window.game && window.game.combat) {
-                            window.game.combat.spawnFloatingDamage(targetPos, '💥 BULL RUSH!', true);
+                        if (window.game) {
+                            if (window.game.combat) {
+                                window.game.combat.spawnFloatingDamage(targetPos, '🐂 BULL RUSH! (STUNNED)', true);
+                            }
+                            if (window.game.applyPlayerStun) {
+                                window.game.applyPlayerStun(3.0);
+                            }
                         }
                     }
                     return;
@@ -1268,20 +1281,28 @@ export class Monster3D {
                 }
             }
 
-            // Mini Boss & Floor Boss Earthquake Skill (Slimes, Golems, Minotaurs)
-            if ((this.isGolem || this.isSlime || this.type === 'mini_boss' || this.type === 'floor_boss') && distToPlayer <= this.aggroRange && distToSpawn < 90) {
+            // Universal Earthquake Skill (ALL Mini Bosses & Floor Bosses per 2D Exonie rules!)
+            const isFloorBoss = this.type === 'floor_boss' || this.category === 'floor_boss' || this.dbKey.includes('floor_boss') || this.isBattlefieldBoss;
+            if (this.isBoss && distToPlayer <= this.aggroRange && distToSpawn < 90) {
                 this.earthquakeCooldown = (this.earthquakeCooldown || 10.0) - dt;
                 if (this.earthquakeCooldown <= 0) {
-                    this.earthquakeCooldown = this.type === 'floor_boss' ? 8.5 : 12.0;
-                    const aoeRadius = this.type === 'floor_boss' ? 20.0 : 12.0;
+                    this.earthquakeCooldown = isFloorBoss ? 8.5 : 12.0;
+                    const aoeRadius = isFloorBoss ? 22.0 : 14.0;
                     if (window.game) {
-                        window.game.engine.spawnGroundShockwave(this.pos, this.isGolem ? 0x795548 : 0x00e5ff, aoeRadius);
-                        window.game.engine.addScreenshake(this.type === 'floor_boss' ? 1.0 : 0.6);
+                        let shockColor = 0xffd700;
+                        if (this.isDragon || this.dbKey.includes('boss3') || this.dbKey.includes('mobs3')) shockColor = 0xff5722;
+                        else if (this.isWraith) shockColor = 0x9c27b0;
+                        else if (this.dbKey.includes('bat') || this.dbKey.includes('boss2')) shockColor = 0xd500f9;
+                        else if (this.isGolem || this.isMinotaur) shockColor = 0x795548;
+                        else if (this.isSlime) shockColor = 0x00e5ff;
+
+                        window.game.engine.spawnGroundShockwave(this.pos, shockColor, aoeRadius);
+                        window.game.engine.addScreenshake(isFloorBoss ? 1.0 : 0.6);
                         window.game.audio.playSfx('bump');
                         window.game.combat.spawnFloatingDamage(this.pos, '🌋 EARTHQUAKE!', true);
                         if (distToPlayer <= aoeRadius) {
                             const eqDmg = Math.max(5, Math.floor(this.attackPower * 1.5));
-                            window.game.onMonsterHitPlayer(eqDmg, 'Earthquake');
+                            window.game.onMonsterHitPlayer(eqDmg, 'Earthquake', this);
                         }
                     }
                 }

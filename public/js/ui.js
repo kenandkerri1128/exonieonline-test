@@ -31,6 +31,7 @@ export class UIManager {
         this.settingsModal = document.getElementById('settings-modal');
         this.marketplaceModal = document.getElementById('marketplace-modal');
         this.storageModal = document.getElementById('storage-modal');
+        this.inspectModal = document.getElementById('inspect-modal');
         this.dailyMissionsModal = document.getElementById('daily-missions-modal');
         this.tavernModal = document.getElementById('tavern-modal');
         this.leaderboardModal = document.getElementById('leaderboard-modal');
@@ -141,10 +142,18 @@ export class UIManager {
             }
         };
 
-        // Unequip Weapon by clicking equipped slot
-        const slotWeapon = document.getElementById('slot-weapon');
-        if (slotWeapon) {
-            slotWeapon.onclick = () => this.game.unequipWeapon();
+        // Unequip items by clicking equipped slot (All 6 slots: weapon, armor, leggings, necklace, ring, earrings)
+        ['weapon', 'armor', 'leggings', 'necklace', 'ring', 'earrings'].forEach(slotKey => {
+            const slotEl = document.getElementById('slot-' + slotKey);
+            if (slotEl) {
+                slotEl.onclick = () => this.game.unequipItem(slotKey);
+            }
+        });
+
+        // Inspect Modal Close Button
+        const btnCloseInspect = document.getElementById('btn-close-inspect');
+        if (btnCloseInspect) {
+            btnCloseInspect.onclick = () => this.closeInspectModal();
         }
 
         // Settings Modal Buttons (ESC Menu)
@@ -766,53 +775,49 @@ export class UIManager {
         const player = this.game.player;
         if (!player) return;
 
-        // 1. Render Equipped Slots
-        const wpnView = document.getElementById('equip-view-weapon');
-        const slotWpn = document.getElementById('slot-weapon');
-        if (player.equips.weapon) {
-            wpnView.textContent = `⚔️ ${player.equips.weapon.name}`;
-            slotWpn.classList.add('filled');
-            slotWpn.onmouseenter = (e) => {
-                if (this.selectedInventoryIndex === null) this.showItemDetail(player.equips.weapon, -1);
-                this.showTooltip(player.equips.weapon, e);
-            };
-            slotWpn.onmousemove = (e) => this.showTooltip(player.equips.weapon, e);
-            slotWpn.onmouseleave = () => this.hideTooltip();
-        } else {
-            wpnView.textContent = "Empty (Click weapon in bag)";
-            slotWpn.classList.remove('filled');
-            slotWpn.onmouseenter = null;
-            slotWpn.onmousemove = null;
-            slotWpn.onmouseleave = null;
-        }
+        // 1. Render Equipped Slots (All 6 Slots: Weapon, Armor, Leggings, Necklace, Ring, Earrings)
+        const equipConfig = [
+            { key: 'weapon', label: 'WEAPON', defaultText: 'Empty', icon: '⚔️' },
+            { key: 'armor', label: 'ARMOR', defaultText: 'Empty', icon: '🛡️' },
+            { key: 'leggings', label: 'LEGGINGS', defaultText: 'Empty', icon: '👖' },
+            { key: 'necklace', label: 'NECKLACE', defaultText: 'Empty', icon: '📿' },
+            { key: 'ring', label: 'RING', defaultText: 'Empty', icon: '💍' },
+            { key: 'earrings', label: 'EARRINGS', defaultText: 'Empty', icon: '✨' }
+        ];
 
-        const armorView = document.getElementById('equip-view-armor');
-        const slotArmor = document.getElementById('slot-armor');
-        if (armorView && player.equips.armor) {
-            armorView.textContent = `🛡️ ${player.equips.armor.name} (+${player.equips.armor.fixedStat?.defense || 2} DEF)`;
-            if (slotArmor) {
-                slotArmor.onmouseenter = (e) => {
-                    if (this.selectedInventoryIndex === null) this.showItemDetail(player.equips.armor, -1);
-                    this.showTooltip(player.equips.armor, e);
-                };
-                slotArmor.onmousemove = (e) => this.showTooltip(player.equips.armor, e);
-                slotArmor.onmouseleave = () => this.hideTooltip();
-            }
-        }
+        equipConfig.forEach(cfg => {
+            const slotEl = document.getElementById(`slot-${cfg.key}`);
+            const viewEl = document.getElementById(`equip-view-${cfg.key}`);
+            const item = player.equips && player.equips[cfg.key];
 
-        const legView = document.getElementById('equip-view-leggings');
-        const slotLeg = document.getElementById('slot-leggings');
-        if (legView && player.equips.leggings) {
-            legView.textContent = `👖 ${player.equips.leggings.name} (+${player.equips.leggings.fixedStat?.hp || 5} HP)`;
-            if (slotLeg) {
-                slotLeg.onmouseenter = (e) => {
-                    if (this.selectedInventoryIndex === null) this.showItemDetail(player.equips.leggings, -1);
-                    this.showTooltip(player.equips.leggings, e);
-                };
-                slotLeg.onmousemove = (e) => this.showTooltip(player.equips.leggings, e);
-                slotLeg.onmouseleave = () => this.hideTooltip();
+            if (item) {
+                let statBonus = '';
+                if (item.fixedStat) {
+                    const firstStat = Object.entries(item.fixedStat)[0];
+                    if (firstStat) statBonus = ` (+${firstStat[1]} ${firstStat[0].toUpperCase()})`;
+                }
+                if (viewEl) {
+                    viewEl.innerHTML = `<span style="color:${item.color || '#38bdf8'}; font-weight:800;">${cfg.icon} ${item.name}${statBonus}</span>`;
+                }
+                if (slotEl) {
+                    slotEl.classList.add('filled');
+                    slotEl.onmouseenter = (e) => {
+                        if (this.selectedInventoryIndex === null) this.showItemDetail(item, -1);
+                        this.showTooltip(item, e);
+                    };
+                    slotEl.onmousemove = (e) => this.showTooltip(item, e);
+                    slotEl.onmouseleave = () => this.hideTooltip();
+                }
+            } else {
+                if (viewEl) viewEl.textContent = cfg.defaultText;
+                if (slotEl) {
+                    slotEl.classList.remove('filled');
+                    slotEl.onmouseenter = null;
+                    slotEl.onmousemove = null;
+                    slotEl.onmouseleave = null;
+                }
             }
-        }
+        });
 
         // 2. Render Bag Grid (30 slots)
         const grid = document.getElementById('inventory-slots-grid');
@@ -857,7 +862,7 @@ export class UIManager {
 
                 // DOUBLE CLICK: Instant Equip or Use!
                 slotEl.ondblclick = () => {
-                    if (['weapon', 'armor', 'leggings'].includes(item.type)) {
+                    if (['weapon', 'armor', 'leggings', 'necklace', 'ring', 'earrings'].includes(item.type)) {
                         this.game.equipItemFromInventory(i);
                         this.selectedInventoryIndex = null;
                         this.renderInventory();
@@ -900,6 +905,9 @@ export class UIManager {
         if (s.includes('goldbar')) return '🪙';
         if (type === 'armor') return '🛡️';
         if (type === 'leggings') return '👖';
+        if (type === 'necklace' || s.includes('necklace')) return '📿';
+        if (type === 'ring' || s.includes('ring')) return '💍';
+        if (type === 'earrings' || s.includes('earring')) return '✨';
         return '📦';
     }
 
@@ -924,7 +932,7 @@ export class UIManager {
         actionsEl.innerHTML = '';
         if (index < 0) return; // Viewing already-equipped item
 
-        if (['weapon', 'armor', 'leggings'].includes(item.type)) {
+        if (['weapon', 'armor', 'leggings', 'necklace', 'ring', 'earrings'].includes(item.type)) {
             const btnEquip = document.createElement('button');
             btnEquip.className = 'btn-item-action';
             btnEquip.textContent = `⚔️ Equip ${item.type.charAt(0).toUpperCase() + item.type.slice(1)}`;
@@ -1073,9 +1081,101 @@ export class UIManager {
             this.marketplaceModal, this.storageModal, this.dailyMissionsModal,
             this.tavernModal, this.leaderboardModal, this.dungeonModal,
             this.mazeGuideModal, this.settingsModal, this.statsModal,
-            this.inventoryModal, this.skillsModal
+            this.inventoryModal, this.skillsModal, this.inspectModal
         ];
         return modals.some(m => m && (m.style.display === 'flex' || m.style.display === 'block'));
+    }
+
+    openInspectModal(data) {
+        if (!data) return;
+        const modal = this.inspectModal || document.getElementById('inspect-modal');
+        if (!modal) return;
+
+        const titleEl = document.getElementById('inspect-modal-title');
+        if (titleEl) {
+            titleEl.textContent = `🔍 Inspect: ${data.name || 'Hero'}`;
+        }
+
+        const vitalsEl = document.getElementById('inspect-vitals-header');
+        if (vitalsEl) {
+            const pClass = data.playerClass || 'Novice';
+            const lvl = data.level || 1;
+            const hpStr = (data.currentHp !== undefined && data.maxHp !== undefined) ? `HP ${data.currentHp} / ${data.maxHp}` : `Level ${lvl}`;
+            vitalsEl.innerHTML = `<strong>Level ${lvl}</strong> &nbsp;|&nbsp; <strong style="color:#38bdf8;">${pClass}</strong> &nbsp;|&nbsp; <strong style="color:#4ade80;">${hpStr}</strong>`;
+        }
+
+        const gridEl = document.getElementById('inspect-equips-grid');
+        if (gridEl) {
+            gridEl.innerHTML = '';
+            const equips = data.equips || {};
+            const slots = [
+                { key: 'weapon', label: 'Weapon', icon: '⚔️' },
+                { key: 'armor', label: 'Armor', icon: '🛡️' },
+                { key: 'leggings', label: 'Leggings', icon: '👖' },
+                { key: 'necklace', label: 'Necklace', icon: '📿' },
+                { key: 'ring', label: 'Ring', icon: '💍' },
+                { key: 'earrings', label: 'Earrings', icon: '✨' }
+            ];
+
+            slots.forEach(s => {
+                const item = equips[s.key];
+                const card = document.createElement('div');
+                card.className = 'inspect-equip-card';
+
+                if (!item) {
+                    card.innerHTML = `
+                        <div class="inspect-equip-slot-name">${s.icon} ${s.label}</div>
+                        <div class="inspect-empty">Empty (None)</div>
+                    `;
+                } else {
+                    const rarityColor = item.color || RARITY_COLORS[item.rarity] || '#ffffff';
+                    const displayName = item.enhanceLevel ? `${item.name} +${item.enhanceLevel}` : item.name;
+
+                    let socketsHtml = '';
+                    if (['necklace', 'ring', 'earrings'].includes(item.type)) {
+                        const maxGems = { Basic: 1, Rare: 1, Unique: 2, Legendary: 3, Godly: 4, Divine: 5 }[item.rarity] || 0;
+                        if (maxGems > 0) {
+                            const count = item.gemCount || 0;
+                            let sockets = '';
+                            for (let i = 0; i < maxGems; i++) {
+                                sockets += (i < count) ? '◆ ' : '◇ ';
+                            }
+                            socketsHtml = `<div class="inspect-sockets">Sockets: ${sockets.trim()}</div>`;
+                        }
+                    }
+
+                    let statsHtml = '';
+                    if (item.fixedStat) {
+                        for (const k in item.fixedStat) {
+                            statsHtml += `<div><b>Fixed:</b> +${item.fixedStat[k]} ${k.toUpperCase()}</div>`;
+                        }
+                    }
+                    if (item.randomStat) {
+                        for (const k in item.randomStat) {
+                            statsHtml += `<div><b>Random:</b> +${item.randomStat[k]} ${k.toUpperCase()}</div>`;
+                        }
+                    }
+
+                    card.innerHTML = `
+                        <div class="inspect-equip-slot-name">${s.icon} ${s.label}</div>
+                        <div class="inspect-item-name" style="color:${rarityColor};">${displayName}</div>
+                        <div class="inspect-item-sub">Lv.${item.level || 1} [${item.rarity || 'Basic'}]</div>
+                        ${socketsHtml}
+                        <div class="inspect-item-stat">${statsHtml || '<div style="color:#64748b;">No extra stats</div>'}</div>
+                    `;
+                }
+
+                gridEl.appendChild(card);
+            });
+        }
+
+        document.exitPointerLock?.();
+        modal.style.display = 'flex';
+    }
+
+    closeInspectModal() {
+        const modal = this.inspectModal || document.getElementById('inspect-modal');
+        if (modal) modal.style.display = 'none';
     }
 
     toggleMarketplace(forceState = null) {

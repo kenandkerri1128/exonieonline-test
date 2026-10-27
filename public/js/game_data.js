@@ -130,7 +130,10 @@ export const STARTER_ITEMS = {
     equips: {
         weapon: null,
         armor: { id: 'starter_armor_1', name: "Starter Armor", type: "armor", sprite: "starterarmor", level: 1, rarity: "Starter", color: "#aaaaaa", fixedStat: { defense: 2 } },
-        leggings: { id: 'starter_leggings_1', name: "Starter Leggings", type: "leggings", sprite: "starterleggings", level: 1, rarity: "Starter", color: "#aaaaaa", fixedStat: { hp: 5 } }
+        leggings: { id: 'starter_leggings_1', name: "Starter Leggings", type: "leggings", sprite: "starterleggings", level: 1, rarity: "Starter", color: "#aaaaaa", fixedStat: { hp: 5 } },
+        necklace: null,
+        ring: null,
+        earrings: null
     },
     inventory: [
         { id: 'starter_wpn_sword', name: "Starter Sword", type: "weapon", weaponType: "sword", sprite: "startersword", level: 1, rarity: "Starter", color: "#aaaaaa", fixedStat: { attack: 3 }, desc: "A reliable iron blade. Required for Berserker & Blademaster." },
@@ -258,7 +261,10 @@ export const ITEM_TEMPLATES = {
     dagger:   { slot: 'weapon', statKey: 'attack', baseName: 'Dagger', spriteName: 'dagger' },
     touchpad: { slot: 'weapon', statKey: 'magic', baseName: 'Touchpad', spriteName: 'touchpad' },
     armor:    { slot: 'armor', statKey: 'defense', baseName: 'Armor', spriteName: 'armor' },
-    leggings: { slot: 'leggings', statKey: 'hp', baseName: 'Leggings', spriteName: 'leggings' }
+    leggings: { slot: 'leggings', statKey: 'hp', baseName: 'Leggings', spriteName: 'leggings' },
+    necklace: { slot: 'necklace', statKey: 'magic', baseName: 'Necklace', spriteName: 'necklace' },
+    ring:     { slot: 'ring',     statKey: 'attack', baseName: 'Ring',     spriteName: 'ring' },
+    earrings: { slot: 'earrings', statKey: 'defense', baseName: 'Earrings', spriteName: 'earrings' }
 };
 
 export function getBaseStat(lvl) {

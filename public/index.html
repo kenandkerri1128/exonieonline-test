@@ -462,20 +462,32 @@
                 <button class="btn-close-modal" id="btn-close-inventory">✖</button>
             </div>
             <div class="modal-body-inventory">
-                <!-- Equipment Slots Column -->
+                <!-- Equipment & Accessories Slots Column (Weapon, Armor, Leggings, Necklace, Ring, Earrings) -->
                 <div class="equip-section">
                     <div class="section-title">Equipped</div>
-                    <div class="equip-slot-card" id="slot-weapon" data-slot="weapon">
+                    <div class="equip-slot-card" id="slot-weapon" data-slot="weapon" title="Click to unequip">
                         <span class="slot-badge">WEAPON</span>
                         <div class="slot-item-view" id="equip-view-weapon">Empty</div>
                     </div>
-                    <div class="equip-slot-card" id="slot-armor" data-slot="armor">
+                    <div class="equip-slot-card" id="slot-armor" data-slot="armor" title="Click to unequip">
                         <span class="slot-badge">ARMOR</span>
                         <div class="slot-item-view" id="equip-view-armor">Starter Armor</div>
                     </div>
-                    <div class="equip-slot-card" id="slot-leggings" data-slot="leggings">
+                    <div class="equip-slot-card" id="slot-leggings" data-slot="leggings" title="Click to unequip">
                         <span class="slot-badge">LEGGINGS</span>
                         <div class="slot-item-view" id="equip-view-leggings">Starter Leggings</div>
+                    </div>
+                    <div class="equip-slot-card" id="slot-necklace" data-slot="necklace" title="Click to unequip">
+                        <span class="slot-badge">NECKLACE</span>
+                        <div class="slot-item-view" id="equip-view-necklace">Empty</div>
+                    </div>
+                    <div class="equip-slot-card" id="slot-ring" data-slot="ring" title="Click to unequip">
+                        <span class="slot-badge">RING</span>
+                        <div class="slot-item-view" id="equip-view-ring">Empty</div>
+                    </div>
+                    <div class="equip-slot-card" id="slot-earrings" data-slot="earrings" title="Click to unequip">
+                        <span class="slot-badge">EARRINGS</span>
+                        <div class="slot-item-view" id="equip-view-earrings">Empty</div>
                     </div>
                 </div>
 
@@ -1001,6 +1013,26 @@
                     Select any Spire Floor below to teleport directly to its entrance! (Note: <strong>Crystal Dungeon 1</strong> is located on <strong>Floor 3</strong>, and <strong>Ancient Cave Dungeon 2</strong> is located on <strong>Floor 7</strong>.)
                 </p>
                 <div id="maze-guide-floors-grid" style="display:grid; grid-template-columns:repeat(2, 1fr); gap:8px; max-height:300px; overflow-y:auto;"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============================================================
+         INSPECT PLAYER MODAL (AUTHENTIC 2D EXONIE INSPECT SYSTEM)
+         ============================================================ -->
+    <div class="game-modal" id="inspect-modal" style="display:none;">
+        <div class="modal-dialog modal-dialog-inspect" style="max-width:540px; background:#0f172a; border:2px solid #38bdf8; box-shadow:0 0 35px rgba(56, 189, 248, 0.25);">
+            <div class="modal-header">
+                <h3 id="inspect-modal-title" style="color:#38bdf8;">🔍 Inspect Player</h3>
+                <button class="btn-close-modal" id="btn-close-inspect">✖</button>
+            </div>
+            <div class="modal-body" style="padding:16px; max-height:72vh; overflow-y:auto;">
+                <div id="inspect-vitals-header" style="text-align:center; font-size:0.92rem; color:#94a3b8; margin-bottom:14px; padding-bottom:8px; border-bottom:1px solid #334155;">
+                    Level 1 | Novice | HP 100 / 100
+                </div>
+                <div id="inspect-equips-grid" class="inspect-equips-grid" style="display:grid; grid-template-columns:repeat(2, 1fr); gap:10px;">
+                    <!-- Dynamically populated with all 6 equipment slots -->
+                </div>
             </div>
         </div>
     </div>
