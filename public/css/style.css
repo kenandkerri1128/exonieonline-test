@@ -1452,6 +1452,11 @@ html, body {
     max-height: 86vh;
 }
 
+.modal-dialog-inventory {
+    width: min(880px, 95vw);
+    max-height: 88vh;
+}
+
 .modal-header {
     display: flex;
     align-items: center;
@@ -1489,19 +1494,21 @@ html, body {
 /* Inventory Layout */
 .modal-body-inventory {
     display: flex;
-    gap: 16px;
-    padding: 16px;
+    gap: 18px;
+    padding: 18px 20px;
     overflow-y: auto;
+    overflow-x: hidden;
+    box-sizing: border-box;
 }
 
-@media (max-width: 600px) {
+@media (max-width: 680px) {
     .modal-body-inventory {
         flex-direction: column;
     }
 }
 
 .equip-section {
-    flex: 0 0 240px;
+    flex: 0 0 250px;
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 8px;
@@ -1518,6 +1525,8 @@ html, body {
     letter-spacing: 0.08em;
     color: #94a3b8;
     text-transform: uppercase;
+    white-space: normal;
+    word-break: break-word;
 }
 
 .equip-slot-card {
@@ -1621,24 +1630,21 @@ html, body {
 
 .bag-section {
     flex: 1;
+    min-width: 0;
     display: flex;
     flex-direction: column;
     gap: 8px;
+    overflow: hidden;
 }
 
 .bag-grid {
     display: grid;
-    grid-template-columns: repeat(5, 1fr);
-    gap: 6px;
-    max-height: 285px;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 8px;
+    max-height: 380px;
     overflow-y: auto;
-    padding-right: 2px;
-}
-
-@media (min-width: 500px) {
-    .bag-grid {
-        grid-template-columns: repeat(6, 1fr);
-    }
+    overflow-x: hidden;
+    padding-right: 4px;
 }
 
 .bag-slot {
