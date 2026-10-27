@@ -27,6 +27,12 @@ export class CombatSystem {
             skill3: 0,
             dodge: 0
         };
+        this.maxCooldowns = {
+            skill1: 1,
+            skill2: 1,
+            skill3: 1,
+            dodge: 1.2
+        };
 
         // 🐾 Allied Minions & Companions (Summon Slime, etc.)
         this.alliedMinions = [];
@@ -228,6 +234,9 @@ export class CombatSystem {
 
     // Execute Primary Attack (Left Click) — Auto-Aims at nearest monster & uses exact 2D Exonie formulas!
     executePrimaryAttack(player, monsters, onMonsterKilled) {
+        // Disallow attack during dodge roll (prevents animation breaking/floating)
+        if (player.char3D && player.char3D.isDodging) return;
+
         if (!player.equips || !player.equips.weapon) {
             this.autoAimNearestMonster(player, monsters, 6.0);
             this.executeUnarmedAttack(player, monsters, onMonsterKilled);
@@ -456,6 +465,9 @@ export class CombatSystem {
 
     // Cast Active Class Skill (Slot 1 or 2)
     executeSkill(skillSlot, player, monsters, onMonsterKilled) {
+        // Disallow skills during dodge roll
+        if (player.char3D && player.char3D.isDodging) return;
+
         if (!player.equips || !player.equips.weapon) {
             this.spawnFloatingDamage(player.pos, "EQUIP WEAPON FIRST!", false);
             if (this.audio) this.audio.playSfx('bump');
@@ -466,6 +478,19 @@ export class CombatSystem {
         if (!pClass || !CLASSES[pClass]) {
             this.spawnFloatingDamage(player.pos, "AWAKEN CLASS IN SKILLS (K)!", false);
             if (this.audio) this.audio.playSfx('bump');
+            return;
+        }
+
+        // Weapon requirement check matching 2D Exonie: CLASSES[pClass].weapon
+        const reqWpn = CLASSES[pClass]?.weapon;
+        const wpn = player.equips?.weapon;
+        const wpnType = String(wpn?.weaponType || wpn?.sprite || wpn?.name || '').toLowerCase();
+        if (reqWpn && !wpnType.includes(reqWpn)) {
+            this.spawnFloatingDamage(player.pos, `WRONG WEAPON! (${reqWpn.toUpperCase()})`, false);
+            if (this.audio) this.audio.playSfx('bump');
+            if (window.game && window.game.ui) {
+                window.game.ui.showToast(`⚠️ ${pClass} requires a ${reqWpn.toUpperCase()} to use class skills!`);
+            }
             return;
         }
 
@@ -501,6 +526,8 @@ export class CombatSystem {
         const atkVal = player.atk || 20;
         const baseCdSec = (skillDef.cd || 15000) / 1000;
         this.cooldowns[key] = baseCdSec;
+        if (!this.maxCooldowns) this.maxCooldowns = { skill1: 1, skill2: 1, skill3: 1 };
+        this.maxCooldowns[key] = baseCdSec;
 
         if (pClass === 'Blademaster') {
             if (skillSlot === 1) {
@@ -527,12 +554,28 @@ export class CombatSystem {
                     player.calloutActive = false;
                     if (window.game) window.game.recalculateStats();
                 }, 10000);
-                this.spawnFloatingDamage(player.pos, '🛡️ CALLOUT! (3x DEF)', false, true);
+                this.spawnFloatingDamage(player.pos, '🛡️ CALLOUT! (PROVOKE)', false, true);
                 this.engine.spawnGroundShockwave(player.pos, 0xff1744, 6.5);
                 if (this.audio) this.audio.playSfx('slash');
+
+                // Provoke all monsters within 18 units to aggro on Berserker
+                if (monsters) {
+                    for (const mob of monsters) {
+                        if (mob && mob.isAlive && player.pos.distanceTo(mob.group.position) <= 18) {
+                            if (mob.provoke) mob.provoke(player, 10.0);
+                        }
+                    }
+                }
+
                 this.damageMonstersInRadius(player, player.pos, 8.0, atkVal * 1.5, monsters, onMonsterKilled);
             } else {
                 // Immortal (Lv.50, 100s CD): HP cannot drop below 1 for 10s
+                player.isImmortal = true;
+                setTimeout(() => { player.isImmortal = false; }, 10000);
+                this.spawnFloatingDamage(player.pos, '🔥 IMMORTAL (10s)!', true, true);
+                this.engine.spawnLevelUpVFX(player.pos);
+                if (this.audio) this.audio.playSfx('splash');
+            }
                 player.isImmortal = true;
                 setTimeout(() => { player.isImmortal = false; }, 10000);
                 this.spawnFloatingDamage(player.pos, '🔥 IMMORTAL (10s)!', true, true);
@@ -685,8 +728,18 @@ export class CombatSystem {
                 // Golem Buster (Lv.50, 100s CD): Summons Golem Bot AoE blast + Taunt
                 this.engine.addScreenshake(0.95);
                 this.engine.spawnGroundShockwave(player.pos, 0x18ffff, 8.5);
-                this.spawnFloatingDamage(player.pos, '🤖 GOLEM BUSTER DEPLOYED!', true, true);
+                this.spawnFloatingDamage(player.pos, '🤖 GOLEM BUSTER (TAUNT)!', true, true);
                 if (this.audio) this.audio.playSfx('lightning');
+
+                // Provoke all monsters within 20 units
+                if (monsters) {
+                    for (const mob of monsters) {
+                        if (mob && mob.isAlive && player.pos.distanceTo(mob.group.position) <= 20) {
+                            if (mob.provoke) mob.provoke(player, 10.0);
+                        }
+                    }
+                }
+
                 this.damageMonstersInRadius(player, player.pos, 8.5, intVal * 4.5, monsters, onMonsterKilled);
             }
         }
@@ -882,8 +935,16 @@ export class CombatSystem {
                 if (dist <= 2.4 && m.attackCooldown <= 0) {
                     m.attackCooldown = 1.1;
                     const mult = m.isBoss ? 3.0 : 1.5;
-                    const dmg = Math.max(5, Math.floor(m.intVal * mult));
+                    const rawDmg = Math.floor(m.intVal * mult);
+                    // Authoritative 2D summon damage formula: (player INT * mult) - monster defense
+                    const dmg = Math.max(1, rawDmg - (target.def || 0));
                     target.takeDamage(dmg);
+
+                    // Slime / Boss Slime Provoke (Taunts monster to focus attack on summon)
+                    if (target.provoke && (!target.provokeTimer || target.provokeTimer <= 0)) {
+                        target.provoke(m, m.isBoss ? 8.0 : 4.0);
+                    }
+
                     this.engine.spawnHitSparks(target.group.position, m.isBoss ? 0xffd700 : 0x00e5ff, 14);
                     this.spawnFloatingDamage(target.group.position, `💥 SLIME: ${dmg}`, m.isBoss);
                     this.registerComboHit(1);

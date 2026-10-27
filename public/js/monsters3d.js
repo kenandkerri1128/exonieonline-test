@@ -122,7 +122,13 @@ export class Monster3D {
         this.chargeTimer = 0;
         this.chargeDir = new THREE.Vector3();
 
+        // 🛡️ Provoke & Aggro System (Berserker Callout, Slimes, Golems)
+        this.provokeTarget = null;
+        this.provokeTimer = 0;
+
         this.buildMesh();
+        this.ensureOverheadUI();
+        this.updateOverheadUI();
     }
 
     getAttackSfx() {
@@ -801,6 +807,82 @@ export class Monster3D {
         this.parts.tail = tail;
     }
 
+    provoke(targetEntity, duration = 10.0) {
+        this.provokeTarget = targetEntity;
+        this.provokeTimer = duration;
+        this.state = 'chase';
+    }
+
+    ensureOverheadUI() {
+        if (this.overheadGroup) return;
+        this.overheadGroup = new THREE.Group();
+        this.group.add(this.overheadGroup);
+
+        this.overheadCanvas = document.createElement('canvas');
+        this.overheadCanvas.width = 256;
+        this.overheadCanvas.height = 64;
+        this.overheadTex = new THREE.CanvasTexture(this.overheadCanvas);
+        const spriteMat = new THREE.SpriteMaterial({
+            map: this.overheadTex,
+            transparent: true,
+            depthTest: false
+        });
+        this.overheadSprite = new THREE.Sprite(spriteMat);
+        const height = 1.6 + this.scaleFactor * 0.85;
+        this.overheadSprite.position.set(0, height, 0);
+        this.overheadSprite.scale.set(2.8, 0.7, 1);
+        this.overheadSprite.renderOrder = 995;
+        this.overheadGroup.add(this.overheadSprite);
+        this._lastOverheadHp = -1;
+        this._lastOverheadMaxHp = -1;
+    }
+
+    updateOverheadUI() {
+        if (!this.overheadGroup) this.ensureOverheadUI();
+        if (this.state === 'dead') {
+            this.overheadGroup.visible = false;
+            return;
+        }
+        this.overheadGroup.visible = true;
+
+        if (this.hp === this._lastOverheadHp && this.maxHp === this._lastOverheadMaxHp) return;
+        this._lastOverheadHp = this.hp;
+        this._lastOverheadMaxHp = this.maxHp;
+
+        const ctx = this.overheadCanvas.getContext('2d');
+        ctx.clearRect(0, 0, 256, 64);
+
+        // Name & Level
+        ctx.font = 'bold 18px "Segoe UI", Arial, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillStyle = '#000000';
+        ctx.fillText(`Lv.${this.level} ${this.name}`, 129, 23);
+        ctx.fillText(`Lv.${this.level} ${this.name}`, 127, 21);
+        ctx.fillStyle = this.type === 'floor_boss' ? '#ff3b30' : (this.type === 'mini_boss' ? '#ff9500' : '#ffffff');
+        ctx.fillText(`Lv.${this.level} ${this.name}`, 128, 22);
+
+        // Health bar background
+        const barX = 28;
+        const barY = 30;
+        const barW = 200;
+        const barH = 14;
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
+        ctx.fillRect(barX, barY, barW, barH);
+        ctx.strokeStyle = '#334155';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(barX, barY, barW, barH);
+
+        // Health bar fill
+        const ratio = Math.max(0, Math.min(1, this.hp / (this.maxHp || 1)));
+        const fillW = Math.round((barW - 4) * ratio);
+        if (fillW > 0) {
+            ctx.fillStyle = ratio > 0.5 ? '#22c55e' : (ratio > 0.25 ? '#eab308' : '#ef4444');
+            ctx.fillRect(barX + 2, barY + 2, fillW, barH - 4);
+        }
+
+        this.overheadTex.needsUpdate = true;
+    }
+
     takeDamage(amount) {
         if (this.state === 'dead') return false;
         this.hp = Math.max(0, this.hp - amount);
@@ -809,6 +891,14 @@ export class Monster3D {
             this.mainMat.emissive.setHex(0xffffff);
             this.mainMat.emissiveIntensity = 1.4;
         }
+
+        // Engage boss HUD when boss is attacked
+        if (window.game && this === window.game.floorBoss) {
+            window.game.bossEngaged = true;
+        }
+
+        this.updateOverheadUI();
+
         if (this.hp <= 0) {
             this.die();
             return true;
@@ -901,6 +991,10 @@ export class Monster3D {
 
     die() {
         this.state = 'dead';
+        if (this.overheadGroup) this.overheadGroup.visible = false;
+        if (window.game && this === window.game.floorBoss) {
+            window.game.bossEngaged = false;
+        }
         this.respawnTimer = this.get2DRespawnDuration();
         this.pos.copy(this.spawnPos);
         this.group.position.copy(this.spawnPos);
@@ -924,6 +1018,8 @@ export class Monster3D {
         this.isFrozen = false;
         this.freezeTimer = 0;
         this.bleedTimer = 0;
+        this.provokeTarget = null;
+        this.provokeTimer = 0;
 
         // 🌟 2D Dynamic Golden Slime Mutation on Respawn:
         if (this.category === 'common_mobs' && !this.isTavernBoss) {
@@ -953,6 +1049,7 @@ export class Monster3D {
             this.mainMat.color.copy(this.originalColor);
             this.mainMat.emissive.setHex(0x000000);
         }
+        this.updateOverheadUI();
         if (window.game && window.game.engine) {
             window.game.engine.spawnGroundShockwave(this.spawnPos, 0x00e5ff, 2.2 * this.scaleFactor);
         }
@@ -1111,9 +1208,17 @@ export class Monster3D {
         }
 
         // AI Movement & Attack State
-        if (playerPos) {
+        let targetPos = playerPos;
+        if (this.provokeTimer > 0 && this.provokeTarget) {
+            this.provokeTimer -= dt;
+            const pPos = this.provokeTarget.pos || (this.provokeTarget.group && this.provokeTarget.group.position);
+            if (pPos) targetPos = pPos;
+            else this.provokeTarget = null;
+        }
+
+        if (targetPos) {
             this.pos.copy(this.group.position);
-            const distToPlayer = this.pos.distanceTo(playerPos);
+            const distToPlayer = this.pos.distanceTo(targetPos);
             const distToSpawn = this.pos.distanceTo(this.spawnPos);
 
             if (this.isMinotaur) {
@@ -1135,7 +1240,7 @@ export class Monster3D {
                         this.triggerAttackAnim();
                         onAttackPlayer(this.attackPower * 1.5);
                         if (window.game && window.game.combat) {
-                            window.game.combat.spawnFloatingDamage(playerPos, '💥 BULL RUSH!', true);
+                            window.game.combat.spawnFloatingDamage(targetPos, '💥 BULL RUSH!', true);
                         }
                     }
                     return;
@@ -1147,14 +1252,14 @@ export class Monster3D {
 
             if (distToPlayer <= this.attackRange) {
                 this.state = 'attack';
-                const angle = Math.atan2(playerPos.x - this.pos.x, playerPos.z - this.pos.z);
+                const angle = Math.atan2(targetPos.x - this.pos.x, targetPos.z - this.pos.z);
                 this.group.rotation.y = angle;
                 if (this.attackCooldown <= 0.15 && this.attackAnimTimer <= 0) {
                     this.triggerAttackAnim();
                 }
-            } else if (distToPlayer <= this.aggroRange && distToSpawn < 65) {
+            } else if ((distToPlayer <= this.aggroRange || this.provokeTimer > 0) && distToSpawn < 65) {
                 this.state = 'chase';
-                const dir = new THREE.Vector3().subVectors(playerPos, this.pos);
+                const dir = new THREE.Vector3().subVectors(targetPos, this.pos);
                 dir.y = 0;
                 dir.normalize();
 

@@ -5,7 +5,8 @@
 
 window.ExonieFlow = {
     step: 'splash_studio', // 'splash_studio', 'splash_credits', 'auth', 'char_select', 'creation', 'prologue', 'game'
-    accountName: 'HeroPlayer',
+    accountName: '',
+    accountEmail: '',
     activeSlotIndex: 0,
     charData: {
         name: 'Aria',
@@ -162,7 +163,11 @@ window.ExonieFlow = {
         this.scrAuth = document.getElementById('auth-screen');
         this.loginForm = document.getElementById('login-form');
         this.registerForm = document.getElementById('register-form');
-        this.inputUser = document.getElementById('login-user');
+        this.inputEmail = document.getElementById('login-email') || document.getElementById('login-user');
+        this.inputUser = this.inputEmail;
+        this.inputPass = document.getElementById('login-pass');
+        this.inputRegEmail = document.getElementById('reg-email') || document.getElementById('reg-user');
+        this.inputRegPass = document.getElementById('reg-pass');
 
         this.scrCharSelect = document.getElementById('char-select-screen');
         this.charSlotsGrid = document.getElementById('char-slots-grid');
@@ -277,7 +282,24 @@ window.ExonieFlow = {
         this.playMenuMusic();
     },
 
+    clearAuthErrors() {
+        const lErr = document.getElementById('login-error-msg');
+        if (lErr) { lErr.textContent = ''; lErr.style.display = 'none'; lErr.style.color = '#ef4444'; }
+        const rErr = document.getElementById('reg-error-msg');
+        if (rErr) { rErr.textContent = ''; rErr.style.display = 'none'; rErr.style.color = '#ef4444'; }
+    },
+
+    showAuthError(form, msg) {
+        this.clearAuthErrors();
+        const errEl = (form === 'register') ? document.getElementById('reg-error-msg') : document.getElementById('login-error-msg');
+        if (errEl) {
+            errEl.textContent = msg;
+            errEl.style.display = 'block';
+        }
+    },
+
     switchAuth(mode) {
+        this.clearAuthErrors();
         if (!this.loginForm || !this.registerForm) this.cacheDOM();
         if (mode === 'register') {
             this.loginForm.style.display = 'none';
@@ -317,28 +339,56 @@ window.ExonieFlow = {
         socket.on('authError', (msg) => {
             clearTimeout(this._loginTimeout);
             console.warn('[Flow] Auth message:', msg);
-            if (this.accountName && (this.accountName.toLowerCase() === 'heroplayer' || this.accountName.startsWith('Hero_'))) {
-                this.onAuthSuccess(this.accountName);
-            } else {
-                alert(msg || 'Authentication Error');
-            }
+            const activeForm = (this.registerForm && this.registerForm.style.display !== 'none') ? 'register' : 'login';
+            this.showAuthError(activeForm, msg || 'Authentication Error');
+        });
+
+        socket.on('needsCharacterCreation', (payload) => {
+            clearTimeout(this._loginTimeout);
+            console.log('✨ [Flow] Character needs creation:', payload);
+            const email = (payload && typeof payload === 'object' && payload.email) ? payload.email : (typeof payload === 'string' ? payload : (this.accountEmail || 'hero@exonie.com'));
+            const slotIdx = (payload && typeof payload === 'object' && payload.slotIndex !== undefined) ? payload.slotIndex : 0;
+            this.accountEmail = email;
+            this.accountName = email.split('@')[0] || 'Hero';
+            this.activeSlotIndex = slotIdx;
+            const defaultName = this.accountName;
+            this.charData.name = defaultName;
+            this.charData.email = this.accountEmail;
+            this.charData.slotIndex = slotIdx;
+            if (this.inputCharName) this.inputCharName.value = defaultName;
+            this.showLoadingTransition('NEW EXONIAN DETECTED', 'Preparing Character Customizer...', 900, () => {
+                if (this.scrAuth) {
+                    this.scrAuth.classList.add('hidden');
+                    this.scrAuth.style.display = 'none';
+                }
+                this.showCreation();
+            });
         });
 
         socket.on('loginSuccess', (data) => {
             clearTimeout(this._loginTimeout);
             console.log('✅ [Flow] Supabase login success:', data);
-            this.accountName = data.username;
+            this.clearAuthErrors();
+            this.accountEmail = data.email || data.username || this.accountEmail;
+            this.accountName = this.accountEmail ? this.accountEmail.split('@')[0] : (data.username || 'HeroPlayer');
             if (Array.isArray(data.characters)) {
                 this.accountSlots = data.characters;
                 this.saveAccountSlots(data.characters);
             }
-            this.onAuthSuccess(data.username);
+            this.onAuthSuccess(this.accountEmail, data.characters);
         });
 
-        socket.on('registerSuccess', (username) => {
-            alert(`Account "${username}" registered in Supabase! You can now login.`);
+        socket.on('registerSuccess', (registeredEmail) => {
+            console.log(`✅ [Flow] Account ${registeredEmail} registered successfully.`);
+            this.clearAuthErrors();
             this.switchAuth('login');
-            if (this.inputUser) this.inputUser.value = username;
+            const emailField = document.getElementById('login-email') || this.inputEmail;
+            if (emailField) emailField.value = registeredEmail;
+            const passInput = document.getElementById('login-pass');
+            if (passInput) passInput.value = '';
+            this.showAuthError('login', `Account "${registeredEmail}" created! Enter your password to log in.`);
+            const lErr = document.getElementById('login-error-msg');
+            if (lErr) lErr.style.color = '#4ade80';
         });
 
         socket.on('accountCharacters', (chars) => {
@@ -352,76 +402,91 @@ window.ExonieFlow = {
         socket.on('characterCreated', (data) => {
             console.log('✅ [Flow] Character saved to Supabase:', data);
             const slots = this.getAccountSlots();
-            slots[data.slotIndex] = data.character;
-            this.saveAccountSlots(slots);
+            if (data && data.slotIndex !== undefined && data.character) {
+                slots[data.slotIndex] = data.character;
+                this.saveAccountSlots(slots);
+                this.renderCharSlots();
+            }
         });
     },
 
     attemptLogin() {
-        const username = (this.inputUser && this.inputUser.value.trim()) ? this.inputUser.value.trim() : 'HeroPlayer';
-        const passInput = document.getElementById('login-pass');
-        const password = (passInput && passInput.value) ? passInput.value : 'password123';
+        this.clearAuthErrors();
+        const emailInput = document.getElementById('login-email') || this.inputEmail;
+        const passInput = document.getElementById('login-pass') || this.inputPass;
+        const email = (emailInput && emailInput.value.trim()) ? emailInput.value.trim() : '';
+        const password = (passInput && passInput.value) ? passInput.value : '';
 
-        this.accountName = username;
-
-        // Instant seamless login for test HeroPlayer or Guest accounts
-        if (username.toLowerCase() === 'heroplayer' || username.startsWith('Hero_')) {
-            this.onAuthSuccess(username);
+        if (!email || !password) {
+            this.showAuthError('login', 'Please enter both Email and Password.');
             return;
         }
 
+        this.accountEmail = email;
+        this.accountName = email.split('@')[0];
+
         const s = this.getSocket();
-        if (s && s.connected) {
-            clearTimeout(this._loginTimeout);
-            this._loginTimeout = setTimeout(() => {
-                if (this.step === 'auth') {
-                    console.warn('[Flow] Server response timeout; logging in locally.');
-                    this.onAuthSuccess(username);
-                }
-            }, 2500);
-            s.emit('login', { username, password });
+        if (s) {
+            s.emit('login', { email, username: email, password });
         } else {
-            this.onAuthSuccess(username);
+            this.showAuthError('login', 'Connecting to game server... Please try again.');
         }
     },
 
     loginAsGuest() {
-        const guestName = 'Hero_' + Math.floor(1000 + Math.random() * 9000);
-        this.onAuthSuccess(guestName);
+        this.showAuthError('login', 'Guest mode disabled. Please register an account.');
     },
 
     attemptRegister() {
-        const regInput = document.getElementById('reg-user');
-        const regPass = document.getElementById('reg-pass');
-        const username = (regInput && regInput.value.trim()) ? regInput.value.trim() : '';
+        this.clearAuthErrors();
+        const regInput = document.getElementById('reg-email') || this.inputRegEmail;
+        const regPass = document.getElementById('reg-pass') || this.inputRegPass;
+        const email = (regInput && regInput.value.trim()) ? regInput.value.trim() : '';
         const password = (regPass && regPass.value) ? regPass.value : '';
 
-        if (!username || !password) {
-            alert('Please enter both username and password to create an account.');
+        if (!email || !password) {
+            this.showAuthError('register', 'Please enter both Email and Password.');
+            return;
+        }
+
+        if (!email.includes('@') || email.length < 5) {
+            this.showAuthError('register', 'Please enter a valid email address.');
+            return;
+        }
+
+        if (password.length < 4) {
+            this.showAuthError('register', 'Password must be at least 4 characters.');
             return;
         }
 
         const s = this.getSocket();
-        if (s && s.connected) {
-            s.emit('register', { username, password });
+        if (s) {
+            s.emit('register', { email, username: email, password });
         } else {
-            this.onAuthSuccess(username);
+            this.showAuthError('register', 'Connecting to game server... Please try again.');
         }
     },
 
-    onAuthSuccess(username) {
-        console.log(`🛡️ [EXONIE 3D] Logged in as: ${username}`);
-        this.accountName = username;
-        this.charData.name = username;
-        if (this.inputCharName) this.inputCharName.value = username;
-
-        // Request live Supabase characters for this account
-        const s = this.getSocket();
-        if (s && s.connected) {
-            s.emit('getAccountCharacters', { username });
+    onAuthSuccess(email, characters) {
+        console.log(`🛡️ [EXONIE 3D] Logged in as: ${email}`);
+        this.accountEmail = email;
+        this.accountName = email.split('@')[0] || 'Hero';
+        if (this.charSelectAccountName) {
+            this.charSelectAccountName.textContent = email;
         }
 
-        this.showLoadingTransition('Character Selection', `Account: ${username} (3 Character Slots)`, 900, () => {
+        if (Array.isArray(characters)) {
+            this.accountSlots = characters;
+            this.saveAccountSlots(characters);
+        } else {
+            // Request live Supabase characters for this account
+            const s = this.getSocket();
+            if (s && s.connected) {
+                s.emit('getAccountCharacters', { email: this.accountEmail, username: this.accountEmail });
+            }
+        }
+
+        this.showLoadingTransition('Character Selection', `Account: ${email}`, 900, () => {
             if (this.scrAuth) {
                 this.scrAuth.classList.add('hidden');
                 this.scrAuth.style.display = 'none';
@@ -434,7 +499,8 @@ window.ExonieFlow = {
     // 2B. 3-SLOT ACCOUNT CHARACTER STORAGE & SELECTION
     // ============================================================
     getAccountStorageKey() {
-        return `exonie3d_chars_${(this.accountName || 'HeroPlayer').toLowerCase()}`;
+        const id = (this.accountEmail || this.accountName || 'HeroPlayer').toLowerCase().replace(/[^a-z0-9_]/g, '_');
+        return `exonie3d_chars_${id}`;
     },
 
     getAccountSlots() {
@@ -462,13 +528,20 @@ window.ExonieFlow = {
         if (!stateObj) return;
         const slots = this.getAccountSlots();
         const idx = Math.max(0, Math.min(2, Number(this.activeSlotIndex) || 0));
-        slots[idx] = stateObj;
+        slots[idx] = Object.assign({}, slots[idx] || {}, stateObj, {
+            slotIndex: idx,
+            email: this.accountEmail
+        });
         this.saveAccountSlots(slots);
 
-        // Sync with Supabase
+        // Sync with Supabase (segregated per slot)
         const s = this.getSocket();
         if (s && s.connected) {
-            s.emit('saveCharacter', stateObj);
+            s.emit('saveCharacter', {
+                email: this.accountEmail || this.accountName,
+                slotIndex: idx,
+                characterState: slots[idx]
+            });
         }
     },
 
@@ -476,7 +549,7 @@ window.ExonieFlow = {
         this.hidePreGameChat();
         this.step = 'char_select';
         if (!this.scrCharSelect) this.cacheDOM();
-        if (this.charSelectAccountName) this.charSelectAccountName.textContent = this.accountName;
+        if (this.charSelectAccountName) this.charSelectAccountName.textContent = this.accountEmail || this.accountName;
         this.renderCharSlots();
         if (this.scrCharSelect) {
             this.scrCharSelect.style.display = 'flex';
@@ -531,8 +604,9 @@ window.ExonieFlow = {
 
     startNewCharacterInSlot(slotIdx) {
         this.activeSlotIndex = slotIdx;
+        const defaultName = (this.accountName || 'Hero') + (slotIdx > 0 ? `_${slotIdx + 1}` : '');
         this.charData = {
-            name: slotIdx === 0 ? this.accountName : `${this.accountName}_${slotIdx + 1}`,
+            name: defaultName,
             gender: 'female',
             hairStyle: '1',
             hairColor: '#111111',
@@ -541,6 +615,7 @@ window.ExonieFlow = {
             playerClass: null,
             weaponType: null,
             slotIndex: slotIdx,
+            email: this.accountEmail,
             isNewCharacter: true
         };
         if (this.inputCharName) this.inputCharName.value = this.charData.name;
@@ -561,13 +636,22 @@ window.ExonieFlow = {
         if (!savedChar) return;
         this.activeSlotIndex = slotIdx;
         const charName = savedChar.character_name || savedChar.name || 'Hero';
-        this.charData = Object.assign({}, savedChar, { name: charName, slotIndex: slotIdx, isNewCharacter: false });
+        this.charData = Object.assign({}, savedChar, {
+            name: charName,
+            slotIndex: slotIdx,
+            email: this.accountEmail,
+            isNewCharacter: false
+        });
         this.step = 'game';
         this.stopMenuMusic();
 
         const s = this.getSocket();
         if (s && s.connected) {
-            s.emit('enterWorld', { character_name: charName });
+            s.emit('enterWorld', {
+                email: this.accountEmail,
+                slotIndex: slotIdx,
+                character_name: charName
+            });
         }
 
         this.showLoadingTransition('Town of Exonie', `Welcome back, ${charName} (Lv.${savedChar.level || 1})!`, 1350, () => {
@@ -589,9 +673,21 @@ window.ExonieFlow = {
     deleteCharacterSlot(slotIdx) {
         const slots = this.getAccountSlots();
         if (!slots[slotIdx]) return;
+        const charName = slots[slotIdx].character_name || slots[slotIdx].name || `Slot ${slotIdx + 1}`;
+        if (!confirm(`Are you sure you want to delete ${charName}? This cannot be undone.`)) {
+            return;
+        }
         slots[slotIdx] = null;
         this.saveAccountSlots(slots);
         this.renderCharSlots();
+
+        const s = this.getSocket();
+        if (s && s.connected) {
+            s.emit('deleteCharacter', {
+                email: this.accountEmail || this.accountName,
+                slotIndex: slotIdx
+            });
+        }
     },
 
     logoutToAuth() {
@@ -725,15 +821,18 @@ window.ExonieFlow = {
             document.activeElement.blur();
         }
         if (this.inputCharName && this.inputCharName.value.trim()) {
-            this.charData.name = this.inputCharName.value.trim();
+            this.charData.name = this.inputCharName.value.trim().replace(/\|/g, '');
         }
+        this.charData.slotIndex = this.activeSlotIndex;
+        this.charData.email = this.accountEmail || this.accountName;
 
         console.log('🛡️ [EXONIE 3D] Character creation finished:', this.charData);
 
         const s = this.getSocket();
         if (s && s.connected) {
             s.emit('createCharacter', {
-                username: this.accountName,
+                email: this.accountEmail || this.accountName,
+                username: this.accountEmail || this.accountName,
                 slotIndex: this.activeSlotIndex,
                 charData: this.charData
             });

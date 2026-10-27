@@ -201,113 +201,278 @@ function getStarterItems() {
 const onlinePlayers = {};
 
 // ==========================================
+// 🛡️ 3-SLOT MULTI-CHARACTER PARSER & SERIALIZER
+// Allows 1 account (Email) to store up to 3 isolated characters
+// in the same row in the Supabase 'Exonians' table, separated by '|'.
+// Weapons, stats, inventory, levels, etc. are segregated per slot.
+// ==========================================
+
+function parseSlotArray(fieldValue, defaultFactory) {
+    if (fieldValue === null || fieldValue === undefined) {
+        return [defaultFactory(), defaultFactory(), defaultFactory()];
+    }
+
+    if (Array.isArray(fieldValue)) {
+        if (fieldValue.length === 3 && (
+            fieldValue[0] === null ||
+            Array.isArray(fieldValue[0]) ||
+            (typeof fieldValue[0] === 'object' && ('weapon' in fieldValue[0] || 'hp' in fieldValue[0] || 'playerClass' in fieldValue[0] || 'str' in fieldValue[0] || 'level' in fieldValue[0]))
+        )) {
+            return [
+                fieldValue[0] || defaultFactory(),
+                fieldValue[1] || defaultFactory(),
+                fieldValue[2] || defaultFactory()
+            ];
+        }
+        return [fieldValue, defaultFactory(), defaultFactory()];
+    }
+
+    if (typeof fieldValue === 'object') {
+        if ('slot0' in fieldValue || 'slot1' in fieldValue || 'slot2' in fieldValue) {
+            return [
+                fieldValue.slot0 || defaultFactory(),
+                fieldValue.slot1 || defaultFactory(),
+                fieldValue.slot2 || defaultFactory()
+            ];
+        }
+        return [fieldValue, defaultFactory(), defaultFactory()];
+    }
+
+    if (typeof fieldValue === 'string') {
+        const str = fieldValue.trim();
+        let delimiter = null;
+        if (str.includes('|||')) delimiter = '|||';
+        else if (str.includes(';;;')) delimiter = ';;;';
+        else if (str.includes('|')) delimiter = '|';
+
+        if (delimiter) {
+            const parts = str.split(delimiter);
+            const res = [];
+            for (let i = 0; i < 3; i++) {
+                const p = (parts[i] || '').trim();
+                if (!p || p === 'none' || p === 'null') {
+                    res.push(defaultFactory());
+                } else {
+                    try {
+                        res.push(JSON.parse(p));
+                    } catch (e) {
+                        res.push(p);
+                    }
+                }
+            }
+            return res;
+        }
+
+        try {
+            const parsed = JSON.parse(str);
+            return parseSlotArray(parsed, defaultFactory);
+        } catch (e) {
+            return [str, defaultFactory(), defaultFactory()];
+        }
+    }
+
+    return [defaultFactory(), defaultFactory(), defaultFactory()];
+}
+
+function parseAccountSlots(userRow) {
+    if (!userRow) return [null, null, null];
+
+    const rawNames = userRow.character_name || '';
+    const nameParts = rawNames.includes('|') ? rawNames.split('|') : [rawNames];
+
+    const rawSkins = userRow.skin_color || '';
+    const skinParts = rawSkins.includes('|') ? rawSkins.split('|') : [rawSkins];
+
+    const rawHairs = userRow.hair_color || '';
+    const hairParts = rawHairs.includes('|') ? rawHairs.split('|') : [rawHairs];
+
+    const rawStyles = userRow.hair_style || '';
+    const styleParts = rawStyles.includes('|') ? rawStyles.split('|') : [rawStyles];
+
+    const rawGenders = userRow.gender || '';
+    const genderParts = rawGenders.includes('|') ? rawGenders.split('|') : [rawGenders];
+
+    const rawGolds = String(userRow.gold !== undefined ? userRow.gold : 500);
+    const goldParts = rawGolds.includes('|') ? rawGolds.split('|') : [rawGolds];
+
+    const rawLevels = String(userRow.level !== undefined ? userRow.level : 1);
+    const levelParts = rawLevels.includes('|') ? rawLevels.split('|') : [rawLevels];
+
+    const rawExps = String(userRow.exp !== undefined ? userRow.exp : 0);
+    const expParts = rawExps.includes('|') ? rawExps.split('|') : [rawExps];
+
+    const equipsSlots = parseSlotArray(userRow.equips, () => getStarterItems().starterEquips);
+    const inventorySlots = parseSlotArray(userRow.inventory, () => getStarterItems().starterInventory);
+    const statsSlots = parseSlotArray(userRow.base_stats, () => ({
+        hp: 100, attack: 5, magic: 5, defense: 2, speed: 1, str: 10, int: 10,
+        playerClass: null, title: null, homeStorage: Array(15).fill(null),
+        tavernEntries: 5, dungeonEntries: 7
+    }));
+
+    const slots = [null, null, null];
+
+    for (let i = 0; i < 3; i++) {
+        const name = (nameParts[i] || '').trim();
+        const skin = (skinParts[i] || '').trim();
+
+        if (name && name !== 'none' && name !== 'null' && name !== 'undefined') {
+            const slotStats = statsSlots[i] || { hp: 100, attack: 5, str: 10, int: 10, playerClass: null };
+            const lvl = (slotStats && slotStats.level) ? Number(slotStats.level) : (Number(levelParts[i]) || Number(levelParts[0]) || 1);
+            const gld = (slotStats && slotStats.gold !== undefined) ? Number(slotStats.gold) : (Number(goldParts[i]) || Number(goldParts[0]) || 500);
+            const xp = (slotStats && slotStats.exp !== undefined) ? Number(slotStats.exp) : (Number(expParts[i]) || Number(expParts[0]) || 0);
+
+            slots[i] = {
+                slotIndex: i,
+                character_name: name,
+                name: name,
+                email: userRow.email,
+                skin_color: skin || '#f5c6a5',
+                skinColor: skin || '#f5c6a5',
+                hair_color: (hairParts[i] || '#111111').trim(),
+                hairColor: (hairParts[i] || '#111111').trim(),
+                hair_style: String(styleParts[i] || '1').trim(),
+                hairStyle: String(styleParts[i] || '1').trim(),
+                gender: (genderParts[i] || 'female').trim(),
+                level: lvl,
+                gold: gld,
+                exp: xp,
+                equips: equipsSlots[i] || getStarterItems().starterEquips,
+                inventory: inventorySlots[i] || getStarterItems().starterInventory,
+                base_stats: slotStats,
+                baseStats: slotStats,
+                playerClass: (slotStats && slotStats.playerClass) || null
+            };
+        }
+    }
+
+    return slots;
+}
+
+function serializeSlotsToRow(slots, existingRow = {}) {
+    const names = [];
+    const skins = [];
+    const hairs = [];
+    const styles = [];
+    const genders = [];
+    const levels = [];
+    const golds = [];
+    const exps = [];
+    const equipsArr = [];
+    const invArr = [];
+    const statsArr = [];
+
+    for (let i = 0; i < 3; i++) {
+        const c = slots[i];
+        if (c && c.name && c.name !== 'none') {
+            names.push(c.character_name || c.name);
+            skins.push(c.skin_color || c.skinColor || '#f5c6a5');
+            hairs.push(c.hair_color || c.hairColor || '#111111');
+            styles.push(String(c.hair_style || c.hairStyle || '1'));
+            genders.push(c.gender || 'female');
+            const lvl = Number(c.level) || 1;
+            const gld = c.gold !== undefined ? Number(c.gold) : 500;
+            const xp = Number(c.exp) || 0;
+            levels.push(lvl);
+            golds.push(gld);
+            exps.push(xp);
+            equipsArr.push(c.equips || getStarterItems().starterEquips);
+            invArr.push(c.inventory || getStarterItems().starterInventory);
+            const slotStats = Object.assign({}, c.base_stats || c.baseStats || { hp: 100, str: 10, int: 10, playerClass: null }, {
+                level: lvl,
+                gold: gld,
+                exp: xp
+            });
+            statsArr.push(slotStats);
+        } else {
+            names.push('none');
+            skins.push('none');
+            hairs.push('none');
+            styles.push('none');
+            genders.push('none');
+            levels.push(1);
+            golds.push(0);
+            exps.push(0);
+            equipsArr.push(null);
+            invArr.push(null);
+            statsArr.push(null);
+        }
+    }
+
+    return {
+        character_name: names.join('|'),
+        skin_color: skins.join('|'),
+        hair_color: hairs.join('|'),
+        hair_style: styles.join('|'),
+        gender: genders.join('|'),
+        level: Number(levels[0]) || 1,
+        gold: Number(golds[0]) || 500,
+        exp: Number(exps[0]) || 0,
+        equips: equipsArr,
+        inventory: invArr,
+        base_stats: statsArr
+    };
+}
+
+// ==========================================
 // SOCKET.IO REALTIME ENGINE
 // ==========================================
 io.on('connection', (socket) => {
     console.log(`[Socket] Connection established: ${socket.id}`);
 
-    // 1. LOGIN (Supabase Exonians query matching 2D Exonie server.js line 3177)
+    // 1. LOGIN BY EMAIL & PASSWORD
     socket.on('login', async (data) => {
         try {
-            const username = (data && data.username) ? String(data.username).trim() : '';
+            const emailInput = (data && (data.email || data.username)) ? String(data.email || data.username).trim() : '';
             const password = (data && data.password) ? String(data.password) : '';
 
-            if (!username || !password) {
-                return socket.emit('authError', 'Please enter both username and password.');
+            if (!emailInput || !password) {
+                return socket.emit('authError', 'Please enter both Email and Password.');
             }
 
-            console.log(`[LOGIN ATTEMPT] Authenticating: ${username}`);
+            console.log(`[LOGIN ATTEMPT] Authenticating: ${emailInput}`);
 
-            let user = null;
-            let characterSlots = [];
-            const isHeroAccount = username.toLowerCase() === 'heroplayer' || username.startsWith('Hero_');
-
-            if (isHeroAccount) {
-                // Instant demo/test hero account - bypass DB requirement
-                const { starterEquips, starterInventory } = getStarterItems();
-                const defaultBaseStats = {
-                    hp: 100, attack: 5, magic: 5, defense: 2, speed: 1, str: 10, int: 10,
-                    playerClass: null, title: null, homeStorage: Array(15).fill(null),
-                    tavernEntries: 5, dungeonEntries: 7
-                };
-                user = {
-                    character_name: username,
-                    password: password,
-                    email: `${username}@exonie.com`,
-                    level: 1,
-                    exp: 0,
-                    gold: 500,
-                    skin_color: '#f5c6a5',
-                    hair_color: '#111111',
-                    hair_style: '1',
-                    equips: starterEquips,
-                    inventory: starterInventory,
-                    base_stats: defaultBaseStats,
-                    map_id: 'town',
-                    pos_x: 960,
-                    pos_y: 1000
-                };
-                characterSlots = [user, null, null];
-            } else if (supabase) {
-                // Query live Supabase Exonians database (case-insensitive for username or email)
+            let userRow = null;
+            if (supabase) {
                 let query = supabase.from('Exonians').select('*').eq('password', password);
-                if (username.includes('@')) {
-                    query = query.eq('email', username);
+                if (emailInput.includes('@')) {
+                    query = query.ilike('email', emailInput);
                 } else {
-                    query = query.ilike('character_name', username);
+                    query = query.or(`email.ilike.${emailInput},character_name.ilike.%${emailInput}%`);
                 }
 
                 const { data: dbUser, error: dbErr } = await query.maybeSingle();
-
                 if (dbErr) {
-                    console.error(`[LOGIN DB ERROR] ${username}:`, dbErr.message);
+                    console.error(`[LOGIN DB ERROR] ${emailInput}:`, dbErr.message);
+                    return socket.emit('authError', 'Database error during login. Please try again.');
                 }
-                user = dbUser;
-
-                if (user) {
-                    // Fetch all character slots tied to this user's email if present
-                    if (user.email) {
-                        const { data: allChars } = await supabase
-                            .from('Exonians')
-                            .select('*')
-                            .eq('email', user.email)
-                            .limit(3);
-                        if (allChars && allChars.length > 0) {
-                            characterSlots = allChars.slice(0, 3);
-                        } else {
-                            characterSlots = [user];
-                        }
-                    } else {
-                        characterSlots = [user];
-                    }
-                }
+                userRow = dbUser;
+            } else {
+                userRow = memoryDb.users[emailInput.toLowerCase()];
+                if (userRow && userRow.password !== password) userRow = null;
             }
 
-            if (!user) {
-                // In-memory fallback
-                const mem = memoryDb.users[username.toLowerCase()] || memoryDb.users[username];
-                if (mem && mem.password === password) {
-                    user = mem;
-                    characterSlots = memoryDb.accounts[username] || [mem];
-                }
+            if (!userRow) {
+                return socket.emit('authError', 'Invalid Email or Password.');
             }
 
-            if (!user) {
-                return socket.emit('authError', 'Invalid username or password.');
+            const characterSlots = parseAccountSlots(userRow);
+            const userEmail = userRow.email || (emailInput.includes('@') ? emailInput : `${userRow.character_name || 'user'}@exonie.com`);
+
+            socket.email = userEmail;
+            socket.accountEmail = userEmail;
+
+            const existingCount = characterSlots.filter(Boolean).length;
+            console.log(`[LOGIN SUCCESS] ${userEmail} authenticated with ${existingCount} characters.`);
+
+            if (existingCount === 0) {
+                socket.emit('needsCharacterCreation', { email: userEmail, slotIndex: 0 });
+            } else {
+                socket.emit('loginSuccess', {
+                    email: userEmail,
+                    username: userEmail,
+                    characters: characterSlots
+                });
             }
-
-            // Ensure 3 slots array
-            while (characterSlots.length < 3) characterSlots.push(null);
-
-            socket.username = username;
-            socket.email = user.email || `${username}@exonie.com`;
-
-            console.log(`[LOGIN SUCCESS] ${username} logged in with ${characterSlots.filter(Boolean).length} characters.`);
-            socket.emit('loginSuccess', {
-                username: username,
-                email: socket.email,
-                characters: characterSlots
-            });
 
         } catch (e) {
             console.error('[LOGIN CRASH]', e);
@@ -315,84 +480,65 @@ io.on('connection', (socket) => {
         }
     });
 
-    // 2. REGISTER (Inserts new character into Supabase Exonians table)
+    // 2. REGISTER BY EMAIL & PASSWORD
     socket.on('register', async (data) => {
         try {
-            const username = (data && data.username) ? String(data.username).trim() : '';
+            const email = (data && (data.email || data.username)) ? String(data.email || data.username).trim() : '';
             const password = (data && data.password) ? String(data.password) : '';
-            const email = (data && data.email) ? String(data.email).trim() : `${username}@exonie.com`;
+            const deviceId = (data && data.deviceId) || 'unknown_device';
 
-            if (!username || !password) {
-                return socket.emit('authError', 'Please provide a username and password.');
+            if (!email || !password) {
+                return socket.emit('authError', 'Please provide an Email and Password.');
             }
+            if (!email.includes('@') || email.length < 5) {
+                return socket.emit('authError', 'Please enter a valid Email address.');
+            }
+            if (password.length < 4) {
+                return socket.emit('authError', 'Password must be at least 4 characters long.');
+            }
+
+            const clientIp = socket.handshake.headers['x-forwarded-for']?.split(',')[0] || socket.handshake.address;
 
             if (supabase) {
                 const { data: existing } = await supabase
                     .from('Exonians')
-                    .select('character_name')
-                    .eq('character_name', username)
+                    .select('email')
+                    .ilike('email', email)
                     .maybeSingle();
 
                 if (existing) {
-                    return socket.emit('authError', 'Username is already taken!');
+                    return socket.emit('authError', 'An account with this Email already exists!');
                 }
 
-                const { starterEquips, starterInventory } = getStarterItems();
-                const defaultBaseStats = {
-                    hp: 100, attack: 5, magic: 5, defense: 2, speed: 1, str: 10, int: 10,
-                    playerClass: null, title: null, homeStorage: Array(15).fill(null),
-                    tavernEntries: 5, dungeonEntries: 7
-                };
+                const initialName = email.split('@')[0].replace(/[^a-zA-Z0-9_]/g, '').slice(0, 16) || 'Hero';
 
                 const { error: insErr } = await supabase.from('Exonians').insert([{
-                    character_name: username,
-                    password: password,
                     email: email,
+                    character_name: initialName,
+                    password: password,
                     email_verified: true,
-                    level: 1,
-                    exp: 0,
-                    gold: 500,
-                    skin_color: '#f5c6a5',
-                    hair_color: '#111111',
-                    hair_style: '1',
-                    equips: starterEquips,
-                    inventory: starterInventory,
-                    base_stats: defaultBaseStats,
-                    map_id: 'town',
-                    pos_x: 960,
-                    pos_y: 1000
+                    ip_address: clientIp,
+                    device_id: deviceId
                 }]);
 
                 if (insErr) {
                     console.error('[REGISTER DB ERROR]', insErr.message);
-                    return socket.emit('authError', `Failed to create account: ${insErr.message}`);
+                    return socket.emit('authError', `Database Error: ${insErr.message}`);
                 }
             } else {
-                if (memoryDb.users[username]) {
-                    return socket.emit('authError', 'Username is already taken!');
+                if (memoryDb.users[email.toLowerCase()]) {
+                    return socket.emit('authError', 'An account with this Email already exists!');
                 }
-                const { starterEquips, starterInventory } = getStarterItems();
                 const newRec = {
-                    character_name: username,
-                    password: password,
                     email: email,
-                    level: 1,
-                    exp: 0,
-                    gold: 500,
-                    skin_color: '#f5c6a5',
-                    hair_color: '#111111',
-                    hair_style: '1',
-                    equips: starterEquips,
-                    inventory: starterInventory,
-                    base_stats: { hp: 100, attack: 5, magic: 5, defense: 2, speed: 1, str: 10, int: 10, playerClass: null },
-                    map_id: 'town'
+                    password: password,
+                    character_name: email.split('@')[0]
                 };
-                memoryDb.users[username] = newRec;
-                memoryDb.accounts[username] = [newRec, null, null];
+                memoryDb.users[email.toLowerCase()] = newRec;
             }
 
-            console.log(`[REGISTER SUCCESS] Account created: ${username}`);
-            socket.emit('registerSuccess', username);
+            console.log(`[REGISTER SUCCESS] Account created: ${email}`);
+            socket.emit('registerSuccess', email);
 
         } catch (e) {
             console.error('[REGISTER CRASH]', e);
@@ -403,37 +549,24 @@ io.on('connection', (socket) => {
     // 3. FETCH ACCOUNT CHARACTERS
     socket.on('getAccountCharacters', async (data) => {
         try {
-            const username = (data && data.username) || socket.username;
-            if (!username) return socket.emit('accountCharacters', [null, null, null]);
+            const userEmail = (data && (data.email || data.username)) || socket.email;
+            if (!userEmail) return socket.emit('accountCharacters', [null, null, null]);
 
             let slots = [null, null, null];
             if (supabase) {
-                let chars = null;
-                const userEmail = (data && data.email) || socket.email;
-                if (userEmail) {
-                    const { data: emailChars } = await supabase
-                        .from('Exonians')
-                        .select('*')
-                        .eq('email', userEmail)
-                        .limit(3);
-                    if (emailChars && emailChars.length > 0) {
-                        chars = emailChars;
-                    }
+                let query = supabase.from('Exonians').select('*');
+                if (userEmail.includes('@')) {
+                    query = query.ilike('email', userEmail);
+                } else {
+                    query = query.or(`email.ilike.${userEmail},character_name.ilike.%${userEmail}%`);
                 }
-                if (!chars || chars.length === 0) {
-                    const { data: nameChars } = await supabase
-                        .from('Exonians')
-                        .select('*')
-                        .ilike('character_name', username)
-                        .limit(3);
-                    chars = nameChars;
-                }
-                if (chars && chars.length > 0) {
-                    slots = chars.slice(0, 3);
-                    while (slots.length < 3) slots.push(null);
+                const { data: userRow } = await query.maybeSingle();
+                if (userRow) {
+                    slots = parseAccountSlots(userRow);
                 }
             } else {
-                slots = memoryDb.accounts[username] || [null, null, null];
+                const mem = memoryDb.users[userEmail.toLowerCase()];
+                if (mem) slots = parseAccountSlots(mem);
             }
             socket.emit('accountCharacters', slots);
         } catch (e) {
@@ -441,78 +574,80 @@ io.on('connection', (socket) => {
         }
     });
 
-    // 4. CREATE / CUSTOMIZE CHARACTER IN SLOT
+    // 4. CREATE / CUSTOMIZE CHARACTER IN SPECIFIC SLOT (ISOLATED STATS & ITEMS)
     socket.on('createCharacter', async (data) => {
         try {
-            const { username, charData } = data;
-            const charName = (charData && charData.name) ? String(charData.name).trim() : username;
+            const userEmail = (data && (data.email || data.username)) || socket.email;
             const slotIdx = Math.max(0, Math.min(2, Number(data.slotIndex) || 0));
+            const charData = data.charData || {};
+            const charName = (charData.name && charData.name.trim()) ? charData.name.trim().replace(/\|/g, '') : `Hero_${slotIdx + 1}`;
 
-            console.log(`[CREATE CHAR] User: ${username}, Char: ${charName}, Slot: ${slotIdx}`);
+            console.log(`[CREATE CHAR] Email: ${userEmail}, Char: ${charName}, Slot: ${slotIdx}`);
+
+            let userRow = null;
+            if (supabase) {
+                const { data: fetched } = await supabase.from('Exonians').select('*').ilike('email', userEmail).maybeSingle();
+                userRow = fetched;
+            } else {
+                userRow = memoryDb.users[userEmail.toLowerCase()];
+            }
+
+            if (!userRow) {
+                return socket.emit('authError', 'Account record not found.');
+            }
+
+            const slots = parseAccountSlots(userRow);
 
             const { starterEquips, starterInventory } = getStarterItems();
             const defaultBaseStats = {
                 hp: 100, attack: 5, magic: 5, defense: 2, speed: 1, str: 10, int: 10,
-                playerClass: null, title: null, homeStorage: Array(15).fill(null),
+                playerClass: charData.playerClass || charData.className || null,
+                title: null, homeStorage: Array(15).fill(null),
                 tavernEntries: 5, dungeonEntries: 7
             };
 
-            let savedChar = null;
+            const newChar = {
+                slotIndex: slotIdx,
+                character_name: charName,
+                name: charName,
+                email: userEmail,
+                skin_color: charData.skinColor || '#f5c6a5',
+                skinColor: charData.skinColor || '#f5c6a5',
+                hair_color: charData.hairColor || '#111111',
+                hairColor: charData.hairColor || '#111111',
+                hair_style: String(charData.hairStyle || '1'),
+                hairStyle: String(charData.hairStyle || '1'),
+                gender: charData.gender || 'female',
+                equips: starterEquips,
+                inventory: starterInventory,
+                base_stats: defaultBaseStats,
+                baseStats: defaultBaseStats,
+                gold: 500,
+                level: 1,
+                exp: 0,
+                map_id: 'town'
+            };
+
+            slots[slotIdx] = newChar;
+
+            const updatePayload = serializeSlotsToRow(slots, userRow);
 
             if (supabase) {
-                const userEmail = socket.email || `${username}@exonie.com`;
-                const charRecord = {
-                    character_name: charName,
-                    password: data.password || 'default123',
-                    email: userEmail,
-                    email_verified: true,
-                    skin_color: charData.skinColor || '#f5c6a5',
-                    hair_color: charData.hairColor || '#111111',
-                    hair_style: String(charData.hairStyle || '1'),
-                    equips: starterEquips,
-                    inventory: starterInventory,
-                    base_stats: defaultBaseStats,
-                    gold: 500,
-                    level: 1,
-                    exp: 0,
-                    map_id: 'town',
-                    pos_x: 960,
-                    pos_y: 1000
-                };
-
-                // Upsert character into Exonians
-                const { data: upserted, error: upErr } = await supabase
+                const { error: upErr } = await supabase
                     .from('Exonians')
-                    .upsert(charRecord, { onConflict: 'character_name' })
-                    .select()
-                    .single();
+                    .update(updatePayload)
+                    .ilike('email', userEmail);
 
                 if (upErr) {
                     console.error('[CREATE CHAR DB ERROR]', upErr.message);
                     return socket.emit('authError', `Failed to save character: ${upErr.message}`);
                 }
-                savedChar = upserted;
             } else {
-                savedChar = {
-                    character_name: charName,
-                    name: charName,
-                    gender: charData.gender || 'female',
-                    hairStyle: charData.hairStyle || '1',
-                    hairColor: charData.hairColor || '#111111',
-                    skinColor: charData.skinColor || '#f5c6a5',
-                    equips: starterEquips,
-                    inventory: starterInventory,
-                    base_stats: defaultBaseStats,
-                    gold: 500,
-                    level: 1,
-                    exp: 0,
-                    map_id: 'town'
-                };
-                if (!memoryDb.accounts[username]) memoryDb.accounts[username] = [null, null, null];
-                memoryDb.accounts[username][slotIdx] = savedChar;
+                Object.assign(memoryDb.users[userEmail.toLowerCase()], updatePayload);
             }
 
-            socket.emit('characterCreated', { slotIndex: slotIdx, character: savedChar });
+            socket.emit('characterCreated', { slotIndex: slotIdx, character: newChar });
+            socket.emit('accountCharacters', slots);
 
         } catch (e) {
             console.error('[CREATE CHAR CRASH]', e);
@@ -520,51 +655,127 @@ io.on('connection', (socket) => {
         }
     });
 
-    // 5. SAVE CHARACTER PROGRESS TO SUPABASE
-    socket.on('saveCharacter', async (charState) => {
+    // 5. DELETE CHARACTER SLOT
+    socket.on('deleteCharacter', async (data) => {
         try {
-            if (!charState || !charState.name) return;
-            const charName = String(charState.name).trim();
+            const userEmail = (data && (data.email || data.username)) || socket.email;
+            const slotIdx = Math.max(0, Math.min(2, Number(data.slotIndex) || 0));
+
+            if (!userEmail) return;
+
+            let userRow = null;
+            if (supabase) {
+                const { data: fetched } = await supabase.from('Exonians').select('*').ilike('email', userEmail).maybeSingle();
+                userRow = fetched;
+            } else {
+                userRow = memoryDb.users[userEmail.toLowerCase()];
+            }
+
+            if (!userRow) return;
+
+            const slots = parseAccountSlots(userRow);
+            slots[slotIdx] = null;
+
+            const updatePayload = serializeSlotsToRow(slots, userRow);
 
             if (supabase) {
-                await supabase.from('Exonians').update({
-                    level: charState.level || 1,
-                    exp: charState.exp || 0,
-                    gold: charState.gold || 0,
-                    equips: charState.equips || {},
-                    inventory: charState.inventory || [],
-                    base_stats: charState.baseStats || {},
-                    skin_color: charState.skinColor,
-                    hair_color: charState.hairColor,
-                    hair_style: charState.hairStyle
-                }).eq('character_name', charName);
+                await supabase.from('Exonians').update(updatePayload).ilike('email', userEmail);
+            } else {
+                Object.assign(memoryDb.users[userEmail.toLowerCase()], updatePayload);
             }
+
+            console.log(`[DELETE CHAR] Cleared Slot ${slotIdx + 1} for ${userEmail}`);
+            socket.emit('accountCharacters', slots);
+
+        } catch (e) {
+            console.error('[DELETE CHAR ERROR]', e);
+        }
+    });
+
+    // 6. SAVE CHARACTER PROGRESS (SEGREGATED PER SLOT)
+    socket.on('saveCharacter', async (payload) => {
+        try {
+            if (!payload) return;
+            const userEmail = payload.email || socket.email;
+            const slotIdx = Math.max(0, Math.min(2, Number(payload.slotIndex) || 0));
+            const charState = payload.characterState || payload;
+
+            if (!userEmail) return;
+
+            let userRow = null;
+            if (supabase) {
+                const { data: fetched } = await supabase.from('Exonians').select('*').ilike('email', userEmail).maybeSingle();
+                userRow = fetched;
+            } else {
+                userRow = memoryDb.users[userEmail.toLowerCase()];
+            }
+
+            if (!userRow) return;
+
+            const slots = parseAccountSlots(userRow);
+            if (!slots[slotIdx]) {
+                slots[slotIdx] = {};
+            }
+
+            Object.assign(slots[slotIdx], {
+                name: charState.name || slots[slotIdx].name,
+                character_name: charState.name || slots[slotIdx].name,
+                level: charState.level || slots[slotIdx].level || 1,
+                exp: charState.exp || slots[slotIdx].exp || 0,
+                gold: charState.gold !== undefined ? charState.gold : slots[slotIdx].gold,
+                equips: charState.equips || slots[slotIdx].equips,
+                inventory: charState.inventory || slots[slotIdx].inventory,
+                base_stats: charState.baseStats || charState.base_stats || slots[slotIdx].base_stats,
+                skin_color: charState.skinColor || slots[slotIdx].skin_color,
+                hair_color: charState.hairColor || slots[slotIdx].hair_color,
+                hair_style: charState.hairStyle || slots[slotIdx].hair_style
+            });
+
+            const updatePayload = serializeSlotsToRow(slots, userRow);
+
+            if (supabase) {
+                await supabase.from('Exonians').update(updatePayload).ilike('email', userEmail);
+            } else {
+                Object.assign(memoryDb.users[userEmail.toLowerCase()], updatePayload);
+            }
+
         } catch (e) {
             console.error('[SAVE CHAR ERROR]', e.message);
         }
     });
 
-    // 6. ENTER 3D WORLD / JOIN GAME
+    // 7. ENTER 3D WORLD
     socket.on('enterWorld', async (data) => {
         try {
+            const userEmail = (data && data.email) || socket.email;
+            const slotIdx = Math.max(0, Math.min(2, Number(data && data.slotIndex) || 0));
             const charName = (data && (data.character_name || data.name)) ? String(data.character_name || data.name).trim() : 'Hero';
-            let charRow = null;
+            let slotData = null;
 
-            if (supabase) {
+            if (supabase && userEmail) {
                 const { data: fresh } = await supabase
                     .from('Exonians')
                     .select('*')
-                    .eq('character_name', charName)
+                    .ilike('email', userEmail)
                     .maybeSingle();
-                charRow = fresh;
+                if (fresh) {
+                    const slots = parseAccountSlots(fresh);
+                    slotData = slots[slotIdx];
+                }
+            } else if (userEmail && memoryDb.users[userEmail.toLowerCase()]) {
+                const slots = parseAccountSlots(memoryDb.users[userEmail.toLowerCase()]);
+                slotData = slots[slotIdx];
             }
 
-            const pData = charRow || data;
+            const pData = slotData || data || {};
+            const finalName = pData.name || charName;
 
             onlinePlayers[socket.id] = {
                 socketId: socket.id,
-                id: charName,
-                name: charName,
+                email: userEmail,
+                slotIndex: slotIdx,
+                id: finalName,
+                name: finalName,
                 gender: pData.gender || 'female',
                 hairStyle: pData.hair_style || pData.hairStyle || '1',
                 hairColor: pData.hair_color || pData.hairColor || '#111111',
@@ -582,15 +793,16 @@ io.on('connection', (socket) => {
                 maxMp: 200,
                 atk: 50,
                 def: 10,
-                x: 0,
-                y: 0,
-                z: 0,
-                rotY: 0
+                x: data.x || 0,
+                y: data.y || 0,
+                z: data.z || 0,
+                rotY: data.rotY || 0,
+                anim: 'idle'
             };
 
             socket.emit('gameState', { self: onlinePlayers[socket.id], players: onlinePlayers });
             socket.broadcast.emit('playerJoined', onlinePlayers[socket.id]);
-            console.log(`[WORLD] ${charName} entered 3D world (Socket: ${socket.id})`);
+            console.log(`[WORLD] ${finalName} (Email: ${userEmail}, Slot ${slotIdx + 1}) entered 3D world (Socket: ${socket.id})`);
 
         } catch (e) {
             console.error('[ENTER WORLD ERROR]', e);

@@ -226,8 +226,8 @@ export class GameApp {
             previewScene.background = new THREE.Color(0x0a101d);
 
             previewCamera = new THREE.PerspectiveCamera(42, w / h, 0.1, 100);
-            previewCamera.position.set(0, 1.15, 4.6);
-            previewCamera.lookAt(0, 1.05, 0);
+            previewCamera.position.set(0, 1.05, 5.2);
+            previewCamera.lookAt(0, 0.95, 0);
 
             previewRenderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
             previewRenderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
@@ -369,6 +369,47 @@ export class GameApp {
                     this.appendChatLine('system', `⚠️ Connection lost. Attempting to reconnect...`);
                 });
 
+                this.remotePlayers = {};
+
+                // Multiplayer Realtime Sync Listeners
+                this.socket.on('gameState', (data) => {
+                    console.log('📡 [Multiplayer] Received gameState:', data);
+                    if (data && data.players) {
+                        for (const [sid, pData] of Object.entries(data.players)) {
+                            if (pData.name !== this.player.name && sid !== this.socket.id) {
+                                this.addRemotePlayer(sid, pData);
+                            }
+                        }
+                    }
+                });
+
+                this.socket.on('playerJoined', (pData) => {
+                    if (!pData || pData.name === this.player.name || pData.socketId === this.socket.id) return;
+                    console.log(`👋 [Multiplayer] Remote player joined: ${pData.name}`);
+                    this.addRemotePlayer(pData.socketId || pData.id, pData);
+                    this.appendChatLine('system', `👋 Player ${pData.name} joined the realm.`);
+                });
+
+                this.socket.on('playerMoved', (pData) => {
+                    if (!pData || pData.name === this.player.name) return;
+                    const sid = pData.socketId || pData.id;
+                    const rp = this.remotePlayers[sid];
+                    if (rp) {
+                        rp.targetPos.set(pData.x || 0, pData.y || 0, pData.z || 0);
+                        rp.targetRotY = pData.rotY || 0;
+                        rp.anim = pData.anim || 'idle';
+                        if (pData.hp !== undefined) rp.hp = pData.hp;
+                        if (pData.maxHp !== undefined) rp.maxHp = pData.maxHp;
+                    } else {
+                        this.addRemotePlayer(sid, pData);
+                    }
+                });
+
+                this.socket.on('playerLeft', (sid) => {
+                    console.log(`[Multiplayer] Player left: ${sid}`);
+                    this.removeRemotePlayer(sid);
+                });
+
                 // 2D Exonie Chat Message Listeners (server.js lines 4795-4799)
                 this.socket.on('chatMessage', (data) => {
                     if (data && data.text) {
@@ -383,10 +424,13 @@ export class GameApp {
                 this.socket.on('worldChatMessage', (data) => {
                     if (data && data.text) {
                         const name = data.id || 'Player';
-                        this.appendChatLine('world', `<b>[W] ${name}:</b> ${escapeHtml(data.text)}`);
-                        if (this.activeChatTab !== 'world') {
-                            const dot = document.getElementById('world-unread-dot');
-                            if (dot) dot.style.display = 'inline-block';
+                        // Do not duplicate self-sent messages
+                        if (name !== this.player.name) {
+                            this.appendChatLine('world', `<b>[W] ${name}:</b> ${escapeHtml(data.text)}`);
+                            if (this.activeChatTab !== 'world') {
+                                const dot = document.getElementById('world-unread-dot');
+                                if (dot) dot.style.display = 'inline-block';
+                            }
                         }
                     }
                 });
@@ -396,9 +440,62 @@ export class GameApp {
         }
     }
 
+    addRemotePlayer(id, data) {
+        if (this.remotePlayers[id]) return;
+        const char3D = new Character3D({
+            name: data.name || 'Exonian',
+            gender: data.gender || 'female',
+            hairStyle: String(data.hairStyle || '1'),
+            hairColor: data.hairColor || '#111111',
+            skinColor: data.skinColor || '#f5c6a5',
+            className: data.className || data.playerClass || 'Novice',
+            weaponType: (data.equips && data.equips.weapon) ? (data.equips.weapon.weaponType || data.equips.weapon.sprite) : null
+        });
+        char3D.group.position.set(data.x || 0, data.y || 0, data.z || 0);
+        char3D.group.rotation.y = data.rotY || 0;
+        this.engine.scene.add(char3D.group);
+
+        this.remotePlayers[id] = {
+            id: id,
+            name: data.name || 'Exonian',
+            level: data.level || 1,
+            hp: data.hp || 500,
+            maxHp: data.maxHp || 500,
+            char3D: char3D,
+            currentPos: new THREE.Vector3(data.x || 0, data.y || 0, data.z || 0),
+            targetPos: new THREE.Vector3(data.x || 0, data.y || 0, data.z || 0),
+            targetRotY: data.rotY || 0
+        };
+        char3D.updateOverheadUI(data.name || 'Exonian', data.level || 1, data.hp || 500, data.maxHp || 500, false);
+    }
+
+    removeRemotePlayer(id) {
+        const rp = this.remotePlayers[id];
+        if (rp) {
+            if (rp.char3D && rp.char3D.group) {
+                this.engine.scene.remove(rp.char3D.group);
+            }
+            delete this.remotePlayers[id];
+        }
+    }
+
+    updateRemotePlayers(delta) {
+        if (!this.remotePlayers) return;
+        for (const [id, rp] of Object.entries(this.remotePlayers)) {
+            const dist = rp.currentPos.distanceTo(rp.targetPos);
+            const isMoving = dist > 0.08;
+            rp.currentPos.lerp(rp.targetPos, Math.min(1, delta * 10));
+            rp.char3D.group.position.copy(rp.currentPos);
+            rp.char3D.group.rotation.y = rp.targetRotY;
+            rp.char3D.update(delta, isMoving, 1.0);
+            rp.char3D.updateOverheadUI(rp.name, rp.level, rp.hp, rp.maxHp, false);
+        }
+    }
+
     setupChatSystem() {
         this.activeChatTab = 'local';
         this.isChatting = false;
+        this.lastChatTime = 0;
         const chatInput = document.getElementById('chat-input');
 
         window.switchChatTab = (tab) => {
@@ -465,6 +562,13 @@ export class GameApp {
 
     sendChatMessage(text) {
         if (!text) return;
+        const now = performance.now();
+        if (this.lastChatTime && (now - this.lastChatTime) < 2500) {
+            this.appendChatLine('system', '⚠️ Please wait before sending another chat message (2.5s anti-spam limit).');
+            return;
+        }
+        this.lastChatTime = now;
+
         const playerName = this.player.name || 'Hero';
 
         if (this.activeChatTab === 'world') {
@@ -537,6 +641,8 @@ export class GameApp {
         this.player.hairStyle = String(charData.hairStyle || '1');
         this.player.hairColor = charData.hairColor || '#111111';
         this.player.skinColor = charData.skinColor || '#f5c6a5';
+        this.player.slotIndex = charData.slotIndex !== undefined ? charData.slotIndex : (window.ExonieFlow?.activeSlotIndex || 0);
+        this.player.email = charData.email || window.ExonieFlow?.accountEmail || '';
 
         if (isExisting) {
             this.player.level = charData.level || 1;
@@ -616,6 +722,25 @@ export class GameApp {
         this.engine.scene.add(this.player.char3D.group);
         this.saveCharacterToAccountSlot();
 
+        // 🌐 Register with Multiplayer World
+        if (this.socket && this.socket.connected) {
+            this.socket.emit('enterWorld', {
+                character_name: this.player.name,
+                gender: this.player.gender,
+                hairStyle: this.player.hairStyle,
+                hairColor: this.player.hairColor,
+                skinColor: this.player.skinColor,
+                level: this.player.level,
+                playerClass: this.player.baseStats?.playerClass || 'Novice',
+                hp: this.player.hp,
+                maxHp: this.player.maxHp,
+                x: this.player.pos.x,
+                y: this.player.pos.y,
+                z: this.player.pos.z,
+                rotY: this.player.rotY
+            });
+        }
+
         // Load Town of Exonie with authentic 2D Loading Screen
         if (window.showLoadingTransition) {
             window.showLoadingTransition('ENTERING EXONIE...', 'Town of Exonie (Safe Haven)', 1600, () => {
@@ -636,6 +761,8 @@ export class GameApp {
         if (!window.ExonieFlow || !window.ExonieFlow.saveActiveCharacterState) return;
         window.ExonieFlow.saveActiveCharacterState({
             name: this.player.name,
+            slotIndex: this.player.slotIndex !== undefined ? this.player.slotIndex : (window.ExonieFlow.activeSlotIndex || 0),
+            email: this.player.email || window.ExonieFlow.accountEmail || '',
             gender: this.player.gender,
             hairStyle: this.player.hairStyle,
             hairColor: this.player.hairColor,
@@ -1275,6 +1402,7 @@ export class GameApp {
 
     onAttackTrigger() {
         if (!this.player.char3D || this.isGhost) return;
+        if (this.player.char3D.isDodging) return; // Prevent attack during dodge roll
         this.combat.executePrimaryAttack(this.player, this.monsters, (deadMob) => {
             this.onMonsterDefeated(deadMob);
         });
@@ -1302,6 +1430,7 @@ export class GameApp {
 
     onSkillTrigger(slot) {
         if (!this.player.char3D || this.isGhost) return;
+        if (this.player.char3D.isDodging) return; // Prevent skills during dodge roll
 
         // 1. Weapon requirement
         if (!this.player.equips || !this.player.equips.weapon) {
@@ -1312,10 +1441,22 @@ export class GameApp {
         }
 
         // 2. Class awakening requirement
-        if (!this.player.baseStats || !this.player.baseStats.playerClass) {
+        const pClass = this.player.baseStats?.playerClass;
+        if (!pClass || !CLASSES[pClass]) {
             this.audio.playSfx('bump');
             this.ui.showToast("⚠️ Awaken your class in the Skills menu (K) first!");
             this.combat.spawnFloatingDamage(this.player.pos, "AWAKEN CLASS IN SKILLS (K)!", false);
+            return;
+        }
+
+        // 3. Class weapon type check (same as 2D Exonie: CLASSES[pClass].weapon)
+        const reqWpn = CLASSES[pClass]?.weapon;
+        const wpn = this.player.equips?.weapon;
+        const wpnType = String(wpn?.weaponType || wpn?.sprite || wpn?.name || '').toLowerCase();
+        if (reqWpn && !wpnType.includes(reqWpn)) {
+            this.audio.playSfx('bump');
+            this.ui.showToast(`⚠️ ${pClass} requires a ${reqWpn.toUpperCase()} to use class skills!`);
+            this.combat.spawnFloatingDamage(this.player.pos, `WRONG WEAPON! (${reqWpn.toUpperCase()})`, false);
             return;
         }
 
@@ -1421,8 +1562,9 @@ export class GameApp {
             this.player.char3D.group.position.copy(this.player.pos);
         }
 
-        // Immediately update Boss HP Bar (hides it when entering Town or any non-boss map!)
-        this.ui.updateBossHealth(this.floorBoss);
+        // Do not auto-show Boss HP Bar on floor entry; only show when player has attacked it!
+        this.bossEngaged = false;
+        this.ui.updateBossHealth(null);
 
         this.portalCooldown = 3.0; // 3s cooldown to prevent double teleports
     }
@@ -1643,30 +1785,35 @@ export class GameApp {
         if (triggeredPortal) {
             const tid = triggeredPortal.targetMapId;
             if (tid === 'marketplace') {
+                if (this.ui.marketplaceModal && this.ui.marketplaceModal.style.display === 'flex') return;
                 this.portalCooldown = 2.5;
                 this.audio.playSfx('bump');
                 this.ui.toggleMarketplace();
                 return;
             }
             if (tid === 'storage') {
+                if (this.ui.storageModal && this.ui.storageModal.style.display === 'flex') return;
                 this.portalCooldown = 2.5;
                 this.audio.playSfx('bump');
                 this.ui.openStorageUI();
                 return;
             }
             if (tid === 'daily_missions') {
+                if (this.ui.dailyMissionsModal && this.ui.dailyMissionsModal.style.display === 'flex') return;
                 this.portalCooldown = 2.5;
                 this.audio.playSfx('bump');
                 this.ui.openDailyMissionsUI();
                 return;
             }
             if (tid === 'trainingtavern') {
+                if (this.ui.tavernModal && this.ui.tavernModal.style.display === 'flex') return;
                 this.portalCooldown = 2.5;
                 this.audio.playSfx('bump');
                 this.ui.openTavernModal();
                 return;
             }
             if (tid === 'leaderboard') {
+                if (this.ui.leaderboardModal && this.ui.leaderboardModal.style.display === 'flex') return;
                 this.portalCooldown = 2.5;
                 this.audio.playSfx('bump');
                 this.ui.openLeaderboardModal('floor');
@@ -1848,6 +1995,34 @@ export class GameApp {
 
         if (this.portalCooldown > 0) this.portalCooldown -= delta;
         if (this.combat.cooldowns.dodge > 0) this.combat.cooldowns.dodge -= delta;
+
+        // Sync Skill 1 & Skill 2 Frontend Hotbar Cooldown Overlays with actual Cooldowns
+        const cd1 = this.combat.cooldowns.skill1;
+        const maxCd1 = this.combat.maxCooldowns?.skill1 || 1;
+        const cdEl1 = document.getElementById('cd-1');
+        const cdtEl1 = document.getElementById('cdt-1');
+        if (cd1 > 0) {
+            const pct = Math.min(100, (cd1 / maxCd1) * 100);
+            if (cdEl1) cdEl1.style.height = `${pct}%`;
+            if (cdtEl1) { cdtEl1.style.display = 'flex'; cdtEl1.textContent = Math.ceil(cd1); }
+        } else {
+            if (cdEl1) cdEl1.style.height = '0%';
+            if (cdtEl1) cdtEl1.style.display = 'none';
+        }
+
+        const cd2 = this.combat.cooldowns.skill2;
+        const maxCd2 = this.combat.maxCooldowns?.skill2 || 1;
+        const cdEl2 = document.getElementById('cd-2');
+        const cdtEl2 = document.getElementById('cdt-2');
+        if (cd2 > 0) {
+            const pct = Math.min(100, (cd2 / maxCd2) * 100);
+            if (cdEl2) cdEl2.style.height = `${pct}%`;
+            if (cdtEl2) { cdtEl2.style.display = 'flex'; cdtEl2.textContent = Math.ceil(cd2); }
+        } else {
+            if (cdEl2) cdEl2.style.height = '0%';
+            if (cdtEl2) cdtEl2.style.display = 'none';
+        }
+
         if (this.potionCooldown > 0) {
             this.potionCooldown -= delta;
             const potOverlay = document.getElementById('cd-3');
@@ -2043,13 +2218,41 @@ export class GameApp {
             }
         }
 
-        // 3. Update Boss Health Bar (Hides immediately if no boss or boss is defeated)
-        this.ui.updateBossHealth(this.floorBoss);
+        // 3. Update Boss Health Bar (Only show when boss has been attacked / engaged!)
+        if (this.bossEngaged && this.floorBoss && this.floorBoss.isAlive) {
+            this.ui.updateBossHealth(this.floorBoss);
+        } else {
+            this.ui.updateBossHealth(null);
+        }
 
         // 4. Check World Portals
         this.checkPortalCollision();
 
-        // 5. Update Systems
+        // 5. Update Local Player Overhead UI
+        if (this.player.char3D && this.player.char3D.updateOverheadUI) {
+            this.player.char3D.updateOverheadUI(this.player.name, this.player.level, this.player.hp, this.player.maxHp, true);
+        }
+
+        // 6. Update Remote Players & Multiplayer Sync
+        this.updateRemotePlayers(delta);
+
+        if (this.socket && this.socket.connected) {
+            this._moveEmitTimer = (this._moveEmitTimer || 0) + delta;
+            if (this._moveEmitTimer >= 0.05) {
+                this._moveEmitTimer = 0;
+                this.socket.emit('playerMove', {
+                    x: this.player.pos.x,
+                    y: this.player.pos.y,
+                    z: this.player.pos.z,
+                    rotY: this.player.rotY,
+                    anim: isMoving ? 'walk' : 'idle',
+                    hp: this.player.hp,
+                    maxHp: this.player.maxHp
+                });
+            }
+        }
+
+        // 7. Update Systems
         this.world.update(delta, this.player.pos);
         this.combat.update(delta, this.player, this.monsters, (deadMob) => {
             this.onMonsterDefeated(deadMob);
@@ -2057,10 +2260,10 @@ export class GameApp {
         this.engine.updateParticles(delta);
         this.engine.updateCamera(this.player.pos, delta);
 
-        // 6. Render Minimap
+        // 8. Render Minimap
         this.ui.renderMinimap(this.player.pos, this.player.rotY, this.monsters, this.world.portals);
 
-        // 7. Render 3D Scene
+        // 9. Render 3D Scene
         this.engine.render();
     }
 }

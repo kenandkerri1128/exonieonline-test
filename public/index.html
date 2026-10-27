@@ -41,22 +41,25 @@
             <div class="studio-presents-text">PRESENTS</div>
         </div>
 
-        <!-- Stage 2: Production Credits (100% Copy of Circuit Siege with Antigravity) -->
+        <!-- Stage 2: Production Credits (100% Circuit Siege Intro Credits) -->
         <div id="splash-credits" class="splash-card">
-            <div class="credits-box">
-                <div class="credits-title">A XENIE GAMING PRODUCTION</div>
-                <div class="credits-grid">
-                    <div class="credit-label">GAME SYSTEMS</div><div class="credit-val">Authoritative Sim Loop</div>
-                    <div class="credit-label">RENDERING</div><div class="credit-val">Three.js Engine</div>
-                    <div class="credit-label">DEVELOPMENT</div><div class="credit-val credit-highlight">Antigravity <span style="font-size:0.75rem; font-weight:normal; color:#94a3b8;">· DeepMind AI</span></div>
-                    <div class="credit-label">AUDIO</div><div class="credit-val">Original Soundtrack · WebAudio SFX</div>
-                    <div class="credit-label">SUPPORT</div><div class="credit-val"><a href="https://www.patreon.com/c/xeniegaming?vanity=user" target="_blank" rel="noopener noreferrer" class="credit-link">patreon.com/c/xeniegaming</a></div>
-                </div>
-                <div class="credits-footer">
-                    <div>Engineered with <span class="credit-highlight">Antigravity</span> by <span style="color:#a5f3fc; font-weight:600;">XeNiE Gaming</span></div>
-                    <div style="font-size:0.72rem; margin-top:4px; color:#94a3b8;">
-                        © 2026 Xenie Gaming · All Rights Reserved
-                    </div>
+            <div class="credits-box flex flex-col items-center justify-center text-center">
+                <div class="credits-title" style="letter-spacing:0.5em; font-size:0.75rem; color:#94a3b8; font-weight:700; margin-bottom:1.25rem;">A XENIE GAMING PRODUCTION</div>
+                <div style="font-size:0.8rem; letter-spacing:0.4em; color:#00e5ff; font-weight:800; margin-bottom:0.5rem;">SPECIAL THANKS</div>
+                <h1 style="font-size:2.4rem; font-weight:900; letter-spacing:0.15em; color:#e0f7fa; text-shadow:0 0 25px rgba(0,229,255,0.85), 0 0 50px rgba(0,229,255,0.45); margin:0 0 0.5rem 0;">ALL THANKS TO ANTIGRAVITY</h1>
+                <div style="font-size:0.85rem; color:#cbd5e1; letter-spacing:0.06em; margin-bottom:1.5rem;">Pair Programming &amp; Architecture Powered by Antigravity</div>
+                
+                <div style="width:14rem; height:1px; background:linear-gradient(90deg, transparent, #00e5ff, transparent); margin:0 auto 1.5rem auto; opacity:0.8;"></div>
+                
+                <div style="font-size:0.75rem; letter-spacing:0.4em; color:#94a3b8; font-weight:700; margin-bottom:0.75rem;">JOIN THE COMMUNITY</div>
+                
+                <a href="https://facebook.com/xeniegaming" target="_blank" rel="noopener noreferrer" style="display:inline-flex; align-items:center; gap:0.6rem; padding:0.6rem 1.6rem; border-radius:9999px; border:1px solid rgba(59,130,246,0.6); background:rgba(23,37,84,0.85); color:#dbeafe; font-size:0.78rem; font-weight:800; letter-spacing:0.08em; text-decoration:none; box-shadow:0 0 20px rgba(37,99,235,0.45); margin-bottom:0.75rem; cursor:pointer;">
+                    <svg style="width:1rem; height:1rem; fill:#ffffff;" viewBox="0 0 24 24"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
+                    <span>FOLLOW US ON FACEBOOK</span>
+                </a>
+                
+                <div style="font-size:0.8rem; font-family:monospace; color:#94a3b8;">
+                    <a href="https://facebook.com/xeniegaming" target="_blank" rel="noopener noreferrer" style="color:#94a3b8; text-decoration:none;">facebook.com/xeniegaming</a>
                 </div>
             </div>
         </div>
@@ -73,13 +76,15 @@
         <!-- Login Form -->
         <div class="auth-container" id="login-form">
             <h1>Exonie Online</h1>
-            <div class="build-badge">BUILD: 2026.10.22-3D-REMASTERED</div>
+            <div class="build-badge">BUILD: 2026.10.27-3D-REMASTERED</div>
 
-            <input type="text" id="login-user" class="auth-input" placeholder="Username" maxlength="16" value="HeroPlayer">
-            <input type="password" id="login-pass" class="auth-input" placeholder="Password" value="password123">
+            <!-- Prominent Visual Error Banner -->
+            <div id="login-error-msg" class="auth-error-banner" style="display:none;"></div>
+
+            <input type="email" id="login-email" class="auth-input" placeholder="Email Address" maxlength="64" value="" autocomplete="email">
+            <input type="password" id="login-pass" class="auth-input" placeholder="Password" value="" autocomplete="current-password">
 
             <button class="btn-auth-primary" id="btn-login" onclick="window.ExonieFlow.attemptLogin()">LOGIN</button>
-            <button class="btn-auth-guest" id="btn-guest" onclick="window.ExonieFlow.loginAsGuest()">PLAY AS GUEST ⚡</button>
             
             <span class="auth-link" id="link-to-register" onclick="window.ExonieFlow.switchAuth('register')">Create an Account</span>
         </div>
@@ -89,8 +94,11 @@
             <h1>Join Exonie</h1>
             <div class="build-badge">CREATE YOUR ACCOUNT</div>
 
-            <input type="text" id="reg-user" class="auth-input" placeholder="Username" maxlength="16">
-            <input type="password" id="reg-pass" class="auth-input" placeholder="Password">
+            <!-- Prominent Visual Error Banner -->
+            <div id="reg-error-msg" class="auth-error-banner" style="display:none;"></div>
+
+            <input type="email" id="reg-email" class="auth-input" placeholder="Email Address" maxlength="64" autocomplete="email">
+            <input type="password" id="reg-pass" class="auth-input" placeholder="Password (Min 4 chars)" autocomplete="new-password">
 
             <button class="btn-auth-primary" id="btn-register" onclick="window.ExonieFlow.attemptRegister()">CREATE ACCOUNT</button>
             <span class="auth-link" id="link-to-login" onclick="window.ExonieFlow.switchAuth('login')">Back to Login</span>

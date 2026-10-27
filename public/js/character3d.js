@@ -174,9 +174,77 @@ export class Character3D {
         this.landTimer = 0;
 
         this.buildMesh();
+        this.ensureOverheadUI();
         if (this.weaponType) {
             this.setWeapon(this.weaponType, this.weaponRarity);
         }
+    }
+
+    ensureOverheadUI() {
+        if (this.overheadGroup) return;
+        this.overheadGroup = new THREE.Group();
+        this.group.add(this.overheadGroup);
+
+        this.overheadCanvas = document.createElement('canvas');
+        this.overheadCanvas.width = 256;
+        this.overheadCanvas.height = 64;
+        this.overheadTex = new THREE.CanvasTexture(this.overheadCanvas);
+        const spriteMat = new THREE.SpriteMaterial({
+            map: this.overheadTex,
+            transparent: true,
+            depthTest: false
+        });
+        this.overheadSprite = new THREE.Sprite(spriteMat);
+        this.overheadSprite.position.set(0, 2.25, 0);
+        this.overheadSprite.scale.set(2.8, 0.7, 1);
+        this.overheadSprite.renderOrder = 997;
+        this.overheadGroup.add(this.overheadSprite);
+        this._lastHp = -1;
+        this._lastMaxHp = -1;
+        this._lastLevel = -1;
+        this._lastName = '';
+    }
+
+    updateOverheadUI(name, level = 1, hp = 100, maxHp = 100, isSelf = false) {
+        if (!this.overheadGroup) this.ensureOverheadUI();
+        if (hp === this._lastHp && maxHp === this._lastMaxHp && level === this._lastLevel && name === this._lastName) return;
+        this._lastHp = hp;
+        this._lastMaxHp = maxHp;
+        this._lastLevel = level;
+        this._lastName = name;
+
+        const ctx = this.overheadCanvas.getContext('2d');
+        ctx.clearRect(0, 0, 256, 64);
+
+        const displayName = name || this.name || 'Hero';
+        ctx.font = 'bold 18px "Segoe UI", Arial, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillStyle = '#000000';
+        ctx.fillText(`Lv.${level} ${displayName}`, 129, 23);
+        ctx.fillText(`Lv.${level} ${displayName}`, 127, 21);
+        ctx.fillStyle = isSelf ? '#4ade80' : '#00e5ff';
+        ctx.fillText(`Lv.${level} ${displayName}`, 128, 22);
+
+        // HP bar background
+        const barX = 36;
+        const barY = 30;
+        const barW = 184;
+        const barH = 13;
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
+        ctx.fillRect(barX, barY, barW, barH);
+        ctx.strokeStyle = '#334155';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(barX, barY, barW, barH);
+
+        // HP bar fill
+        const ratio = Math.max(0, Math.min(1, hp / (maxHp || 1)));
+        const fillW = Math.round((barW - 4) * ratio);
+        if (fillW > 0) {
+            ctx.fillStyle = ratio > 0.5 ? '#22c55e' : (ratio > 0.25 ? '#eab308' : '#ef4444');
+            ctx.fillRect(barX + 2, barY + 2, fillW, barH - 4);
+        }
+
+        this.overheadTex.needsUpdate = true;
     }
 
     get isAttacking() {
@@ -194,9 +262,77 @@ export class Character3D {
         if (opts.armorRarity !== undefined) this.armorRarity = opts.armorRarity;
         if (opts.leggingsRarity !== undefined) this.leggingsRarity = opts.leggingsRarity;
         this.buildMesh();
+        this.ensureOverheadUI();
         if (this.weaponType) {
             this.setWeapon(this.weaponType, this.weaponRarity);
         }
+    }
+
+    ensureOverheadUI() {
+        if (this.overheadGroup) return;
+        this.overheadGroup = new THREE.Group();
+        this.group.add(this.overheadGroup);
+
+        this.overheadCanvas = document.createElement('canvas');
+        this.overheadCanvas.width = 256;
+        this.overheadCanvas.height = 64;
+        this.overheadTex = new THREE.CanvasTexture(this.overheadCanvas);
+        const spriteMat = new THREE.SpriteMaterial({
+            map: this.overheadTex,
+            transparent: true,
+            depthTest: false
+        });
+        this.overheadSprite = new THREE.Sprite(spriteMat);
+        this.overheadSprite.position.set(0, 2.25, 0);
+        this.overheadSprite.scale.set(2.8, 0.7, 1);
+        this.overheadSprite.renderOrder = 997;
+        this.overheadGroup.add(this.overheadSprite);
+        this._lastHp = -1;
+        this._lastMaxHp = -1;
+        this._lastLevel = -1;
+        this._lastName = '';
+    }
+
+    updateOverheadUI(name, level = 1, hp = 100, maxHp = 100, isSelf = false) {
+        if (!this.overheadGroup) this.ensureOverheadUI();
+        if (hp === this._lastHp && maxHp === this._lastMaxHp && level === this._lastLevel && name === this._lastName) return;
+        this._lastHp = hp;
+        this._lastMaxHp = maxHp;
+        this._lastLevel = level;
+        this._lastName = name;
+
+        const ctx = this.overheadCanvas.getContext('2d');
+        ctx.clearRect(0, 0, 256, 64);
+
+        const displayName = name || this.name || 'Hero';
+        ctx.font = 'bold 18px "Segoe UI", Arial, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillStyle = '#000000';
+        ctx.fillText(`Lv.${level} ${displayName}`, 129, 23);
+        ctx.fillText(`Lv.${level} ${displayName}`, 127, 21);
+        ctx.fillStyle = isSelf ? '#4ade80' : '#00e5ff';
+        ctx.fillText(`Lv.${level} ${displayName}`, 128, 22);
+
+        // HP bar background
+        const barX = 36;
+        const barY = 30;
+        const barW = 184;
+        const barH = 13;
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
+        ctx.fillRect(barX, barY, barW, barH);
+        ctx.strokeStyle = '#334155';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(barX, barY, barW, barH);
+
+        // HP bar fill
+        const ratio = Math.max(0, Math.min(1, hp / (maxHp || 1)));
+        const fillW = Math.round((barW - 4) * ratio);
+        if (fillW > 0) {
+            ctx.fillStyle = ratio > 0.5 ? '#22c55e' : (ratio > 0.25 ? '#eab308' : '#ef4444');
+            ctx.fillRect(barX + 2, barY + 2, fillW, barH - 4);
+        }
+
+        this.overheadTex.needsUpdate = true;
     }
 
     setEquipVisuals(opts = {}) {
