@@ -930,11 +930,24 @@ window.ExonieFlow = {
                 this.scrCharSelect.classList.add('hidden');
                 this.scrCharSelect.style.display = 'none';
             }
+            let launchAttempts = 0;
             const tryLaunch = () => {
+                launchAttempts++;
                 if (window.launchExonieGame) {
                     window.launchExonieGame(this.charData);
-                } else {
+                } else if (launchAttempts < 40) {
                     setTimeout(tryLaunch, 100);
+                } else {
+                    console.error('Launch timeout: window.launchExonieGame not available');
+                    const ls = document.getElementById('loading-screen');
+                    if (ls) {
+                        ls.classList.remove('active');
+                        ls.style.display = 'none';
+                    }
+                    if (this.scrCharSelect) {
+                        this.scrCharSelect.classList.remove('hidden');
+                        this.scrCharSelect.style.display = 'flex';
+                    }
                 }
             };
             tryLaunch();
@@ -1289,11 +1302,24 @@ window.ExonieFlow = {
                 this.scrPrologue.style.display = 'none';
             }
 
+            let launchAttempts = 0;
             const tryLaunch = () => {
+                launchAttempts++;
                 if (window.launchExonieGame) {
                     window.launchExonieGame(this.charData);
-                } else {
+                } else if (launchAttempts < 40) {
                     setTimeout(tryLaunch, 100);
+                } else {
+                    console.error('Launch timeout: window.launchExonieGame not available');
+                    const ls = document.getElementById('loading-screen');
+                    if (ls) {
+                        ls.classList.remove('active');
+                        ls.style.display = 'none';
+                    }
+                    if (this.scrCharSelect) {
+                        this.scrCharSelect.classList.remove('hidden');
+                        this.scrCharSelect.style.display = 'flex';
+                    }
                 }
             };
             tryLaunch();

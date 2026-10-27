@@ -109,6 +109,14 @@ function escapeHtml(str) {
 // ==========================================
 export class GameApp {
     constructor() {
+        // Connect global launch hook from flow.js immediately
+        window.launchExonieGame = (charData) => {
+            this.onFlowComplete(charData);
+        };
+
+        // Initialize 3D Preview helper for Character Creation pedestal immediately
+        this.setupCustomizer3DPreview();
+
         this.audio = new AudioManager();
         this.engine = new Engine3D('game-container');
         this.world = new World3D(this.engine.scene);
@@ -171,14 +179,6 @@ export class GameApp {
         this.keys = {};
         this.loadKeybinds();
         this.setupKeyboardInput();
-
-        // Connect global launch hook from flow.js
-        window.launchExonieGame = (charData) => {
-            this.onFlowComplete(charData);
-        };
-
-        // Initialize 3D Preview helper for Character Creation pedestal
-        this.setupCustomizer3DPreview();
 
         // Socket.IO Setup (Multiplayer sync with offline simulation fallback)
         this.initSocket();
@@ -317,6 +317,11 @@ export class GameApp {
                 if (e.touches && e.touches[0]) moveDrag(e.touches[0].clientX);
             }, { passive: true });
 
+            // Initial synchronous render
+            try {
+                previewRenderer.render(previewScene, previewCamera);
+            } catch(e) {}
+
             const animPreview = () => {
                 requestAnimationFrame(animPreview);
                 if (previewCol && previewRenderer && previewCamera) {
@@ -333,7 +338,9 @@ export class GameApp {
                     }
                 }
                 if (previewChar) {
-                    previewChar.update(0.016, false);
+                    try {
+                        previewChar.update(0.016, false);
+                    } catch(e) {}
                 }
                 if (previewRenderer && previewScene && previewCamera) {
                     try {
@@ -415,9 +422,6 @@ export class GameApp {
                 });
 
                 this.socket.on('disconnect', (reason) => {
-                    console.warn(`[Socket] Disconnected from server: ${reason}`);
-                    this.appendChatLine('system', `⚠️ Connection lost. Attempting to reconnect...`);
-                });
                     console.warn(`[Socket] Disconnected from server: ${reason}`);
                     this.appendChatLine('system', `⚠️ Connection lost. Attempting to reconnect...`);
                 });

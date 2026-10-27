@@ -418,12 +418,13 @@ html, body {
 .preview-glow-ring {
     position: absolute;
     bottom: 12%;
+    left: 50%;
     width: 220px;
     height: 60px;
     border-radius: 50%;
     border: 2px solid rgba(0, 229, 255, 0.6);
     box-shadow: 0 0 25px rgba(0, 229, 255, 0.6), inset 0 0 20px rgba(0, 229, 255, 0.4);
-    transform: rotateX(65deg);
+    transform: translateX(-50%) rotateX(65deg);
     pointer-events: none;
     animation: ringSpin 6s linear infinite;
     z-index: 2;
