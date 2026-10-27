@@ -40,10 +40,10 @@ window.ExonieFlow = {
         setTimeout(() => {
             const splash = document.getElementById('scr-splash');
             if (splash && splash.style.display !== 'none' && (this.step === 'splash_studio' || this.step === 'splash_credits')) {
-                console.warn('⚠️ Splash watchdog: forcing auth screen display');
+                console.warn('⚠️ Splash watchdog: advancing to auth screen');
                 this.skipSplash();
             }
-        }, 4000);
+        }, 7500);
     },
 
     // ============================================================
@@ -510,11 +510,6 @@ window.ExonieFlow = {
             this._loginTimeout = setTimeout(() => {
                 this.showAuthError('register', 'Server connection timed out. Please verify the game server is running.');
             }, 7000);
-            s.emit('register', { email, username: email, password });
-        } else {
-            this.showAuthError('register', 'Connecting to game server... Please try again.');
-        }
-    },
             s.emit('register', { email, username: email, password });
         } else {
             this.showAuthError('register', 'Connecting to game server... Please try again.');
