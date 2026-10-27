@@ -607,6 +607,11 @@ window.ExonieFlow = {
             const card = document.createElement('div');
             card.className = 'char-slot-card';
             if (c) {
+                card.style.cursor = 'pointer';
+                card.onclick = (e) => {
+                    if (e.target.closest('button')) return;
+                    window.ExonieFlow.selectExistingCharacter(i);
+                };
                 const name = c.character_name || c.name || 'Hero';
                 const cls = (c.base_stats && c.base_stats.playerClass) || c.playerClass || c.className || 'Novice';
                 const lvl = c.level || 1;
@@ -626,6 +631,11 @@ window.ExonieFlow = {
                     </div>
                 `;
             } else {
+                card.style.cursor = 'pointer';
+                card.onclick = (e) => {
+                    if (e.target.closest('button')) return;
+                    window.ExonieFlow.startNewCharacterInSlot(i);
+                };
                 card.innerHTML = `
                     <div class="char-slot-badge">CHARACTER SLOT ${i + 1}</div>
                     <div style="font-size:2.5rem; opacity:0.45; margin:10px 0;">➕</div>
@@ -780,8 +790,10 @@ window.ExonieFlow = {
 
         this.updateHairButtonsForGender(this.charData.gender || 'female');
         // Lazy-load live 3D preview on the pedestal (with retry if game.js is still loading)
-        this.initCharacterPreview();
-        this.triggerPreviewUpdate();
+        requestAnimationFrame(() => {
+            this.initCharacterPreview();
+            this.triggerPreviewUpdate();
+        });
     },
 
     updateHairButtonsForGender(gender) {

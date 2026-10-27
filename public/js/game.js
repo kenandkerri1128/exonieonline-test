@@ -198,6 +198,9 @@ export class GameApp {
             const previewCol = document.querySelector('.customizer-preview-col');
             if (!previewCol) return;
 
+            const w = Math.max(300, previewCol.clientWidth || 360);
+            const h = Math.max(360, previewCol.clientHeight || 480);
+
             if (previewRenderer && previewChar) {
                 if (charData) {
                     previewChar.setCustomization({
@@ -208,8 +211,6 @@ export class GameApp {
                         weaponType: null
                     });
                 }
-                const w = previewCol.clientWidth || 300;
-                const h = previewCol.clientHeight || 360;
                 previewCamera.aspect = w / h;
                 previewCamera.updateProjectionMatrix();
                 previewRenderer.setSize(w, h);
@@ -218,9 +219,6 @@ export class GameApp {
                 }
                 return;
             }
-
-            const w = previewCol.clientWidth || 300;
-            const h = previewCol.clientHeight || 360;
 
             previewScene = new THREE.Scene();
             previewScene.background = new THREE.Color(0x0a101d);
@@ -236,8 +234,6 @@ export class GameApp {
             previewRenderer.toneMappingExposure = 1.25;
             if (THREE.SRGBColorSpace) previewRenderer.outputColorSpace = THREE.SRGBColorSpace;
             previewRenderer.domElement.id = 'char-preview-canvas';
-            previewRenderer.domElement.style.width = '100%';
-            previewRenderer.domElement.style.height = '100%';
             previewCol.appendChild(previewRenderer.domElement);
 
             const ambLight = new THREE.AmbientLight(0xffffff, 1.8);
@@ -299,6 +295,19 @@ export class GameApp {
 
             const animPreview = () => {
                 requestAnimationFrame(animPreview);
+                if (previewCol && previewRenderer && previewCamera) {
+                    const curW = previewCol.clientWidth;
+                    const curH = previewCol.clientHeight;
+                    if (curW > 50 && curH > 50) {
+                        const canvas = previewRenderer.domElement;
+                        const pr = previewRenderer.getPixelRatio() || 1;
+                        if (canvas.width !== Math.round(curW * pr) || canvas.height !== Math.round(curH * pr)) {
+                            previewCamera.aspect = curW / curH;
+                            previewCamera.updateProjectionMatrix();
+                            previewRenderer.setSize(curW, curH);
+                        }
+                    }
+                }
                 if (previewChar) {
                     previewChar.update(0.016, false);
                 }
@@ -323,6 +332,14 @@ export class GameApp {
         };
 
         window.updateCustomizerPreview = (charData) => {
+            const previewCol = document.querySelector('.customizer-preview-col');
+            if (previewRenderer && previewCamera && previewCol && previewCol.clientWidth > 50 && previewCol.clientHeight > 50) {
+                const curW = previewCol.clientWidth;
+                const curH = previewCol.clientHeight;
+                previewCamera.aspect = curW / curH;
+                previewCamera.updateProjectionMatrix();
+                previewRenderer.setSize(curW, curH);
+            }
             if (previewChar && charData) {
                 previewChar.setCustomization({
                     gender: charData.gender || 'female',
