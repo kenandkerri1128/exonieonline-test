@@ -429,6 +429,16 @@ html, body {
     z-index: 2;
 }
 
+.preview-rotate-controls {
+    position: absolute;
+    bottom: 22px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 8px;
+    z-index: 10;
+}
+
 @keyframes ringSpin {
     0% { transform: rotateX(65deg) rotateZ(0deg); }
     100% { transform: rotateX(65deg) rotateZ(360deg); }

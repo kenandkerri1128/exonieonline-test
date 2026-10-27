@@ -211,7 +211,7 @@ window.ExonieFlow = {
         window.addEventListener('keydown', resumeMenuAudio);
         window.addEventListener('touchstart', resumeMenuAudio);
 
-        // Keyboard navigation for dialogue (Space/Enter)
+        // Keyboard navigation for dialogue (Space/Enter) and Auth forms (Enter)
         window.addEventListener('keydown', (e) => {
             if (this.step === 'splash_studio' || this.step === 'splash_credits') {
                 if (e.code === 'Space' || e.code === 'Enter') {
@@ -221,6 +221,13 @@ window.ExonieFlow = {
                 if (e.code === 'Space' || e.code === 'Enter') {
                     e.preventDefault();
                     this.advanceDialogue();
+                }
+            } else if (this.step === 'auth' && e.code === 'Enter') {
+                const isRegOpen = this.registerForm && this.registerForm.style.display !== 'none';
+                if (isRegOpen) {
+                    this.attemptRegister();
+                } else {
+                    this.attemptLogin();
                 }
             }
         });
@@ -336,19 +343,27 @@ window.ExonieFlow = {
     },
 
     getSocket() {
+        if (window.exonieSocket && window.exonieSocket.connected) return window.exonieSocket;
         if (window.exonieSocket) return window.exonieSocket;
         if (typeof io !== 'undefined') {
             let serverUrl = 'https://exonieonline-test.onrender.com';
             if (typeof window !== 'undefined' && window.location) {
                 const host = window.location.hostname;
+                const port = window.location.port;
                 if (host === 'localhost' || host === '127.0.0.1') {
-                    serverUrl = 'http://localhost:3003';
+                    if (port === '3003' || port === '3000' || port === '8080') {
+                        serverUrl = window.location.origin;
+                    } else {
+                        serverUrl = 'http://localhost:3003';
+                    }
+                } else if (window.location.origin && window.location.origin.startsWith('http')) {
+                    serverUrl = window.location.origin;
                 }
             }
             window.exonieSocket = io(serverUrl, {
                 transports: ['websocket', 'polling'],
                 reconnection: true,
-                timeout: 10000
+                timeout: 8000
             });
             window.socket = window.exonieSocket;
             this.setupSocketListeners(window.exonieSocket);
@@ -404,6 +419,7 @@ window.ExonieFlow = {
         });
 
         socket.on('registerSuccess', (registeredEmail) => {
+            clearTimeout(this._loginTimeout);
             console.log(`✅ [Flow] Account ${registeredEmail} registered successfully.`);
             this.clearAuthErrors();
             this.switchAuth('login');
@@ -439,20 +455,24 @@ window.ExonieFlow = {
         this.clearAuthErrors();
         const emailInput = document.getElementById('login-email') || this.inputEmail;
         const passInput = document.getElementById('login-pass') || this.inputPass;
-        const email = (emailInput && emailInput.value.trim()) ? emailInput.value.trim() : '';
+        const inputVal = (emailInput && emailInput.value.trim()) ? emailInput.value.trim() : '';
         const password = (passInput && passInput.value) ? passInput.value : '';
 
-        if (!email || !password) {
-            this.showAuthError('login', 'Please enter both Email and Password.');
+        if (!inputVal || !password) {
+            this.showAuthError('login', 'Please enter your Email or Character Name and Password.');
             return;
         }
 
-        this.accountEmail = email;
-        this.accountName = email.split('@')[0];
+        this.accountEmail = inputVal;
+        this.accountName = inputVal.split('@')[0];
 
         const s = this.getSocket();
         if (s) {
-            s.emit('login', { email, username: email, password });
+            clearTimeout(this._loginTimeout);
+            this._loginTimeout = setTimeout(() => {
+                this.showAuthError('login', 'Server connection timed out. Please verify the game server is running.');
+            }, 7000);
+            s.emit('login', { email: inputVal, username: inputVal, password });
         } else {
             this.showAuthError('login', 'Connecting to game server... Please try again.');
         }
@@ -470,12 +490,12 @@ window.ExonieFlow = {
         const password = (regPass && regPass.value) ? regPass.value : '';
 
         if (!email || !password) {
-            this.showAuthError('register', 'Please enter both Email and Password.');
+            this.showAuthError('register', 'Please enter an Email or Username and Password.');
             return;
         }
 
-        if (!email.includes('@') || email.length < 5) {
-            this.showAuthError('register', 'Please enter a valid email address.');
+        if (email.length < 3) {
+            this.showAuthError('register', 'Email or Username must be at least 3 characters.');
             return;
         }
 
@@ -486,6 +506,15 @@ window.ExonieFlow = {
 
         const s = this.getSocket();
         if (s) {
+            clearTimeout(this._loginTimeout);
+            this._loginTimeout = setTimeout(() => {
+                this.showAuthError('register', 'Server connection timed out. Please verify the game server is running.');
+            }, 7000);
+            s.emit('register', { email, username: email, password });
+        } else {
+            this.showAuthError('register', 'Connecting to game server... Please try again.');
+        }
+    },
             s.emit('register', { email, username: email, password });
         } else {
             this.showAuthError('register', 'Connecting to game server... Please try again.');

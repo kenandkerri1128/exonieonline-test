@@ -700,6 +700,15 @@ export class GameApp {
     }
 
     onFlowComplete(charData) {
+        // Dismiss any pre-game screen overlays so 3D world is immediately visible
+        ['scr-splash', 'auth-screen', 'char-select-screen', 'creation-screen', 'prologue-screen'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) {
+                el.classList.add('hidden');
+                el.style.display = 'none';
+            }
+        });
+
         // Remove previous 3D character mesh if switching characters
         if (this.player.char3D && this.player.char3D.group) {
             this.engine.scene.remove(this.player.char3D.group);

@@ -468,8 +468,10 @@ function serializeSlotsToRow(slots, existingRow = {}) {
             names.push(c.character_name || c.name);
             skins.push(c.skin_color || c.skinColor || '#f5c6a5');
             hairs.push(c.hair_color || c.hairColor || '#111111');
-            styles.push(String(c.hair_style || c.hairStyle || '1'));
-            genders.push(c.gender || 'female');
+            const styleNum = String(c.hair_style || c.hairStyle || '1');
+            styles.push(['1', '2', '3', '4', '5'].includes(styleNum) ? styleNum : '1');
+            const gnd = (c.gender === 'male' || (c.base_stats && c.base_stats.gender === 'male')) ? 'male' : 'female';
+            genders.push(gnd);
             const lvl = Number(c.level) || 1;
             const gld = c.gold !== undefined ? Number(c.gold) : 500;
             const xp = Number(c.exp) || 0;
@@ -482,7 +484,10 @@ function serializeSlotsToRow(slots, existingRow = {}) {
                 level: lvl,
                 gold: gld,
                 exp: xp,
-                gender: c.gender || 'female'
+                gender: gnd,
+                hairStyle: ['1', '2', '3', '4', '5'].includes(styleNum) ? styleNum : '1',
+                hairColor: c.hair_color || c.hairColor || '#111111',
+                skinColor: c.skin_color || c.skinColor || '#f5c6a5'
             });
             statsArr.push(slotStats);
         } else {
@@ -500,11 +505,13 @@ function serializeSlotsToRow(slots, existingRow = {}) {
         }
     }
 
+    const firstValidStyle = styles.find(s => ['1', '2', '3', '4', '5'].includes(s)) || '1';
+
     return {
         character_name: names.join('|'),
         skin_color: skins.join('|'),
         hair_color: hairs.join('|'),
-        hair_style: styles.join('|'),
+        hair_style: parseInt(firstValidStyle, 10) || 1,
         level: Number(levels[0]) || 1,
         gold: Number(golds[0]) || 500,
         exp: Number(exps[0]) || 0,
@@ -512,6 +519,68 @@ function serializeSlotsToRow(slots, existingRow = {}) {
         inventory: invArr,
         base_stats: statsArr
     };
+}
+
+// 🛡️ Helper: Robust account lookup across 2D character names, 2D emails, and 3D multi-slots
+async function findAccountRows(identifier) {
+    if (!identifier) return [];
+    if (!supabase) {
+        const key = String(identifier).toLowerCase();
+        const mem = memoryDb.users[key] || Object.values(memoryDb.users).find(u =>
+            (u.email && u.email.toLowerCase() === key) ||
+            (u.character_name && u.character_name.toLowerCase().includes(key))
+        );
+        return mem ? [mem] : [];
+    }
+
+    const clean = String(identifier).trim();
+    if (!clean) return [];
+
+    try {
+        // 1. If it contains '@', query by email first
+        if (clean.includes('@')) {
+            const { data: byEmail, error: errEmail } = await supabase
+                .from('Exonians')
+                .select('*')
+                .ilike('email', clean);
+            if (!errEmail && byEmail && byEmail.length > 0) return byEmail;
+        }
+
+        // 2. Query by character_name exact match (case-insensitive)
+        const { data: byName, error: errName } = await supabase
+            .from('Exonians')
+            .select('*')
+            .ilike('character_name', clean);
+        if (!errName && byName && byName.length > 0) {
+            // If primary row has an email and is a single row, fetch siblings with the same email
+            if (byName[0].email && byName.length === 1) {
+                const { data: sibs } = await supabase.from('Exonians').select('*').eq('email', byName[0].email);
+                if (sibs && sibs.length > 1) return sibs;
+            }
+            return byName;
+        }
+
+        // 3. Query by pipe-delimited character_name (contains input)
+        if (!clean.includes('@')) {
+            const { data: byLike, error: errLike } = await supabase
+                .from('Exonians')
+                .select('*')
+                .ilike('character_name', `%${clean}%`);
+            if (!errLike && byLike && byLike.length > 0) return byLike;
+        }
+
+        // 4. Fallback: check email even if clean string had no '@'
+        const { data: byEmailFback } = await supabase
+            .from('Exonians')
+            .select('*')
+            .ilike('email', clean);
+        if (byEmailFback && byEmailFback.length > 0) return byEmailFback;
+
+    } catch (e) {
+        console.error(`[DB QUERY ERROR] findAccountRows for ${clean}:`, e.message);
+    }
+
+    return [];
 }
 
 // ==========================================
@@ -525,60 +594,123 @@ io.on('connection', (socket) => {
     socket._worldChatCount = 0;
     socket._worldChatWindowStart = 0;
 
-    // 1. LOGIN BY EMAIL & PASSWORD
+    // 1. LOGIN BY EMAIL OR CHARACTER NAME & PASSWORD (100% 2D & 3D COMPATIBLE)
     socket.on('login', async (data) => {
         try {
-            const emailInput = (data && (data.email || data.username)) ? String(data.email || data.username).trim() : '';
+            const cleanInput = (data && (data.email || data.username)) ? String(data.email || data.username).trim() : '';
             const password = (data && data.password) ? String(data.password) : '';
 
-            if (!emailInput || !password) {
-                return socket.emit('authError', 'Please enter both Email and Password.');
+            if (!cleanInput || !password) {
+                return socket.emit('authError', 'Please enter your Email or Character Name and Password.');
             }
 
-            console.log(`[LOGIN ATTEMPT] Authenticating: ${emailInput}`);
+            console.log(`[LOGIN ATTEMPT] Authenticating: ${cleanInput}`);
 
             let matchedRows = [];
             if (supabase) {
-                let query = supabase.from('Exonians').select('*').eq('password', password);
-                if (emailInput.includes('@')) {
-                    query = query.ilike('email', emailInput);
-                } else {
-                    query = query.or(`email.ilike.${emailInput},character_name.ilike.%${emailInput}%`);
+                let fetchError = null;
+
+                // Step 1: If input contains '@', check email first
+                if (cleanInput.includes('@')) {
+                    const { data: byEmail, error: errEmail } = await supabase
+                        .from('Exonians')
+                        .select('*')
+                        .ilike('email', cleanInput)
+                        .eq('password', password);
+                    if (errEmail) fetchError = errEmail;
+                    if (byEmail && byEmail.length > 0) {
+                        matchedRows = byEmail;
+                    }
                 }
 
-                const { data: dbRows, error: dbErr } = await query;
-                if (dbErr) {
-                    console.error(`[LOGIN DB ERROR] ${emailInput}:`, dbErr.message);
-                    return socket.emit('authError', 'Database error during login. Please try again.');
+                // Step 2: Check exact character_name
+                if (matchedRows.length === 0) {
+                    const { data: byName, error: errName } = await supabase
+                        .from('Exonians')
+                        .select('*')
+                        .ilike('character_name', cleanInput)
+                        .eq('password', password);
+                    if (errName) fetchError = errName;
+                    if (byName && byName.length > 0) {
+                        matchedRows = byName;
+                    }
                 }
-                matchedRows = dbRows || [];
+
+                // Step 3: Check pipe-delimited character_name (multi-character slot)
+                if (matchedRows.length === 0 && !cleanInput.includes('@')) {
+                    const { data: byLike, error: errLike } = await supabase
+                        .from('Exonians')
+                        .select('*')
+                        .ilike('character_name', `%${cleanInput}%`)
+                        .eq('password', password);
+                    if (errLike) fetchError = errLike;
+                    if (byLike && byLike.length > 0) {
+                        matchedRows = byLike;
+                    }
+                }
+
+                // Step 4: Fallback check email
+                if (matchedRows.length === 0 && !cleanInput.includes('@')) {
+                    const { data: byEmailFback, error: errEmailFback } = await supabase
+                        .from('Exonians')
+                        .select('*')
+                        .ilike('email', cleanInput)
+                        .eq('password', password);
+                    if (errEmailFback) fetchError = errEmailFback;
+                    if (byEmailFback && byEmailFback.length > 0) {
+                        matchedRows = byEmailFback;
+                    }
+                }
+
+                if (matchedRows.length === 0 && fetchError) {
+                    console.error(`[LOGIN DB ERROR] ${cleanInput}:`, fetchError.message);
+                }
+
+                // If single row matched and has an email, fetch sibling 2D characters under same email
+                if (matchedRows.length === 1 && matchedRows[0].email) {
+                    const { data: siblings } = await supabase
+                        .from('Exonians')
+                        .select('*')
+                        .eq('email', matchedRows[0].email)
+                        .eq('password', password);
+                    if (siblings && siblings.length > 1) {
+                        matchedRows = siblings;
+                    }
+                }
             } else {
-                const mem = memoryDb.users[emailInput.toLowerCase()];
+                const lower = cleanInput.toLowerCase();
+                const mem = memoryDb.users[lower] || Object.values(memoryDb.users).find(u =>
+                    (u.email && u.email.toLowerCase() === lower) ||
+                    (u.character_name && u.character_name.toLowerCase().includes(lower))
+                );
                 if (mem && mem.password === password) {
                     matchedRows = [mem];
                 }
             }
 
             if (!matchedRows || matchedRows.length === 0) {
-                return socket.emit('authError', 'Invalid Email or Password.');
+                return socket.emit('authError', 'Invalid Email/Character Name or Password.');
             }
 
-            const characterSlots = parseRowsToSlots(matchedRows);
             const primaryRow = matchedRows[0];
-            const userEmail = primaryRow.email || (emailInput.includes('@') ? emailInput : `${primaryRow.character_name || 'user'}@exonie.com`);
+            const characterSlots = parseRowsToSlots(matchedRows);
+            const userEmail = primaryRow.email || (cleanInput.includes('@') ? cleanInput : `${primaryRow.character_name || 'user'}@exonie.com`);
+            const accountIdentifier = primaryRow.email || primaryRow.character_name || cleanInput;
 
             socket.email = userEmail;
             socket.accountEmail = userEmail;
+            socket.accountIdentifier = accountIdentifier;
+            socket.primaryCharName = primaryRow.character_name;
 
             const existingCount = characterSlots.filter(Boolean).length;
-            console.log(`[LOGIN SUCCESS] ${userEmail} authenticated with ${existingCount} characters.`);
+            console.log(`[LOGIN SUCCESS] ${accountIdentifier} authenticated with ${existingCount} characters.`);
 
             if (existingCount === 0) {
                 socket.emit('needsCharacterCreation', { email: userEmail, slotIndex: 0 });
             } else {
                 socket.emit('loginSuccess', {
                     email: userEmail,
-                    username: userEmail,
+                    username: primaryRow.character_name || userEmail,
                     characters: characterSlots
                 });
             }
@@ -589,18 +721,18 @@ io.on('connection', (socket) => {
         }
     });
 
-    // 2. REGISTER BY EMAIL & PASSWORD
+    // 2. REGISTER BY EMAIL OR CHARACTER NAME & PASSWORD
     socket.on('register', async (data) => {
         try {
-            const email = (data && (data.email || data.username)) ? String(data.email || data.username).trim() : '';
+            const rawInput = (data && (data.email || data.username)) ? String(data.email || data.username).trim() : '';
             const password = (data && data.password) ? String(data.password) : '';
             const deviceId = (data && data.deviceId) || 'unknown_device';
 
-            if (!email || !password) {
-                return socket.emit('authError', 'Please provide an Email and Password.');
+            if (!rawInput || !password) {
+                return socket.emit('authError', 'Please provide an Email or Username and Password.');
             }
-            if (!email.includes('@') || email.length < 5) {
-                return socket.emit('authError', 'Please enter a valid Email address.');
+            if (rawInput.length < 3) {
+                return socket.emit('authError', 'Email or username must be at least 3 characters.');
             }
             if (password.length < 4) {
                 return socket.emit('authError', 'Password must be at least 4 characters long.');
@@ -609,44 +741,47 @@ io.on('connection', (socket) => {
             const clientIp = socket.handshake.headers['x-forwarded-for']?.split(',')[0] || socket.handshake.address;
 
             if (supabase) {
-                const { data: existingRows } = await supabase
-                    .from('Exonians')
-                    .select('email')
-                    .ilike('email', email);
-
-                if (existingRows && existingRows.length > 0) {
-                    return socket.emit('authError', 'An account with this Email already exists!');
+                // Check if account already exists
+                const existing = await findAccountRows(rawInput);
+                if (existing && existing.length > 0) {
+                    return socket.emit('authError', 'An account with this Email/Username already exists!');
                 }
 
-                const initialName = email.split('@')[0].replace(/[^a-zA-Z0-9_]/g, '').slice(0, 16) || 'Hero';
+                const basePart = rawInput.includes('@') ? rawInput.split('@')[0] : rawInput;
+                const cleanBase = basePart.replace(/[^a-zA-Z0-9_]/g, '').slice(0, 10) || 'Hero';
+                const initialName = `${cleanBase}_${Math.floor(1000 + Math.random() * 9000)}`;
 
-                const { error: insErr } = await supabase.from('Exonians').insert([{
-                    email: email,
+                const insertPayload = {
                     character_name: initialName,
                     password: password,
                     email_verified: true,
                     ip_address: clientIp,
                     device_id: deviceId
-                }]);
+                };
+                if (rawInput.includes('@')) {
+                    insertPayload.email = rawInput;
+                }
 
+                const { error: insErr } = await supabase.from('Exonians').insert([insertPayload]);
                 if (insErr) {
                     console.error('[REGISTER DB ERROR]', insErr.message);
                     return socket.emit('authError', `Database Error: ${insErr.message}`);
                 }
             } else {
-                if (memoryDb.users[email.toLowerCase()]) {
-                    return socket.emit('authError', 'An account with this Email already exists!');
+                const key = rawInput.toLowerCase();
+                if (memoryDb.users[key]) {
+                    return socket.emit('authError', 'An account with this Email/Username already exists!');
                 }
                 const newRec = {
-                    email: email,
+                    email: rawInput.includes('@') ? rawInput : `${rawInput}@exonie.com`,
                     password: password,
-                    character_name: email.split('@')[0]
+                    character_name: rawInput
                 };
-                memoryDb.users[email.toLowerCase()] = newRec;
+                memoryDb.users[key] = newRec;
             }
 
-            console.log(`[REGISTER SUCCESS] Account created: ${email}`);
-            socket.emit('registerSuccess', email);
+            console.log(`[REGISTER SUCCESS] Account created: ${rawInput}`);
+            socket.emit('registerSuccess', rawInput);
 
         } catch (e) {
             console.error('[REGISTER CRASH]', e);
@@ -657,50 +792,29 @@ io.on('connection', (socket) => {
     // 3. FETCH ACCOUNT CHARACTERS
     socket.on('getAccountCharacters', async (data) => {
         try {
-            const userEmail = (data && (data.email || data.username)) || socket.email;
-            if (!userEmail) return socket.emit('accountCharacters', [null, null, null]);
+            const identifier = (data && (data.email || data.username || data.character_name)) || socket.accountIdentifier || socket.email || socket.primaryCharName;
+            if (!identifier) return socket.emit('accountCharacters', [null, null, null]);
 
-            let slots = [null, null, null];
-            if (supabase) {
-                let query = supabase.from('Exonians').select('*');
-                if (userEmail.includes('@')) {
-                    query = query.ilike('email', userEmail);
-                } else {
-                    query = query.or(`email.ilike.${userEmail},character_name.ilike.%${userEmail}%`);
-                }
-                const { data: dbRows } = await query;
-                if (dbRows && dbRows.length > 0) {
-                    slots = parseRowsToSlots(dbRows);
-                }
-            } else {
-                const mem = memoryDb.users[userEmail.toLowerCase()];
-                if (mem) slots = parseRowsToSlots([mem]);
-            }
+            const dbRows = await findAccountRows(identifier);
+            const slots = parseRowsToSlots(dbRows);
             socket.emit('accountCharacters', slots);
         } catch (e) {
             console.error('[GET CHARS ERROR]', e);
+            socket.emit('accountCharacters', [null, null, null]);
         }
     });
 
     // 4. CREATE / CUSTOMIZE CHARACTER IN SPECIFIC SLOT (ISOLATED STATS & ITEMS)
     socket.on('createCharacter', async (data) => {
         try {
-            const userEmail = (data && (data.email || data.username)) || socket.email;
+            const identifier = (data && (data.email || data.username || data.character_name)) || socket.accountIdentifier || socket.email || socket.primaryCharName;
             const slotIdx = Math.max(0, Math.min(2, Number(data.slotIndex) || 0));
             const charData = data.charData || {};
             const charName = (charData.name && charData.name.trim()) ? charData.name.trim().replace(/\|/g, '') : `Hero_${slotIdx + 1}`;
 
-            console.log(`[CREATE CHAR] Email: ${userEmail}, Char: ${charName}, Slot: ${slotIdx}`);
+            console.log(`[CREATE CHAR] Account: ${identifier}, Char: ${charName}, Slot: ${slotIdx}`);
 
-            let dbRows = [];
-            if (supabase) {
-                const { data: fetched } = await supabase.from('Exonians').select('*').ilike('email', userEmail);
-                dbRows = fetched || [];
-            } else {
-                const mem = memoryDb.users[userEmail.toLowerCase()];
-                if (mem) dbRows = [mem];
-            }
-
+            const dbRows = await findAccountRows(identifier);
             if (!dbRows || dbRows.length === 0) {
                 return socket.emit('authError', 'Account record not found.');
             }
@@ -712,11 +826,17 @@ io.on('connection', (socket) => {
                 hp: 100, attack: 5, magic: 5, defense: 2, speed: 1, str: 10, int: 10,
                 playerClass: charData.playerClass || charData.className || null,
                 title: null, homeStorage: Array(15).fill(null),
-                tavernEntries: 5, dungeonEntries: 7
+                tavernEntries: 5, dungeonEntries: 7,
+                gender: charData.gender || 'female',
+                hairStyle: String(charData.hairStyle || '1'),
+                hairColor: charData.hairColor || '#111111',
+                skinColor: charData.skinColor || '#f5c6a5'
             };
 
             let safeStyle = String(charData.hairStyle || '1').trim();
             if (!['1', '2', '3', '4', '5'].includes(safeStyle)) safeStyle = '1';
+
+            const userEmail = dbRows[0].email || (identifier && identifier.includes('@') ? identifier : '');
 
             const newChar = {
                 slotIndex: slotIdx,
@@ -761,7 +881,7 @@ io.on('connection', (socket) => {
                         }).eq('character_name', dbRows[slotIdx].character_name);
                     } else {
                         await supabase.from('Exonians').insert([{
-                            email: userEmail,
+                            email: userEmail || `${charName}@exonie.com`,
                             password: dbRows[0].password,
                             character_name: charName,
                             skin_color: newChar.skinColor,
@@ -779,11 +899,23 @@ io.on('connection', (socket) => {
                 } else {
                     // Single row: serialize using 3D multi-character pipe format
                     const updatePayload = serializeSlotsToRow(slots, dbRows[0]);
-                    await supabase.from('Exonians').update(updatePayload).ilike('email', userEmail);
+                    let q = supabase.from('Exonians').update(updatePayload);
+                    if (dbRows[0].id) {
+                        q = q.eq('id', dbRows[0].id);
+                    } else {
+                        q = q.eq('character_name', dbRows[0].character_name);
+                    }
+                    const { error: upErr } = await q;
+                    if (upErr) {
+                        console.error('[CREATE CHAR DB ERROR]', upErr.message);
+                    }
                 }
             } else {
                 const updatePayload = serializeSlotsToRow(slots, dbRows[0]);
-                Object.assign(memoryDb.users[userEmail.toLowerCase()], updatePayload);
+                const key = String(identifier).toLowerCase();
+                if (memoryDb.users[key]) {
+                    Object.assign(memoryDb.users[key], updatePayload);
+                }
             }
 
             socket.emit('characterCreated', { slotIndex: slotIdx, character: newChar });
@@ -798,20 +930,12 @@ io.on('connection', (socket) => {
     // 5. DELETE CHARACTER SLOT
     socket.on('deleteCharacter', async (data) => {
         try {
-            const userEmail = (data && (data.email || data.username)) || socket.email;
+            const identifier = (data && (data.email || data.username || data.character_name)) || socket.accountIdentifier || socket.email || socket.primaryCharName;
             const slotIdx = Math.max(0, Math.min(2, Number(data.slotIndex) || 0));
 
-            if (!userEmail) return;
+            if (!identifier) return;
 
-            let dbRows = [];
-            if (supabase) {
-                const { data: fetched } = await supabase.from('Exonians').select('*').ilike('email', userEmail);
-                dbRows = fetched || [];
-            } else {
-                const mem = memoryDb.users[userEmail.toLowerCase()];
-                if (mem) dbRows = [mem];
-            }
-
+            const dbRows = await findAccountRows(identifier);
             if (!dbRows || dbRows.length === 0) return;
 
             const slots = parseRowsToSlots(dbRows);
@@ -823,14 +947,23 @@ io.on('connection', (socket) => {
                     await supabase.from('Exonians').delete().eq('character_name', dbRows[slotIdx].character_name);
                 } else {
                     const updatePayload = serializeSlotsToRow(slots, dbRows[0]);
-                    await supabase.from('Exonians').update(updatePayload).ilike('email', userEmail);
+                    let q = supabase.from('Exonians').update(updatePayload);
+                    if (dbRows[0].id) {
+                        q = q.eq('id', dbRows[0].id);
+                    } else {
+                        q = q.eq('character_name', dbRows[0].character_name);
+                    }
+                    await q;
                 }
             } else {
                 const updatePayload = serializeSlotsToRow(slots, dbRows[0]);
-                Object.assign(memoryDb.users[userEmail.toLowerCase()], updatePayload);
+                const key = String(identifier).toLowerCase();
+                if (memoryDb.users[key]) {
+                    Object.assign(memoryDb.users[key], updatePayload);
+                }
             }
 
-            console.log(`[DELETE CHAR] Cleared Slot ${slotIdx + 1} for ${userEmail}`);
+            console.log(`[DELETE CHAR] Cleared Slot ${slotIdx + 1} for ${identifier}`);
             socket.emit('accountCharacters', slots);
 
         } catch (e) {
@@ -842,21 +975,13 @@ io.on('connection', (socket) => {
     socket.on('saveCharacter', async (payload) => {
         try {
             if (!payload) return;
-            const userEmail = payload.email || socket.email;
+            const identifier = payload.email || payload.username || socket.accountIdentifier || socket.email || socket.primaryCharName;
             const slotIdx = Math.max(0, Math.min(2, Number(payload.slotIndex) || 0));
             const charState = payload.characterState || payload;
 
-            if (!userEmail) return;
+            if (!identifier) return;
 
-            let dbRows = [];
-            if (supabase) {
-                const { data: fetched } = await supabase.from('Exonians').select('*').ilike('email', userEmail);
-                dbRows = fetched || [];
-            } else {
-                const mem = memoryDb.users[userEmail.toLowerCase()];
-                if (mem) dbRows = [mem];
-            }
-
+            const dbRows = await findAccountRows(identifier);
             if (!dbRows || dbRows.length === 0) return;
 
             const slots = parseRowsToSlots(dbRows);
@@ -867,6 +992,12 @@ io.on('connection', (socket) => {
             let safeStyle = String(charState.hairStyle || slots[slotIdx].hair_style || '1').trim();
             if (!['1', '2', '3', '4', '5'].includes(safeStyle)) safeStyle = '1';
 
+            const updatedBaseStats = charState.baseStats || charState.base_stats || slots[slotIdx].base_stats || {};
+            updatedBaseStats.gender = charState.gender || slots[slotIdx].gender || 'female';
+            updatedBaseStats.hairStyle = safeStyle;
+            updatedBaseStats.hairColor = charState.hairColor || slots[slotIdx].hair_color || '#111111';
+            updatedBaseStats.skinColor = charState.skinColor || slots[slotIdx].skin_color || '#f5c6a5';
+
             Object.assign(slots[slotIdx], {
                 name: charState.name || slots[slotIdx].name,
                 character_name: charState.name || slots[slotIdx].name,
@@ -875,7 +1006,8 @@ io.on('connection', (socket) => {
                 gold: charState.gold !== undefined ? charState.gold : slots[slotIdx].gold,
                 equips: charState.equips || slots[slotIdx].equips,
                 inventory: charState.inventory || slots[slotIdx].inventory,
-                base_stats: charState.baseStats || charState.base_stats || slots[slotIdx].base_stats,
+                base_stats: updatedBaseStats,
+                baseStats: updatedBaseStats,
                 skin_color: charState.skinColor || slots[slotIdx].skin_color,
                 hair_color: charState.hairColor || slots[slotIdx].hair_color,
                 hair_style: safeStyle
@@ -900,11 +1032,20 @@ io.on('connection', (socket) => {
                     }
                 } else {
                     const updatePayload = serializeSlotsToRow(slots, dbRows[0]);
-                    await supabase.from('Exonians').update(updatePayload).ilike('email', userEmail);
+                    let q = supabase.from('Exonians').update(updatePayload);
+                    if (dbRows[0].id) {
+                        q = q.eq('id', dbRows[0].id);
+                    } else {
+                        q = q.eq('character_name', dbRows[0].character_name);
+                    }
+                    await q;
                 }
             } else {
                 const updatePayload = serializeSlotsToRow(slots, dbRows[0]);
-                Object.assign(memoryDb.users[userEmail.toLowerCase()], updatePayload);
+                const key = String(identifier).toLowerCase();
+                if (memoryDb.users[key]) {
+                    Object.assign(memoryDb.users[key], updatePayload);
+                }
             }
 
         } catch (e) {
@@ -915,27 +1056,22 @@ io.on('connection', (socket) => {
     // 7. ENTER 3D WORLD
     socket.on('enterWorld', async (data) => {
         try {
-            const userEmail = (data && data.email) || socket.email;
+            const identifier = (data && (data.email || data.username || data.character_name)) || socket.accountIdentifier || socket.email || socket.primaryCharName;
             const slotIdx = Math.max(0, Math.min(2, Number(data && data.slotIndex) || 0));
             const charName = (data && (data.character_name || data.name)) ? String(data.character_name || data.name).trim() : 'Hero';
             let slotData = null;
 
-            if (supabase && userEmail) {
-                const { data: dbRows } = await supabase
-                    .from('Exonians')
-                    .select('*')
-                    .ilike('email', userEmail);
+            if (identifier) {
+                const dbRows = await findAccountRows(identifier);
                 if (dbRows && dbRows.length > 0) {
                     const slots = parseRowsToSlots(dbRows);
                     slotData = slots[slotIdx] || slots.find(s => s && s.name === charName) || slots[0];
                 }
-            } else if (userEmail && memoryDb.users[userEmail.toLowerCase()]) {
-                const slots = parseRowsToSlots([memoryDb.users[userEmail.toLowerCase()]]);
-                slotData = slots[slotIdx] || slots[0];
             }
 
             const pData = slotData || data || {};
             const finalName = pData.name || charName;
+            const userEmail = socket.email || (data && data.email) || '';
 
             onlinePlayers[socket.id] = {
                 socketId: socket.id,
