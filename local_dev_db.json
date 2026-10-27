@@ -1,0 +1,146 @@
+{
+  "users": {
+    "jken.ayag@gmail.com": {
+      "character_name": "Aria|none|none",
+      "skin_color": "#f5c6a5|none|none",
+      "hair_color": "#111111|none|none",
+      "hair_style": 1,
+      "level": 1,
+      "gold": 1500,
+      "exp": 0,
+      "equips": [
+        {
+          "weapon": null,
+          "armor": {
+            "name": "Starter Armor",
+            "type": "armor",
+            "sprite": "starterarmor",
+            "level": 1,
+            "rarity": "Starter",
+            "color": "#aaaaaa",
+            "fixedStat": { "defense": 2 }
+          },
+          "leggings": {
+            "name": "Starter Leggings",
+            "type": "leggings",
+            "sprite": "starterleggings",
+            "level": 1,
+            "rarity": "Starter",
+            "color": "#aaaaaa",
+            "fixedStat": { "hp": 5 }
+          }
+        },
+        null,
+        null
+      ],
+      "inventory": [
+        [
+          {
+            "name": "Starter Sword",
+            "type": "weapon",
+            "weaponType": "sword",
+            "sprite": "startersword",
+            "level": 1,
+            "rarity": "Starter",
+            "color": "#aaaaaa",
+            "fixedStat": { "attack": 3 }
+          },
+          {
+            "name": "Starter Staff",
+            "type": "weapon",
+            "weaponType": "staff",
+            "sprite": "starterstaff",
+            "level": 1,
+            "rarity": "Starter",
+            "color": "#aaaaaa",
+            "fixedStat": { "magic": 3 }
+          },
+          {
+            "name": "Starter Pendant",
+            "type": "weapon",
+            "weaponType": "pendant",
+            "sprite": "starterpendant",
+            "level": 1,
+            "rarity": "Starter",
+            "color": "#aaaaaa",
+            "fixedStat": { "magic": 2 }
+          },
+          {
+            "name": "Starter Gun",
+            "type": "weapon",
+            "weaponType": "gun",
+            "sprite": "startergun",
+            "level": 1,
+            "rarity": "Starter",
+            "color": "#aaaaaa",
+            "fixedStat": { "attack": 2 }
+          },
+          {
+            "name": "Starter Dagger",
+            "type": "weapon",
+            "weaponType": "dagger",
+            "sprite": "starterdagger",
+            "level": 1,
+            "rarity": "Starter",
+            "color": "#aaaaaa",
+            "fixedStat": { "attack": 3, "speed": 2 }
+          },
+          {
+            "name": "Starter Touchpad",
+            "type": "weapon",
+            "weaponType": "touchpad",
+            "sprite": "startertouchpad",
+            "level": 1,
+            "rarity": "Starter",
+            "color": "#aaaaaa",
+            "fixedStat": { "magic": 3 }
+          },
+          {
+            "name": "Health Potion",
+            "type": "potion",
+            "sprite": "potion1",
+            "level": 1,
+            "rarity": "Basic",
+            "color": "#8B4513",
+            "fixedStat": { "hpHeal": 50 },
+            "quantity": 10
+          }
+        ],
+        null,
+        null
+      ],
+      "base_stats": [
+        {
+          "name": "Aria",
+          "slotIndex": 0,
+          "gender": "female",
+          "hairStyle": "1",
+          "hairColor": "#111111",
+          "skinColor": "#f5c6a5",
+          "playerClass": "Novice",
+          "level": 1,
+          "gold": 1500,
+          "exp": 0,
+          "hp": 100,
+          "maxHp": 100,
+          "mana": 50,
+          "maxMana": 50,
+          "attack": 10,
+          "magic": 5,
+          "defense": 5,
+          "speed": 5,
+          "str": 10,
+          "int": 10,
+          "title": null,
+          "homeStorage": [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null],
+          "tavernEntries": 5,
+          "dungeonEntries": 7
+        },
+        null,
+        null
+      ],
+      "email": "jken.ayag@gmail.com",
+      "password": "password123"
+    }
+  }
+}

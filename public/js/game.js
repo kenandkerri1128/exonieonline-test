@@ -213,9 +213,12 @@ export class GameApp {
                         weaponType: null
                     });
                 }
-                previewCamera.aspect = w / h;
+                const actualW = previewCol.clientWidth || w;
+                const actualH = previewCol.clientHeight || h;
+                previewCamera.aspect = actualW / actualH;
                 previewCamera.updateProjectionMatrix();
-                previewRenderer.setSize(w, h);
+                previewRenderer.setSize(actualW, actualH);
+                if (previewScene) previewRenderer.render(previewScene, previewCamera);
                 return;
             }
 
@@ -233,7 +236,7 @@ export class GameApp {
                 alpha: true
             });
             previewRenderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-            previewRenderer.setSize(w, h);
+            previewRenderer.setSize(w, h, false);
             previewRenderer.toneMapping = THREE.ACESFilmicToneMapping;
             previewRenderer.toneMappingExposure = 1.35;
             if (THREE.SRGBColorSpace) previewRenderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -325,7 +328,7 @@ export class GameApp {
                         if (canvas.width !== Math.round(curW * pr) || canvas.height !== Math.round(curH * pr)) {
                             previewCamera.aspect = curW / curH;
                             previewCamera.updateProjectionMatrix();
-                            previewRenderer.setSize(curW, curH);
+                            previewRenderer.setSize(curW, curH, false);
                         }
                     }
                 }
@@ -374,45 +377,47 @@ export class GameApp {
                     weaponType: null
                 });
             }
+            if (previewRenderer && previewScene && previewCamera) {
+                try {
+                    previewRenderer.render(previewScene, previewCamera);
+                } catch (e) {}
+            }
         };
     }
 
     initSocket() {
         try {
             if (typeof io !== 'undefined') {
-                // 🌐 Connect to Render Test Server (exonieonline-test) or Localhost
-                let serverUrl = 'https://exonieonline-test.onrender.com';
-                if (typeof window !== 'undefined' && window.location) {
-                    const host = window.location.hostname;
-                    if (host === 'localhost' || host === '127.0.0.1') {
-                        serverUrl = 'http://localhost:3003';
-                    } else if (host.includes('exonieonline-test') || host.includes('testexonie') || host.includes('test-exonie')) {
-                        serverUrl = 'https://exonieonline-test.onrender.com';
-                    } else if (host === 'exonieonline.onrender.com') {
-                        serverUrl = 'https://exonieonline.onrender.com';
-                    }
+                // Reuse socket already created by flow.js or create unified connection
+                this.socket = (window.ExonieFlow && window.ExonieFlow.getSocket()) || window.exonieSocket;
+                if (!this.socket) {
+                    const serverUrl = (window.ExonieFlow && window.ExonieFlow.getActiveServerUrl)
+                        ? window.ExonieFlow.getActiveServerUrl()
+                        : 'http://localhost:3003';
+                    this.socket = io(serverUrl, {
+                        transports: ['websocket', 'polling'],
+                        reconnection: true,
+                        timeout: 10000
+                    });
                 }
-                console.log(`[Socket] Connecting to Exonie server at: ${serverUrl}`);
-                this.socket = window.exonieSocket || io(serverUrl, {
-                    transports: ['websocket', 'polling'],
-                    reconnection: true,
-                    reconnectionAttempts: 10,
-                    reconnectionDelay: 2000,
-                    reconnectionDelayMax: 5000,
-                    timeout: 20000
-                });
                 window.socket = this.socket;
                 window.exonieSocket = this.socket;
 
                 this.socket.on('connect', () => {
-                    console.log(`[Socket] Connected to Exonie server at ${serverUrl} (Socket ID: ${this.socket.id})`);
-                    this.appendChatLine('system', `📡 Connected to Exonie Server (${serverUrl})`);
+                    const activeUrl = (window.ExonieFlow && window.ExonieFlow.getActiveServerUrl)
+                        ? window.ExonieFlow.getActiveServerUrl()
+                        : 'active server';
+                    console.log(`[Socket] Connected to Exonie server (Socket ID: ${this.socket.id})`);
+                    this.appendChatLine('system', `📡 Connected to Exonie Server (${activeUrl.replace(/https?:\/\//, '')})`);
                     if (this.player && this.player.name) {
                         this.sendEnterWorld();
                     }
                 });
 
                 this.socket.on('disconnect', (reason) => {
+                    console.warn(`[Socket] Disconnected from server: ${reason}`);
+                    this.appendChatLine('system', `⚠️ Connection lost. Attempting to reconnect...`);
+                });
                     console.warn(`[Socket] Disconnected from server: ${reason}`);
                     this.appendChatLine('system', `⚠️ Connection lost. Attempting to reconnect...`);
                 });
@@ -700,14 +705,24 @@ export class GameApp {
     }
 
     onFlowComplete(charData) {
-        // Dismiss any pre-game screen overlays so 3D world is immediately visible
-        ['scr-splash', 'auth-screen', 'char-select-screen', 'creation-screen', 'prologue-screen'].forEach(id => {
-            const el = document.getElementById(id);
-            if (el) {
-                el.classList.add('hidden');
-                el.style.display = 'none';
-            }
-        });
+        try {
+            // Dismiss any pre-game screen overlays so 3D world is immediately visible
+            ['scr-splash', 'auth-screen', 'char-select-screen', 'creation-screen', 'prologue-screen'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) {
+                    el.classList.add('hidden');
+                    el.style.display = 'none';
+                }
+            });
+
+            // Ensure loading screen is dismissed when map is ready
+            setTimeout(() => {
+                const ls = document.getElementById('loading-screen');
+                if (ls) {
+                    ls.classList.remove('active');
+                    ls.style.display = 'none';
+                }
+            }, 800);
 
         // Remove previous 3D character mesh if switching characters
         if (this.player.char3D && this.player.char3D.group) {
@@ -859,6 +874,14 @@ export class GameApp {
         }
 
         this.ui.showToast(`Welcome to Exonie, ${this.player.name}! Press [P] for Stats or [B] for Bag.`);
+        } catch (err) {
+            console.error('❌ [CRITICAL] onFlowComplete error:', err);
+            const ls = document.getElementById('loading-screen');
+            if (ls) {
+                ls.classList.remove('active');
+                ls.style.display = 'none';
+            }
+        }
     }
 
     saveCharacterToAccountSlot() {

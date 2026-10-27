@@ -36,6 +36,9 @@ window.ExonieFlow = {
         };
         this.startSplash();
 
+        // Start establishing background server socket connection immediately on boot
+        setTimeout(() => this.getSocket(), 50);
+
         // Fail-safe watchdog: Never let splash or loading screen trap the player on a black screen
         setTimeout(() => {
             const splash = document.getElementById('scr-splash');
@@ -342,44 +345,174 @@ window.ExonieFlow = {
         }
     },
 
-    getSocket() {
-        if (window.exonieSocket && window.exonieSocket.connected) return window.exonieSocket;
-        if (window.exonieSocket) return window.exonieSocket;
-        if (typeof io !== 'undefined') {
-            let serverUrl = 'https://exonieonline-test.onrender.com';
-            if (typeof window !== 'undefined' && window.location) {
-                const host = window.location.hostname;
-                const port = window.location.port;
-                if (host === 'localhost' || host === '127.0.0.1') {
-                    if (port === '3003' || port === '3000' || port === '8080') {
-                        serverUrl = window.location.origin;
-                    } else {
-                        serverUrl = 'http://localhost:3003';
-                    }
-                } else if (window.location.origin && window.location.origin.startsWith('http')) {
-                    serverUrl = window.location.origin;
-                }
+    updateServerStatus(status, text) {
+        ['', '-reg'].forEach(suffix => {
+            const dot = document.getElementById(`server-status-dot${suffix}`);
+            const txt = document.getElementById(`server-status-text${suffix}`);
+            if (!dot || !txt) return;
+            if (status === 'connected') {
+                dot.style.background = '#22c55e';
+                dot.style.boxShadow = '0 0 8px #22c55e';
+                txt.textContent = text || 'Server Online';
+                txt.style.color = '#4ade80';
+            } else if (status === 'connecting') {
+                dot.style.background = '#eab308';
+                dot.style.boxShadow = '0 0 8px #eab308';
+                txt.textContent = text || 'Connecting...';
+                txt.style.color = '#fde047';
+            } else {
+                dot.style.background = '#ef4444';
+                dot.style.boxShadow = '0 0 8px #ef4444';
+                txt.textContent = text || 'Server Offline';
+                txt.style.color = '#f87171';
             }
-            window.exonieSocket = io(serverUrl, {
-                transports: ['websocket', 'polling'],
-                reconnection: true,
-                timeout: 8000
-            });
-            window.socket = window.exonieSocket;
+        });
+    },
+
+    isLocalEnvironment() {
+        if (typeof window === 'undefined' || !window.location) return false;
+        const host = window.location.hostname;
+        return host === 'localhost' || host === '127.0.0.1' || window.location.protocol === 'file:';
+    },
+
+    getServerCandidates() {
+        const list = [];
+        if (typeof window !== 'undefined' && window.location) {
+            const origin = window.location.origin;
+            const host = window.location.hostname;
+            const port = window.location.port;
+
+            if (origin && origin.startsWith('http')) {
+                if (host === 'localhost' || host === '127.0.0.1') {
+                    if (port === '3003') {
+                        list.push(origin, 'http://localhost:3000', 'https://testexonie.onrender.com');
+                    } else if (port === '3000') {
+                        list.push(origin, 'http://localhost:3003', 'https://testexonie.onrender.com');
+                    } else {
+                        list.push('http://localhost:3003', 'http://localhost:3000', 'https://testexonie.onrender.com');
+                    }
+                } else {
+                    // Running on live cloud host (Render, Custom Domain, etc.)
+                    // Primary candidate is ALWAYS the hosting origin
+                    list.push(origin);
+                    if (!origin.includes('testexonie')) list.push('https://testexonie.onrender.com');
+                    if (!origin.includes('exonieonline')) list.push('https://exonieonline.onrender.com');
+                }
+            } else {
+                // file:/// protocol
+                list.push('http://localhost:3003', 'https://testexonie.onrender.com');
+            }
+        } else {
+            list.push('https://testexonie.onrender.com');
+        }
+        return list;
+    },
+
+    getActiveServerUrl() {
+        return this._activeServerUrl || (this.getServerCandidates()[0] || 'https://testexonie.onrender.com');
+    },
+
+    getSocket() {
+        if (window.exonieSocket && window.exonieSocket.connected) {
             this.setupSocketListeners(window.exonieSocket);
+            return window.exonieSocket;
+        }
+        if (window.exonieSocket) {
+            this.setupSocketListeners(window.exonieSocket);
+            return window.exonieSocket;
+        }
+
+        if (typeof io !== 'undefined') {
+            const isLocal = this.isLocalEnvironment();
+            const candidates = this.getServerCandidates();
+            let candidateIdx = 0;
+
+            // Trigger instant HTTP warm-up ping for Render sleeping containers
+            try {
+                const pingUrl = isLocal ? '/api/ping' : (candidates[0] + '/api/ping');
+                fetch(pingUrl).catch(() => {});
+            } catch(e) {}
+
+            const tryConnectCandidate = () => {
+                if (candidateIdx >= candidates.length) {
+                    console.warn('⚠️ [Socket] All server candidate URLs exhausted.');
+                    this.updateServerStatus('offline', isLocal ? 'Server Offline (Run: node server.js)' : 'Server Waking Up (Render)...');
+                    return;
+                }
+                const url = candidates[candidateIdx];
+                candidateIdx++;
+                this._activeServerUrl = url;
+                console.log(`📡 [Socket] Connecting to game server: ${url}`);
+                this.updateServerStatus('connecting', isLocal ? `Connecting to ${url.replace(/https?:\/\//, '')}...` : 'Connecting to Live Server...');
+
+                const s = io(url, {
+                    transports: ['websocket', 'polling'],
+                    reconnection: true,
+                    reconnectionAttempts: Infinity,
+                    reconnectionDelay: 1000,
+                    reconnectionDelayMax: 5000,
+                    timeout: 45000
+                });
+
+                window.exonieSocket = s;
+                window.socket = s;
+                this.setupSocketListeners(s);
+
+                // For local development, if localhost isn't running after 6s, failover to Render
+                if (isLocal && candidateIdx < candidates.length) {
+                    const failoverTimer = setTimeout(() => {
+                        if (!s.connected) {
+                            console.warn(`⚠️ [Socket] Local server ${url} not responding, trying next candidate...`);
+                            s.close();
+                            tryConnectCandidate();
+                        }
+                    }, 6000);
+
+                    s.once('connect', () => {
+                        clearTimeout(failoverTimer);
+                    });
+                }
+
+                s.once('connect', () => {
+                    console.log(`✅ [Socket] Connected to Exonie server at: ${url} (ID: ${s.id})`);
+                    this.updateServerStatus('connected', isLocal ? `Server Online (${url.replace(/https?:\/\//, '')})` : 'Server Online');
+                });
+
+                s.on('connect_error', (err) => {
+                    if (isLocal && !s.connected && candidateIdx < candidates.length) {
+                        console.warn(`⚠️ [Socket] Local connection error on ${url}: ${err.message}. Failing over...`);
+                        s.close();
+                        tryConnectCandidate();
+                    }
+                });
+            };
+
+            tryConnectCandidate();
             return window.exonieSocket;
         }
         return null;
     },
 
     setupSocketListeners(socket) {
-        if (this._socketListenersSet) return;
-        this._socketListenersSet = true;
+        if (!socket) return;
+        if (socket._flowListenersBound) return;
+        socket._flowListenersBound = true;
+
+        socket.on('connect', () => {
+            this.updateServerStatus('connected', 'Server Online');
+        });
+
+        socket.on('disconnect', (reason) => {
+            console.warn('[Socket] Disconnected from game server:', reason);
+            this.updateServerStatus('offline', 'Server Disconnected');
+        });
 
         socket.on('authError', (msg) => {
             clearTimeout(this._loginTimeout);
             console.warn('[Flow] Auth message:', msg);
             const activeForm = (this.registerForm && this.registerForm.style.display !== 'none') ? 'register' : 'login';
+            const errEl = document.getElementById(activeForm === 'register' ? 'reg-error-msg' : 'login-error-msg');
+            if (errEl) errEl.style.color = '';
             this.showAuthError(activeForm, msg || 'Authentication Error');
         });
 
@@ -467,15 +600,48 @@ window.ExonieFlow = {
         this.accountName = inputVal.split('@')[0];
 
         const s = this.getSocket();
-        if (s) {
-            clearTimeout(this._loginTimeout);
-            this._loginTimeout = setTimeout(() => {
-                this.showAuthError('login', 'Server connection timed out. Please verify the game server is running.');
-            }, 7000);
-            s.emit('login', { email: inputVal, username: inputVal, password });
-        } else {
-            this.showAuthError('login', 'Connecting to game server... Please try again.');
+        if (!s) {
+            this.showAuthError('login', 'Socket library unavailable. Please reload the page.');
+            return;
         }
+
+        const isLocal = this.isLocalEnvironment();
+
+        if (s.connected) {
+            this.doEmitLogin(s, inputVal, password);
+        } else {
+            this.showAuthError('login', isLocal ? 'Connecting to local game server...' : 'Waking up server from idle sleep... Please wait a moment.');
+            const lErr = document.getElementById('login-error-msg');
+            if (lErr) lErr.style.color = '#38bdf8';
+
+            let connected = false;
+            const onConn = () => {
+                connected = true;
+                clearTimeout(connWait);
+                this.clearAuthErrors();
+                this.doEmitLogin(s, inputVal, password);
+            };
+            const connWait = setTimeout(() => {
+                if (!connected) {
+                    s.off('connect', onConn);
+                    this.showAuthError('login', isLocal
+                        ? 'Server connection timed out. Please check that your local server is running.'
+                        : 'Server is taking longer than usual to spin up on Render. Please wait 10 seconds and try again.');
+                }
+            }, 35000); // 35 seconds to allow Render free tier cold-start
+            s.once('connect', onConn);
+        }
+    },
+
+    doEmitLogin(socket, identifier, password) {
+        clearTimeout(this._loginTimeout);
+        const isLocal = this.isLocalEnvironment();
+        this._loginTimeout = setTimeout(() => {
+            this.showAuthError('login', isLocal
+                ? 'Server response timed out. Please check server console.'
+                : 'Server response timed out. The cloud server may still be initializing its database connection. Please try again in a few moments.');
+        }, 30000);
+        socket.emit('login', { email: identifier, username: identifier, password: password });
     },
 
     loginAsGuest() {
@@ -505,15 +671,48 @@ window.ExonieFlow = {
         }
 
         const s = this.getSocket();
-        if (s) {
-            clearTimeout(this._loginTimeout);
-            this._loginTimeout = setTimeout(() => {
-                this.showAuthError('register', 'Server connection timed out. Please verify the game server is running.');
-            }, 7000);
-            s.emit('register', { email, username: email, password });
-        } else {
-            this.showAuthError('register', 'Connecting to game server... Please try again.');
+        if (!s) {
+            this.showAuthError('register', 'Socket library unavailable. Please reload the page.');
+            return;
         }
+
+        const isLocal = this.isLocalEnvironment();
+
+        if (s.connected) {
+            this.doEmitRegister(s, email, password);
+        } else {
+            this.showAuthError('register', isLocal ? 'Connecting to local game server...' : 'Waking up server from idle sleep... Please wait a moment.');
+            const rErr = document.getElementById('reg-error-msg');
+            if (rErr) rErr.style.color = '#38bdf8';
+
+            let connected = false;
+            const onConn = () => {
+                connected = true;
+                clearTimeout(connWait);
+                this.clearAuthErrors();
+                this.doEmitRegister(s, email, password);
+            };
+            const connWait = setTimeout(() => {
+                if (!connected) {
+                    s.off('connect', onConn);
+                    this.showAuthError('register', isLocal
+                        ? 'Server connection timed out. Please check that your local server is running.'
+                        : 'Server is taking longer than usual to spin up on Render. Please wait 10 seconds and try again.');
+                }
+            }, 35000);
+            s.once('connect', onConn);
+        }
+    },
+
+    doEmitRegister(socket, email, password) {
+        clearTimeout(this._loginTimeout);
+        const isLocal = this.isLocalEnvironment();
+        this._loginTimeout = setTimeout(() => {
+            this.showAuthError('register', isLocal
+                ? 'Server response timed out. Please check server console.'
+                : 'Server response timed out. The cloud server may still be initializing its database connection. Please try again in a few moments.');
+        }, 30000);
+        socket.emit('register', { email: email, username: email, password: password });
     },
 
     onAuthSuccess(email, characters) {
@@ -813,11 +1012,15 @@ window.ExonieFlow = {
         }
 
         this.updateHairButtonsForGender(this.charData.gender || 'female');
-        // Lazy-load live 3D preview on the pedestal (with retry if game.js is still loading)
+        // Lazy-load live 3D preview on the pedestal (with instant + delayed retry to guarantee layout sizing)
         requestAnimationFrame(() => {
             this.initCharacterPreview();
             this.triggerPreviewUpdate();
         });
+        setTimeout(() => {
+            this.initCharacterPreview();
+            this.triggerPreviewUpdate();
+        }, 120);
     },
 
     updateHairButtonsForGender(gender) {

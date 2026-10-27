@@ -78,6 +78,12 @@
             <h1>Exonie Online</h1>
             <div class="build-badge">BUILD: 2026.10.27-3D-REMASTERED</div>
 
+            <!-- Server Connection Status Indicator -->
+            <div id="server-status-pill" style="display:inline-flex; align-items:center; gap:6px; font-size:0.75rem; padding:4px 10px; border-radius:12px; background:rgba(0,0,0,0.4); margin:6px auto 12px auto; color:#94a3b8; font-family:monospace; border:1px solid rgba(255,255,255,0.08);">
+                <span id="server-status-dot" style="width:8px; height:8px; border-radius:50%; background:#eab308; box-shadow:0 0 6px #eab308; display:inline-block;"></span>
+                <span id="server-status-text">Connecting to Server...</span>
+            </div>
+
             <!-- Prominent Visual Error Banner -->
             <div id="login-error-msg" class="auth-error-banner" style="display:none;"></div>
 
@@ -93,6 +99,12 @@
         <div class="auth-container" id="register-form" style="display:none">
             <h1>Join Exonie</h1>
             <div class="build-badge">CREATE YOUR ACCOUNT</div>
+
+            <!-- Server Connection Status Indicator -->
+            <div id="server-status-pill-reg" style="display:inline-flex; align-items:center; gap:6px; font-size:0.75rem; padding:4px 10px; border-radius:12px; background:rgba(0,0,0,0.4); margin:6px auto 12px auto; color:#94a3b8; font-family:monospace; border:1px solid rgba(255,255,255,0.08);">
+                <span id="server-status-dot-reg" style="width:8px; height:8px; border-radius:50%; background:#eab308; box-shadow:0 0 6px #eab308; display:inline-block;"></span>
+                <span id="server-status-text-reg">Connecting to Server...</span>
+            </div>
 
             <!-- Prominent Visual Error Banner -->
             <div id="reg-error-msg" class="auth-error-banner" style="display:none;"></div>

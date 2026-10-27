@@ -1,16 +1,33 @@
-require('dotenv').config();
+try {
+    require('dotenv').config();
+} catch (e) {
+    // dotenv is optional in environments where variables are already injected or local fallback is used
+}
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const path = require('path');
+const fs = require('fs');
 
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
-    cors: { origin: '*' }
+    cors: {
+        origin: "*",
+        methods: ["GET", "POST"]
+    },
+    pingTimeout: 60000,
+    pingInterval: 25000,
+    connectTimeout: 45000,
+    allowEIO3: true
 });
 
 const PORT = process.env.PORT || 3003;
+
+// Lightweight HTTP ping route to quickly wake sleeping cloud containers (e.g. Render)
+app.get('/api/ping', (req, res) => {
+    res.json({ status: 'ok', time: Date.now() });
+});
 
 // Serve static assets from public
 app.use(express.static(path.join(__dirname, 'public')));
@@ -36,10 +53,7 @@ try {
 }
 
 // In-memory fallback database for local testing or when Supabase keys are not set
-const memoryDb = {
-    users: {}, // username -> user record
-    accounts: {} // accountName -> [char1, char2, char3]
-};
+let memoryDb = { users: {} };
 
 // ==========================================
 // EXONIE 3D MONSTER DATABASE & RULES
@@ -521,6 +535,85 @@ function serializeSlotsToRow(slots, existingRow = {}) {
     };
 }
 
+// ==========================================
+// 🛡️ PERSISTENT LOCAL DEV DATABASE
+// Ensures accounts & 3-character slots persist across restarts even when Supabase is offline
+// ==========================================
+const DB_FILE = path.join(__dirname, 'local_dev_db.json');
+
+function initDefaultDevAccounts() {
+    const { starterEquips, starterInventory } = getStarterItems();
+    const slot0Stats = {
+        hp: 100, attack: 10, magic: 5, defense: 5, speed: 5, str: 10, int: 10,
+        playerClass: 'Novice', title: null, homeStorage: Array(15).fill(null),
+        tavernEntries: 5, dungeonEntries: 7, gender: 'female',
+        hairStyle: '1', hairColor: '#111111', skinColor: '#f5c6a5'
+    };
+    const slot0 = {
+        slotIndex: 0,
+        character_name: 'Aria',
+        name: 'Aria',
+        email: 'jken.ayag@gmail.com',
+        skin_color: '#f5c6a5',
+        skinColor: '#f5c6a5',
+        hair_color: '#111111',
+        hairColor: '#111111',
+        hair_style: '1',
+        hairStyle: '1',
+        gender: 'female',
+        equips: starterEquips,
+        inventory: starterInventory,
+        base_stats: slot0Stats,
+        baseStats: slot0Stats,
+        gold: 1500,
+        level: 1,
+        exp: 0,
+        map_id: 'town'
+    };
+    const row = serializeSlotsToRow([slot0, null, null], {
+        email: 'jken.ayag@gmail.com',
+        password: 'password123'
+    });
+    row.email = 'jken.ayag@gmail.com';
+    row.password = 'password123';
+
+    return {
+        users: {
+            "jken.ayag@gmail.com": row
+        }
+    };
+}
+
+function loadLocalDb() {
+    try {
+        if (fs.existsSync(DB_FILE)) {
+            const raw = fs.readFileSync(DB_FILE, 'utf8');
+            const parsed = JSON.parse(raw);
+            if (parsed && typeof parsed.users === 'object') {
+                return parsed;
+            }
+        }
+    } catch (e) {
+        console.warn('⚠️ Could not load local_dev_db.json, recreating defaults:', e.message);
+    }
+    const def = initDefaultDevAccounts();
+    try {
+        fs.writeFileSync(DB_FILE, JSON.stringify(def, null, 2), 'utf8');
+    } catch (e) {}
+    return def;
+}
+
+function saveLocalDb() {
+    try {
+        fs.writeFileSync(DB_FILE, JSON.stringify(memoryDb, null, 2), 'utf8');
+    } catch (e) {
+        console.warn('⚠️ Could not save local_dev_db.json:', e.message);
+    }
+}
+
+// Initialize memoryDb from persistent file
+memoryDb = loadLocalDb();
+
 // 🛡️ Helper: Robust account lookup across 2D character names, 2D emails, and 3D multi-slots
 async function findAccountRows(identifier) {
     if (!identifier) return [];
@@ -679,13 +772,59 @@ io.on('connection', (socket) => {
                 }
             } else {
                 const lower = cleanInput.toLowerCase();
-                const mem = memoryDb.users[lower] || Object.values(memoryDb.users).find(u =>
+                let mem = memoryDb.users[lower] || Object.values(memoryDb.users).find(u =>
                     (u.email && u.email.toLowerCase() === lower) ||
                     (u.character_name && u.character_name.toLowerCase().includes(lower))
                 );
-                if (mem && mem.password === password) {
-                    matchedRows = [mem];
+
+                if (!mem) {
+                    // 🛡️ Auto-provision user account in fallback mode so local testing is friction-free
+                    const charName = cleanInput.includes('@') ? cleanInput.split('@')[0] : cleanInput;
+                    const { starterEquips, starterInventory } = getStarterItems();
+                    const starterStats = {
+                        hp: 100, attack: 10, magic: 5, defense: 5, speed: 5, str: 10, int: 10,
+                        playerClass: 'Novice', title: null, homeStorage: Array(15).fill(null),
+                        tavernEntries: 5, dungeonEntries: 7, gender: 'female',
+                        hairStyle: '1', hairColor: '#111111', skinColor: '#f5c6a5'
+                    };
+                    const slot0 = {
+                        slotIndex: 0,
+                        character_name: charName,
+                        name: charName,
+                        email: cleanInput.includes('@') ? cleanInput : `${cleanInput}@exonie.com`,
+                        skin_color: '#f5c6a5',
+                        skinColor: '#f5c6a5',
+                        hair_color: '#111111',
+                        hairColor: '#111111',
+                        hair_style: '1',
+                        hairStyle: '1',
+                        gender: 'female',
+                        equips: starterEquips,
+                        inventory: starterInventory,
+                        base_stats: starterStats,
+                        baseStats: starterStats,
+                        gold: 1500,
+                        level: 1,
+                        exp: 0,
+                        map_id: 'town'
+                    };
+                    const serialized = serializeSlotsToRow([slot0, null, null], {
+                        email: cleanInput.includes('@') ? cleanInput : `${cleanInput}@exonie.com`,
+                        password: password
+                    });
+                    mem = Object.assign({
+                        email: cleanInput.includes('@') ? cleanInput : `${cleanInput}@exonie.com`,
+                        password: password
+                    }, serialized);
+                    memoryDb.users[lower] = mem;
+                    saveLocalDb();
+                    console.log(`[LOCAL DEV] Auto-created fallback account for: ${cleanInput}`);
+                } else {
+                    // Update password if changed locally so dev is never locked out
+                    mem.password = password;
+                    saveLocalDb();
                 }
+                matchedRows = [mem];
             }
 
             if (!matchedRows || matchedRows.length === 0) {
@@ -778,6 +917,7 @@ io.on('connection', (socket) => {
                     character_name: rawInput
                 };
                 memoryDb.users[key] = newRec;
+                saveLocalDb();
             }
 
             console.log(`[REGISTER SUCCESS] Account created: ${rawInput}`);
@@ -915,7 +1055,10 @@ io.on('connection', (socket) => {
                 const key = String(identifier).toLowerCase();
                 if (memoryDb.users[key]) {
                     Object.assign(memoryDb.users[key], updatePayload);
+                } else {
+                    memoryDb.users[key] = Object.assign({}, dbRows[0], updatePayload);
                 }
+                saveLocalDb();
             }
 
             socket.emit('characterCreated', { slotIndex: slotIdx, character: newChar });
@@ -960,7 +1103,10 @@ io.on('connection', (socket) => {
                 const key = String(identifier).toLowerCase();
                 if (memoryDb.users[key]) {
                     Object.assign(memoryDb.users[key], updatePayload);
+                } else {
+                    memoryDb.users[key] = Object.assign({}, dbRows[0], updatePayload);
                 }
+                saveLocalDb();
             }
 
             console.log(`[DELETE CHAR] Cleared Slot ${slotIdx + 1} for ${identifier}`);
@@ -1045,7 +1191,10 @@ io.on('connection', (socket) => {
                 const key = String(identifier).toLowerCase();
                 if (memoryDb.users[key]) {
                     Object.assign(memoryDb.users[key], updatePayload);
+                } else {
+                    memoryDb.users[key] = Object.assign({}, dbRows[0], updatePayload);
                 }
+                saveLocalDb();
             }
 
         } catch (e) {
@@ -1177,10 +1326,10 @@ io.on('connection', (socket) => {
     });
 });
 
-server.listen(PORT, () => {
+server.listen(PORT, "0.0.0.0", () => {
     console.log(`===============================================`);
     console.log(`🛡️  EXONIE 3D REMASTERED SERVER STARTED 🛡️`);
-    console.log(`📡 URL: http://localhost:${PORT}`);
+    console.log(`📡 URL: http://localhost:${PORT} (0.0.0.0)`);
     console.log(`🗄️ Supabase Live Database Connection: ${supabase ? 'ACTIVE' : 'OFFLINE/FALLBACK'}`);
     console.log(`⚡ Dragon Nest 3D Combat + Crisp Mobile Enabled`);
     console.log(`===============================================`);
