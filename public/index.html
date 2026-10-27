@@ -479,9 +479,9 @@
                     </div>
                 </div>
 
-                <!-- Bag Grid (20 slots) -->
+                <!-- Bag Grid (30 slots) -->
                 <div class="bag-section">
-                    <div class="section-title">Inventory (20 Slots) — Left-Click to Lock & Equip, Double-Click for Instant Equip</div>
+                    <div class="section-title">Inventory (30 Slots) — Left-Click to Lock & Equip, Double-Click for Instant Equip</div>
                     <div class="bag-grid" id="inventory-slots-grid"></div>
                 </div>
             </div>
@@ -664,11 +664,43 @@
                     </div>
                 </div>
 
-                <!-- 2. Auction House Tab -->
-                <div id="market-view-ah" style="display:none; flex-direction:column; gap:10px;">
-                    <p style="color:#94a3b8; font-size:0.83rem; margin:0;">Browse server listings or sell items from your inventory for Gold.</p>
-                    <div id="ah-listings-grid" style="display:grid; grid-template-columns:1fr 1fr; gap:8px; max-height:280px; overflow-y:auto;">
-                        <!-- Populated dynamically with AH items -->
+                <!-- 2. Auction House Tab (Supabase Auction_House Table) -->
+                <div id="market-view-ah" style="display:none; flex-direction:column; gap:12px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap;">
+                        <div style="display:flex; gap:6px;">
+                            <button class="pill-btn active" id="ah-subtab-browse-btn" onclick="window.switchAhSubtab('browse')" style="padding:4px 12px; font-size:0.8rem;">Browse Listings</button>
+                            <button class="pill-btn" id="ah-subtab-my-btn" onclick="window.switchAhSubtab('my')" style="padding:4px 12px; font-size:0.8rem;">My Auctions (<span id="ah-my-count">0</span>/5)</button>
+                            <button class="pill-btn" id="ah-subtab-list-btn" onclick="window.switchAhSubtab('list')" style="padding:4px 12px; font-size:0.8rem; background:#3b82f6;">+ List Item</button>
+                        </div>
+                        <input type="text" id="ah-search-input" placeholder="Search item..." style="background:#0f172a; border:1px solid #334155; border-radius:6px; color:#fff; padding:4px 8px; font-size:0.82rem; width:160px;" oninput="window.ahSearch(this.value)">
+                    </div>
+
+                    <!-- Browse Subtab -->
+                    <div id="ah-subtab-browse" style="display:flex; flex-direction:column; gap:8px;">
+                        <div id="ah-listings-grid" style="display:grid; grid-template-columns:1fr 1fr; gap:8px; max-height:280px; overflow-y:auto; padding-right:4px;">
+                            <p style="color:#94a3b8; font-size:0.83rem; grid-column:span 2; text-align:center;">Loading Auction House listings...</p>
+                        </div>
+                    </div>
+
+                    <!-- My Auctions Subtab -->
+                    <div id="ah-subtab-my" style="display:none; flex-direction:column; gap:8px;">
+                        <div id="ah-my-grid" style="display:grid; grid-template-columns:1fr 1fr; gap:8px; max-height:280px; overflow-y:auto; padding-right:4px;">
+                            <p style="color:#94a3b8; font-size:0.83rem; grid-column:span 2; text-align:center;">You have no active listings.</p>
+                        </div>
+                    </div>
+
+                    <!-- List Item Subtab -->
+                    <div id="ah-subtab-list" style="display:none; flex-direction:column; gap:10px; background:#1e293b; padding:12px; border-radius:8px; border:1px solid #334155;">
+                        <h4 style="color:#38bdf8; margin:0;">List an Item on Auction</h4>
+                        <div style="display:flex; flex-direction:column; gap:6px;">
+                            <label style="font-size:0.75rem; color:#94a3b8; font-weight:800;">Select Item from Bag:</label>
+                            <select id="ah-list-item-select" style="padding:6px; background:#0f172a; color:#fff; border:1px solid #475569; border-radius:6px; width:100%; font-size:0.82rem;"></select>
+                        </div>
+                        <div style="display:flex; flex-direction:column; gap:6px;">
+                            <label style="font-size:0.75rem; color:#94a3b8; font-weight:800;">Asking Price (Gold):</label>
+                            <input type="number" id="ah-list-price" min="1" value="1000" style="padding:6px; background:#0f172a; color:#ffd700; border:1px solid #475569; border-radius:6px; font-weight:800; width:100%; font-size:0.82rem;">
+                        </div>
+                        <button class="btn-item-action" onclick="window.ahList()" style="background:#22c55e; color:#000; font-weight:900; padding:8px 16px; margin-top:6px;">Publish Listing</button>
                     </div>
                 </div>
 
@@ -679,12 +711,18 @@
                         <p style="font-size:0.82rem; color:#cbd5e1; margin:0 0 10px 0;">
                             Ascend your <strong>Godly</strong> equipment into <strong>Divine</strong> tier using <strong>Divine Essence</strong> and <strong>Exo Metals</strong> (Red, Green, Blue)!
                         </p>
-                        <div style="background:rgba(0,0,0,0.4); border-radius:8px; padding:10px; font-size:0.85rem; color:#e2e8f0; display:flex; flex-direction:column; gap:4px;">
-                            <div>• Required: <strong>1x Divine Essence</strong></div>
-                            <div>• Required: <strong>1x Red, 1x Green, 1x Blue Exo Metal</strong></div>
-                            <div>• Fee: <strong>3,000,000 G</strong> (Weapon) / <strong>1,000,000 G</strong> (Armor)</div>
+                        <div style="display:flex; flex-direction:column; gap:6px; margin-bottom:10px;">
+                            <label style="font-size:0.75rem; color:#94a3b8; font-weight:800;">Select Godly Gear to Ascend:</label>
+                            <select id="forge-godly-select" style="padding:6px; background:#0f172a; color:#facc15; border:1px solid #475569; border-radius:6px; width:100%; font-weight:700; font-size:0.82rem;" onchange="window.updateForgeMaterialCheck()"></select>
                         </div>
-                        <button class="btn-item-action" onclick="window.attemptDivineForge()" style="margin-top:12px; width:100%; background:linear-gradient(135deg,#9333ea,#7c3aed); font-weight:900; padding:11px;">🔨 Ascend Equipped Weapon to Divine</button>
+                        <div id="forge-materials-checklist" style="background:rgba(0,0,0,0.4); border-radius:8px; padding:10px; font-size:0.82rem; color:#e2e8f0; display:flex; flex-direction:column; gap:4px;">
+                            <div>• Required: <strong>1x Divine Essence</strong> <span id="forge-chk-essence" style="color:#ef4444;">(0/1)</span></div>
+                            <div>• Required: <strong>1x Red Exo Metal</strong> <span id="forge-chk-red" style="color:#ef4444;">(0/1)</span></div>
+                            <div>• Required: <strong>1x Green Exo Metal</strong> <span id="forge-chk-green" style="color:#ef4444;">(0/1)</span></div>
+                            <div>• Required: <strong>1x Blue Exo Metal</strong> <span id="forge-chk-blue" style="color:#ef4444;">(0/1)</span></div>
+                            <div>• Required Gold: <strong id="forge-req-gold">3,000,000 G</strong> <span id="forge-chk-gold" style="color:#ef4444;">(Insufficient)</span></div>
+                        </div>
+                        <button class="btn-item-action" onclick="window.attemptDivineForge()" style="margin-top:12px; width:100%; background:linear-gradient(135deg,#9333ea,#7c3aed); font-weight:900; padding:11px;">🔨 Ascend Selected Item to Divine</button>
                     </div>
                 </div>
 
@@ -693,11 +731,14 @@
                     <div style="background:#1e293b; padding:14px; border-radius:10px; border:1px solid #38bdf8;">
                         <h4 style="color:#38bdf8; margin:0 0 6px 0;">🧪 Craft Stat Forger</h4>
                         <p style="font-size:0.82rem; color:#cbd5e1; margin:0 0 8px 0;">
-                            Reroll random sub-stats (STR / INT) on equipment of the matching rarity.
+                            Reroll random sub-stats (STR / INT / ATK / MATK) on equipment of the matching rarity.
                         </p>
-                        <div style="display:flex; justify-content:space-between; align-items:center; background:#0f172a; padding:10px; border-radius:8px;">
-                            <span>Stat Forger [Unique / Legendary]</span>
-                            <button class="btn-item-action" onclick="window.craftStatForger()" style="background:#0284c7; padding:8px 16px;">Craft (300,000 G)</button>
+                        <div style="display:flex; justify-content:space-between; align-items:center; background:#0f172a; padding:12px; border-radius:8px; border:1px solid #1e293b;">
+                            <div>
+                                <div style="font-weight:800; color:#38bdf8;">Unique Stat Forger</div>
+                                <div style="font-size:0.75rem; color:#94a3b8;">Reforges sub-stats on Unique/Legendary equipment.</div>
+                            </div>
+                            <button class="btn-item-action" onclick="window.craftStatForger()" style="background:#0284c7; padding:8px 16px; font-weight:800;">Craft (300,000 G)</button>
                         </div>
                     </div>
                 </div>
@@ -709,6 +750,9 @@
                         <p style="font-size:0.82rem; color:#cbd5e1; margin:0 0 8px 0;">
                             A floating spectral pet that follows you into battle. Requires <strong>10 Soul Pieces</strong> (dropped by the Haunted House Wraith King).
                         </p>
+                        <div id="pets-soul-piece-status" style="font-size:0.82rem; color:#e2e8f0; margin-bottom:8px; background:rgba(0,0,0,0.3); padding:8px; border-radius:6px;">
+                            Soul Pieces in Bag: <strong id="pets-soul-count" style="color:#f472b6;">0</strong> / 10
+                        </div>
                         <button class="btn-item-action" onclick="window.craftVoidPet()" style="background:linear-gradient(135deg,#ec4899,#db2777); font-weight:900; padding:10px; width:100%;">Craft Void Pet (10 Soul Pieces)</button>
                     </div>
                 </div>

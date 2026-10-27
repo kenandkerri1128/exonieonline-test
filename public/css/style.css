@@ -1560,13 +1560,16 @@ html, body {
 
 .bag-grid {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 8px;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 6px;
+    max-height: 285px;
+    overflow-y: auto;
+    padding-right: 2px;
 }
 
 @media (min-width: 500px) {
     .bag-grid {
-        grid-template-columns: repeat(5, 1fr);
+        grid-template-columns: repeat(6, 1fr);
     }
 }
 

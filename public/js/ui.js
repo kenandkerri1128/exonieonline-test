@@ -814,12 +814,12 @@ export class UIManager {
             }
         }
 
-        // 2. Render Bag Grid (20 slots)
+        // 2. Render Bag Grid (30 slots)
         const grid = document.getElementById('inventory-slots-grid');
         if (!grid) return;
         grid.innerHTML = '';
 
-        for (let i = 0; i < 20; i++) {
+        for (let i = 0; i < 30; i++) {
             const item = player.inventory[i];
             const slotEl = document.createElement('div');
             slotEl.className = 'bag-slot';
@@ -1301,15 +1301,30 @@ export class UIManager {
     // ==========================================
     // WORLD ANNOUNCEMENTS & TAVERN SPEEDRUN TIMER
     // ==========================================
-    showWorldAnnouncement(messageHtml, borderColor = '#ffd700') {
-        if (!this.lootBroadcastEl) return;
-        this.lootBroadcastEl.innerHTML = messageHtml;
-        this.lootBroadcastEl.style.borderColor = borderColor;
-        this.lootBroadcastEl.style.display = 'block';
-        clearTimeout(this.broadcastTimer);
-        this.broadcastTimer = setTimeout(() => {
-            if (this.lootBroadcastEl) this.lootBroadcastEl.style.display = 'none';
-        }, 5500);
+    showWorldAnnouncement(messageHtml, borderColor = '#ffd700', broadcast = true) {
+        if (this.lootBroadcastEl) {
+            this.lootBroadcastEl.innerHTML = messageHtml;
+            this.lootBroadcastEl.style.borderColor = borderColor;
+            this.lootBroadcastEl.style.display = 'block';
+            clearTimeout(this.broadcastTimer);
+            this.broadcastTimer = setTimeout(() => {
+                if (this.lootBroadcastEl) this.lootBroadcastEl.style.display = 'none';
+            }, 5500);
+        }
+
+        // Mirror to World Chat tab
+        if (this.game && this.game.appendChatLine) {
+            this.game.appendChatLine('world', `📢 ${messageHtml}`);
+            if (this.game.activeChatTab !== 'world') {
+                const dot = document.getElementById('world-unread-dot');
+                if (dot) dot.style.display = 'inline-block';
+            }
+        }
+
+        // Broadcast to other players via socket
+        if (broadcast && this.game?.socket?.connected) {
+            this.game.socket.emit('broadcastWorldAnnouncement', { html: messageHtml, color: borderColor });
+        }
     }
 
     updateTavernTimer(elapsedSec, visible = true) {
@@ -1526,3 +1541,541 @@ export class UIManager {
         ctx.restore();
     }
 }
+
+// ============================================================
+// TOWN MARKETPLACE SYSTEM (AUTHENTIC 2D EXONIE INTEGRATION)
+// Tabs: Wandering Shop, Auction House, Divine Forge, Consumables, Cosmetics
+// ============================================================
+
+window.switchMarketTab = function(tabId) {
+    const tabs = ['shop', 'ah', 'forge', 'craft', 'pets'];
+    tabs.forEach(t => {
+        const btn = document.getElementById(`tab-btn-${t}`);
+        const view = document.getElementById(`market-view-${t}`);
+        if (btn) {
+            if (t === tabId) btn.classList.add('active');
+            else btn.classList.remove('active');
+        }
+        if (view) {
+            view.style.display = (t === tabId) ? 'flex' : 'none';
+        }
+    });
+
+    if (tabId === 'ah') {
+        window.switchAhSubtab('browse');
+    } else if (tabId === 'forge') {
+        window.populateForgeSelect();
+        window.updateForgeMaterialCheck();
+    } else if (tabId === 'pets') {
+        window.updatePetsCraftCheck();
+    }
+};
+
+window.switchAhSubtab = function(subId) {
+    const subtabs = ['browse', 'my', 'list'];
+    subtabs.forEach(s => {
+        const btn = document.getElementById(`ah-subtab-${s}-btn`);
+        const sec = document.getElementById(`ah-subtab-${s}`);
+        if (btn) {
+            if (s === subId) btn.classList.add('active');
+            else btn.classList.remove('active');
+        }
+        if (sec) {
+            sec.style.display = (s === subId) ? 'flex' : 'none';
+        }
+    });
+
+    const socket = window.game?.socket;
+    if (subId === 'browse') {
+        const query = document.getElementById('ah-search-input')?.value || '';
+        if (socket?.connected) socket.emit('ah_search', query);
+    } else if (subId === 'my') {
+        if (socket?.connected) socket.emit('ah_getMyAuctions');
+    } else if (subId === 'list') {
+        window.populateAhListSelect();
+    }
+};
+
+window.ahSearch = function(query) {
+    const socket = window.game?.socket;
+    if (socket?.connected) {
+        socket.emit('ah_search', String(query || '').trim());
+    }
+};
+
+window.populateAhListSelect = function() {
+    const sel = document.getElementById('ah-list-item-select');
+    if (!sel) return;
+    sel.innerHTML = '';
+    const inv = window.game?.player?.inventory || [];
+    let found = false;
+
+    inv.forEach((item, idx) => {
+        if (!item) return;
+        // Rules from 2D: do not auction normal pets/auras or bound enhanced Godly/Divine
+        if (item.type === 'aura' && !item.isSeasonal) return;
+        if ((item.rarity === 'Godly' || item.rarity === 'Divine') && item.enhanceLevel > 0) return;
+
+        found = true;
+        const opt = document.createElement('option');
+        opt.value = idx;
+        const qtyStr = (item.quantity && item.quantity > 1) ? ` (x${item.quantity})` : '';
+        opt.textContent = `[${item.rarity || 'Common'}] ${item.name}${qtyStr} — Slot ${idx + 1}`;
+        sel.appendChild(opt);
+    });
+
+    if (!found) {
+        const opt = document.createElement('option');
+        opt.value = -1;
+        opt.textContent = 'No tradeable items in inventory';
+        sel.appendChild(opt);
+    }
+};
+
+window.ahList = function() {
+    const sel = document.getElementById('ah-list-item-select');
+    const priceInput = document.getElementById('ah-list-price');
+    const invIdx = parseInt(sel?.value, 10);
+    const price = parseInt(priceInput?.value, 10);
+
+    if (isNaN(invIdx) || invIdx < 0) {
+        alert('Please select an item from your bag to list.');
+        return;
+    }
+    if (isNaN(price) || price < 1) {
+        alert('Please specify a valid asking price greater than 0.');
+        return;
+    }
+
+    const socket = window.game?.socket;
+    if (socket?.connected) {
+        socket.emit('ah_list', { invIndex: invIdx, price: price });
+    } else {
+        alert('Not connected to game server.');
+    }
+};
+
+window.ahBuy = function(auctionId, price, itemName) {
+    if (!confirm(`Buy ${itemName} for ${Number(price).toLocaleString()} Gold?`)) return;
+    const socket = window.game?.socket;
+    if (socket?.connected) {
+        socket.emit('ah_buy', { auctionId: auctionId });
+    } else {
+        alert('Not connected to game server.');
+    }
+};
+
+window.ahCancel = function(auctionId) {
+    if (!confirm(`Cancel this listing? The item will be returned to your bag.`)) return;
+    const socket = window.game?.socket;
+    if (socket?.connected) {
+        socket.emit('ah_cancel', { auctionId: auctionId });
+    } else {
+        alert('Not connected to game server.');
+    }
+};
+
+// ==========================================
+// DIVINE FORGE (AUTHENTIC 2D BLACKSMITH ASCENSION)
+// ==========================================
+
+window.populateForgeSelect = function() {
+    const sel = document.getElementById('forge-godly-select');
+    if (!sel) return;
+    sel.innerHTML = '';
+    const player = window.game?.player;
+    if (!player) return;
+
+    let candidates = [];
+    if (player.equips?.weapon && player.equips.weapon.rarity === 'Godly') {
+        candidates.push({ loc: 'equip', slot: 'weapon', item: player.equips.weapon });
+    }
+    if (player.equips?.armor && player.equips.armor.rarity === 'Godly') {
+        candidates.push({ loc: 'equip', slot: 'armor', item: player.equips.armor });
+    }
+    (player.inventory || []).forEach((item, idx) => {
+        if (item && item.rarity === 'Godly' && ['weapon', 'armor', 'leggings'].includes(item.type)) {
+            candidates.push({ loc: 'inv', slot: idx, item: item });
+        }
+    });
+
+    if (candidates.length === 0) {
+        const opt = document.createElement('option');
+        opt.value = '';
+        opt.textContent = 'No Godly equipment found in bag or equipped';
+        sel.appendChild(opt);
+    } else {
+        candidates.forEach((c) => {
+            const opt = document.createElement('option');
+            opt.value = JSON.stringify({ loc: c.loc, slot: c.slot });
+            const locName = c.loc === 'equip' ? `[Equipped ${c.slot.toUpperCase()}]` : `[Bag Slot ${c.slot + 1}]`;
+            opt.textContent = `${locName} ${c.item.name} (Lv.${c.item.level || 1})`;
+            sel.appendChild(opt);
+        });
+    }
+};
+
+window.updateForgeMaterialCheck = function() {
+    const player = window.game?.player;
+    if (!player) return;
+
+    let countEssence = 0, countRed = 0, countGreen = 0, countBlue = 0;
+    (player.inventory || []).forEach(i => {
+        if (!i || !i.name) return;
+        const n = String(i.name).trim();
+        const qty = Number(i.quantity) || 1;
+        if (n.includes('Divine Essence')) countEssence += qty;
+        if (n.includes('Red Exo Metal')) countRed += qty;
+        if (n.includes('Green Exo Metal')) countGreen += qty;
+        if (n.includes('Blue Exo Metal')) countBlue += qty;
+    });
+
+    const sel = document.getElementById('forge-godly-select');
+    let isWeapon = true;
+    try {
+        const parsed = JSON.parse(sel?.value || '{}');
+        if (parsed.loc === 'equip') isWeapon = parsed.slot === 'weapon';
+        else if (parsed.loc === 'inv') {
+            const itm = player.inventory[parsed.slot];
+            isWeapon = itm?.type === 'weapon';
+        }
+    } catch(e) {}
+
+    const reqGold = isWeapon ? 3000000 : 1000000;
+    const reqEssence = isWeapon ? 3 : 1;
+
+    const elEss = document.getElementById('forge-chk-essence');
+    if (elEss) {
+        elEss.textContent = `(${countEssence}/${reqEssence})`;
+        elEss.style.color = countEssence >= reqEssence ? '#22c55e' : '#ef4444';
+    }
+
+    const elRed = document.getElementById('forge-chk-red');
+    if (elRed) {
+        elRed.textContent = `(${countRed}/1)`;
+        elRed.style.color = countRed >= 1 ? '#22c55e' : '#ef4444';
+    }
+
+    const elGrn = document.getElementById('forge-chk-green');
+    if (elGrn) {
+        elGrn.textContent = `(${countGreen}/1)`;
+        elGrn.style.color = countGreen >= 1 ? '#22c55e' : '#ef4444';
+    }
+
+    const elBlu = document.getElementById('forge-chk-blue');
+    if (elBlu) {
+        elBlu.textContent = `(${countBlue}/1)`;
+        elBlu.style.color = countBlue >= 1 ? '#22c55e' : '#ef4444';
+    }
+
+    const reqGoldEl = document.getElementById('forge-req-gold');
+    if (reqGoldEl) reqGoldEl.textContent = `${reqGold.toLocaleString()} G`;
+
+    const elGold = document.getElementById('forge-chk-gold');
+    if (elGold) {
+        const hasGold = (player.gold || 0) >= reqGold;
+        elGold.textContent = hasGold ? `(${player.gold.toLocaleString()} G Available)` : `(Insufficient: ${player.gold.toLocaleString()} G)`;
+        elGold.style.color = hasGold ? '#22c55e' : '#ef4444';
+    }
+};
+
+window.attemptDivineForge = function() {
+    const game = window.game;
+    const player = game?.player;
+    if (!player) return;
+
+    const sel = document.getElementById('forge-godly-select');
+    if (!sel || !sel.value) {
+        alert('Please select a Godly equipment piece to ascend.');
+        return;
+    }
+
+    let targetInfo;
+    try {
+        targetInfo = JSON.parse(sel.value);
+    } catch(e) {
+        alert('Invalid item selection.');
+        return;
+    }
+
+    let targetItem = null;
+    if (targetInfo.loc === 'equip') {
+        targetItem = player.equips[targetInfo.slot];
+    } else if (targetInfo.loc === 'inv') {
+        targetItem = player.inventory[targetInfo.slot];
+    }
+
+    if (!targetItem || targetItem.rarity !== 'Godly') {
+        alert('You need a Godly equipment base to ascend to Divine.');
+        return;
+    }
+
+    const isWeapon = targetItem.type === 'weapon';
+    const reqGold = isWeapon ? 3000000 : 1000000;
+    const reqEssence = isWeapon ? 3 : 1;
+
+    let countEssence = 0, countRed = 0, countGreen = 0, countBlue = 0;
+    (player.inventory || []).forEach(i => {
+        if (!i || !i.name) return;
+        const n = String(i.name).trim();
+        const qty = Number(i.quantity) || 1;
+        if (n.includes('Divine Essence')) countEssence += qty;
+        if (n.includes('Red Exo Metal')) countRed += qty;
+        if (n.includes('Green Exo Metal')) countGreen += qty;
+        if (n.includes('Blue Exo Metal')) countBlue += qty;
+    });
+
+    if (countEssence < reqEssence || countRed < 1 || countGreen < 1 || countBlue < 1) {
+        alert(`You need ${reqEssence}x Divine Essence, and 1x Red, Green, and Blue Exo Metals.`);
+        return;
+    }
+
+    if ((player.gold || 0) < reqGold) {
+        alert(`You need ${reqGold.toLocaleString()} Gold to forge this ascension.`);
+        return;
+    }
+
+    // Deduct Materials
+    const deduct = (namePart, amount) => {
+        let needed = amount;
+        for (let i = 0; i < player.inventory.length; i++) {
+            if (needed <= 0) break;
+            const it = player.inventory[i];
+            if (it && it.name && String(it.name).includes(namePart)) {
+                const q = it.quantity || 1;
+                if (q > needed) {
+                    it.quantity -= needed;
+                    needed = 0;
+                } else {
+                    needed -= q;
+                    player.inventory[i] = null;
+                }
+            }
+        }
+    };
+
+    deduct('Divine Essence', reqEssence);
+    deduct('Red Exo Metal', 1);
+    deduct('Green Exo Metal', 1);
+    deduct('Blue Exo Metal', 1);
+    player.gold -= reqGold;
+
+    // Transform to Divine
+    targetItem.rarity = 'Divine';
+    targetItem.color = '#ffea00';
+    targetItem.name = targetItem.name.replace('Godly', 'Divine');
+    if (!targetItem.name.includes('Divine')) targetItem.name = `Divine ${targetItem.name}`;
+    targetItem.enhanceLevel = 0;
+
+    if (targetItem.fixedStat) {
+        for (const k in targetItem.fixedStat) {
+            targetItem.fixedStat[k] = Math.floor(targetItem.fixedStat[k] * 2);
+        }
+    }
+
+    game.audio?.playSfx('lightning');
+    game.engine?.addScreenshake(1.2);
+    game.engine?.spawnLevelUpVFX(player.pos);
+    game.combat?.spawnFloatingDamage(player.pos, '✨ DIVINE ASCENSION COMPLETE! ✨', true, true);
+
+    game.ui?.showWorldAnnouncement(
+        `⚡ <strong style="color:#00e5ff;">[DIVINE FORGE] ${player.name}</strong> has ascended <strong style="color:#ffd700;">[Divine] ${targetItem.name}</strong>!`,
+        '#ffd700'
+    );
+
+    game.recalculateStats();
+    game.ui?.updatePlayerHUD(player);
+    game.ui?.renderInventory();
+    game.saveCharacterToAccountSlot();
+
+    if (game.socket?.connected) {
+        game.socket.emit('requestCraftDivine', { baseIndex: targetInfo.loc === 'inv' ? targetInfo.slot : -1 });
+    }
+
+    window.populateForgeSelect();
+    window.updateForgeMaterialCheck();
+};
+
+// ==========================================
+// CONSUMABLES & COSMETICS CRAFTING
+// ==========================================
+
+window.craftStatForger = function() {
+    const game = window.game;
+    const player = game?.player;
+    if (!player) return;
+
+    if ((player.gold || 0) < 300000) {
+        alert('You need 300,000 Gold to craft a Stat Forger.');
+        return;
+    }
+
+    const freeSlot = player.inventory.findIndex(i => i === null);
+    if (freeSlot === -1) {
+        alert('Your bag is full! Free up a slot first.');
+        return;
+    }
+
+    player.gold -= 300000;
+    player.inventory[freeSlot] = {
+        id: `forger_${Date.now()}`,
+        name: 'Unique Stat Forger',
+        type: 'material',
+        rarity: 'Unique',
+        color: '#c084fc',
+        desc: 'Reforges random sub-stats (STR / INT) on equipment of matching rarity.',
+        quantity: 1
+    };
+
+    game.audio?.playSfx('splash');
+    game.ui?.showToast('🧪 Successfully crafted 1x Unique Stat Forger!');
+    game.ui?.updatePlayerHUD(player);
+    game.ui?.renderInventory();
+    game.saveCharacterToAccountSlot();
+};
+
+window.updatePetsCraftCheck = function() {
+    const player = window.game?.player;
+    if (!player) return;
+    let soulCount = 0;
+    (player.inventory || []).forEach(i => {
+        if (i && (i.name === 'Soul Piece' || i.name === 'Divine ID Piece')) {
+            soulCount += (i.quantity || 1);
+        }
+    });
+    const el = document.getElementById('pets-soul-count');
+    if (el) {
+        el.textContent = soulCount;
+        el.style.color = soulCount >= 10 ? '#4ade80' : '#f472b6';
+    }
+};
+
+window.craftVoidPet = function() {
+    const game = window.game;
+    const player = game?.player;
+    if (!player) return;
+
+    let soulCount = 0;
+    (player.inventory || []).forEach(i => {
+        if (i && (i.name === 'Soul Piece' || i.name === 'Divine ID Piece')) {
+            soulCount += (i.quantity || 1);
+        }
+    });
+
+    if (soulCount < 10) {
+        alert(`You need 10 Soul Pieces to craft the Void Pet (Current: ${soulCount}/10). Defeat the Wraith King in the Haunted House!`);
+        return;
+    }
+
+    const freeSlot = player.inventory.findIndex(i => i === null);
+    if (freeSlot === -1) {
+        alert('Your bag is full! Free up a slot first.');
+        return;
+    }
+
+    let needed = 10;
+    for (let i = 0; i < player.inventory.length; i++) {
+        if (needed <= 0) break;
+        const it = player.inventory[i];
+        if (it && (it.name === 'Soul Piece' || it.name === 'Divine ID Piece')) {
+            const q = it.quantity || 1;
+            if (q > needed) {
+                it.quantity -= needed;
+                needed = 0;
+            } else {
+                needed -= q;
+                player.inventory[i] = null;
+            }
+        }
+    }
+
+    player.inventory[freeSlot] = {
+        id: `void_pet_${Date.now()}`,
+        name: 'Void Pet',
+        type: 'aura',
+        aura: 'void',
+        rarity: 'Godly',
+        color: '#e040fb',
+        desc: 'A floating spectral void companion that channels dark energy beside you.',
+        quantity: 1
+    };
+
+    game.audio?.playSfx('lightning');
+    game.engine?.spawnGroundShockwave(player.pos, 0x9c27b0, 5.0);
+    game.ui?.showWorldAnnouncement(
+        `👻 <strong style="color:#00e5ff;">${player.name}</strong> has awakened the mystical <strong style="color:#e040fb;">[Godly] Void Pet</strong>!`,
+        '#e040fb'
+    );
+
+    game.ui?.updatePlayerHUD(player);
+    game.ui?.renderInventory();
+    game.saveCharacterToAccountSlot();
+    window.updatePetsCraftCheck();
+};
+
+// ==========================================
+// AUCTION HOUSE SOCKET LISTENERS
+// ==========================================
+setTimeout(() => {
+    const socket = window.game?.socket;
+    if (!socket) return;
+
+    socket.on('ah_searchResults', (results) => {
+        const grid = document.getElementById('ah-listings-grid');
+        if (!grid) return;
+        if (!Array.isArray(results) || results.length === 0) {
+            grid.innerHTML = '<p style="color:#94a3b8; font-size:0.83rem; grid-column:span 2; text-align:center; padding:20px;">No items currently listed on the Auction House.</p>';
+            return;
+        }
+
+        let html = '';
+        results.forEach(r => {
+            const it = r.item_data || {};
+            const rCol = it.color || '#38bdf8';
+            html += `
+                <div style="background:#0f172a; border:1px solid #334155; border-radius:8px; padding:10px; display:flex; justify-content:space-between; align-items:center;">
+                    <div>
+                        <div style="font-weight:800; color:${rCol}; font-size:0.86rem;">${it.name || r.item_name}</div>
+                        <div style="font-size:0.75rem; color:#94a3b8;">Seller: ${r.seller_name} | Price: <strong style="color:#ffd700;">${Number(r.price).toLocaleString()} G</strong></div>
+                    </div>
+                    <button class="btn-item-action" onclick="window.ahBuy('${r.id}', ${r.price}, '${(it.name || r.item_name).replace(/'/g, "\\'")}')" style="background:#22c55e; color:#000; font-weight:800; padding:6px 12px; font-size:0.78rem;">Buy</button>
+                </div>
+            `;
+        });
+        grid.innerHTML = html;
+    });
+
+    socket.on('ah_myAuctions', (data) => {
+        const countEl = document.getElementById('ah-my-count');
+        const grid = document.getElementById('ah-my-grid');
+        if (countEl) countEl.textContent = data?.count || 0;
+        if (!grid) return;
+
+        const auctions = data?.auctions || [];
+        if (auctions.length === 0) {
+            grid.innerHTML = '<p style="color:#94a3b8; font-size:0.83rem; grid-column:span 2; text-align:center; padding:20px;">You have no active listings.</p>';
+            return;
+        }
+
+        let html = '';
+        auctions.forEach(r => {
+            const it = r.item_data || {};
+            const rCol = it.color || '#38bdf8';
+            html += `
+                <div style="background:#0f172a; border:1px solid #334155; border-radius:8px; padding:10px; display:flex; justify-content:space-between; align-items:center;">
+                    <div>
+                        <div style="font-weight:800; color:${rCol}; font-size:0.86rem;">${it.name || r.item_name}</div>
+                        <div style="font-size:0.75rem; color:#ffd700; font-weight:800;">Price: ${Number(r.price).toLocaleString()} Gold</div>
+                    </div>
+                    <button class="btn-item-action" onclick="window.ahCancel('${r.id}')" style="background:#ef4444; color:#fff; font-weight:800; padding:6px 12px; font-size:0.78rem;">Cancel</button>
+                </div>
+            `;
+        });
+        grid.innerHTML = html;
+    });
+
+    socket.on('ah_listSuccess', () => {
+        window.game?.ui?.showToast('✅ Item successfully listed on the Auction House!');
+        window.switchAhSubtab('my');
+    });
+}, 1200);

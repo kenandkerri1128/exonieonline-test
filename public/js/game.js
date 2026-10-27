@@ -134,6 +134,8 @@ export class GameApp {
         this.isGhost = false;
         this.portalCooldown = 0;
         this.potionCooldown = 0;
+        this.bossCooldowns = {};
+        this.playerShieldMesh = null;
 
         // Jump & Vertical Physics
         this.gravity = 26.0;
@@ -152,7 +154,13 @@ export class GameApp {
             gold: 500,
             baseStats: JSON.parse(JSON.stringify(DEFAULT_BASE_STATS)),
             equips: JSON.parse(JSON.stringify(STARTER_ITEMS.equips)),
-            inventory: JSON.parse(JSON.stringify(STARTER_ITEMS.inventory)),
+            inventory: (() => {
+                const bag = Array(30).fill(null);
+                (STARTER_ITEMS.inventory || []).forEach((item, idx) => {
+                    if (idx < 30) bag[idx] = JSON.parse(JSON.stringify(item));
+                });
+                return bag;
+            })(),
             storage: Array(15).fill(null),
             dailyMission: null,
             tavernEntries: 5,
@@ -227,8 +235,8 @@ export class GameApp {
             previewScene.background = null;
 
             previewCamera = new THREE.PerspectiveCamera(36, w / h, 0.1, 50);
-            previewCamera.position.set(0, 1.05, 3.4);
-            previewCamera.lookAt(0, 0.95, 0);
+            previewCamera.position.set(0, 0.88, 4.4);
+            previewCamera.lookAt(0, 0.65, 0);
 
             previewRenderer = new THREE.WebGLRenderer({
                 canvas: existingCanvas,
@@ -241,8 +249,8 @@ export class GameApp {
             previewRenderer.toneMappingExposure = 1.35;
             if (THREE.SRGBColorSpace) previewRenderer.outputColorSpace = THREE.SRGBColorSpace;
 
-            // Pedestal platform disk under the avatar
-            const pedestalGeo = new THREE.CylinderGeometry(0.85, 0.95, 0.08, 32);
+            // Pedestal platform disk under the avatar (scaled neatly to match avatar)
+            const pedestalGeo = new THREE.CylinderGeometry(0.65, 0.75, 0.07, 32);
             const pedestalMat = new THREE.MeshStandardMaterial({
                 color: 0x0f172a,
                 metalness: 0.85,
@@ -252,7 +260,7 @@ export class GameApp {
             pedestalMesh.position.set(0, -0.04, 0);
             previewScene.add(pedestalMesh);
 
-            const rimGeo = new THREE.TorusGeometry(0.90, 0.02, 12, 48);
+            const rimGeo = new THREE.TorusGeometry(0.70, 0.018, 12, 48);
             rimGeo.rotateX(Math.PI / 2);
             const rimMat = new THREE.MeshBasicMaterial({ color: 0x00e5ff });
             const rimMesh = new THREE.Mesh(rimGeo, rimMat);
@@ -283,6 +291,8 @@ export class GameApp {
                 weaponType: null
             });
             previewChar.group.rotation.y = 0;
+            // Neatly proportioned scale to comfortably fit with ample headroom
+            previewChar.group.scale.set(0.66, 0.66, 0.66);
             if (previewChar.overheadGroup) {
                 previewChar.overheadGroup.visible = false;
             }
@@ -489,6 +499,45 @@ export class GameApp {
                                 if (dot) dot.style.display = 'inline-block';
                             }
                         }
+                    }
+                });
+
+                this.socket.on('worldAnnouncement', (data) => {
+                    if (data && data.html) {
+                        this.ui.showWorldAnnouncement(data.html, data.color || '#ffd700', false);
+                    }
+                });
+
+                this.socket.on('bossCooldownSync', (cooldowns) => {
+                    if (cooldowns && typeof cooldowns === 'object') {
+                        this.bossCooldowns = Object.assign({}, this.bossCooldowns, cooldowns);
+                    }
+                });
+
+                this.socket.on('bossCooldownActive', (data) => {
+                    if (data && data.floorId) {
+                        this.bossCooldowns[data.floorId] = Date.now() + (data.remaining || (24 * 60 * 60 * 1000));
+                    }
+                });
+
+                this.socket.on('applyGammaShield', (data) => {
+                    if (data && data.targetId === this.player.name) {
+                        this.player.shieldHp = data.hp || 20;
+                        this.createPlayerShieldVFX();
+                    }
+                });
+
+                this.socket.on('breakGammaShield', (data) => {
+                    if (data && data.targetId === this.player.name) {
+                        this.destroyPlayerShieldVFX();
+                    }
+                });
+
+                this.socket.on('syncInventory', (newInv) => {
+                    if (Array.isArray(newInv)) {
+                        while (newInv.length < 30) newInv.push(null);
+                        this.player.inventory = newInv;
+                        if (this.ui) this.ui.renderInventory();
                     }
                 });
             }
@@ -770,6 +819,7 @@ export class GameApp {
             if (!Array.isArray(inventory)) {
                 inventory = JSON.parse(JSON.stringify(STARTER_ITEMS.inventory));
             }
+            while (inventory.length < 30) inventory.push(null);
             this.player.inventory = inventory;
 
             this.player.level = Number(charData.level) || Number(baseStats.level) || 1;
@@ -790,7 +840,11 @@ export class GameApp {
             this.player.gold = 500;
             this.player.baseStats = JSON.parse(JSON.stringify(DEFAULT_BASE_STATS));
             this.player.equips = JSON.parse(JSON.stringify(STARTER_ITEMS.equips));
-            this.player.inventory = JSON.parse(JSON.stringify(STARTER_ITEMS.inventory));
+            const starterBag = Array(30).fill(null);
+            (STARTER_ITEMS.inventory || []).forEach((item, idx) => {
+                if (idx < 30) starterBag[idx] = JSON.parse(JSON.stringify(item));
+            });
+            this.player.inventory = starterBag;
             this.player.storage = Array(15).fill(null);
             this.player.dailyMission = null;
             this.player.tavernEntries = 5;
@@ -1682,10 +1736,24 @@ export class GameApp {
         this.audio.playBgm(bgmTrack);
         this.ui.updateFloorIndicator(mapId, data.name);
 
-        // Spawn monsters defined in this map's data
+        // Spawn monsters defined in this map's data (Dungeon monsters NEVER respawn, per 2D rules)
+        const isDungeon = mapId.startsWith('dungeon');
+        const now = Date.now();
+        const bossRemaining = (this.bossCooldowns && this.bossCooldowns[mapId]) ? (this.bossCooldowns[mapId] - now) : 0;
+
         if (Array.isArray(data.monsterSpawns)) {
             for (const sp of data.monsterSpawns) {
+                // If this is a floor boss and its 24h Supabase cooldown is active, skip spawning it
+                if (sp.category === 'floor_boss' && mapId.startsWith('floor') && bossRemaining > 0) {
+                    const hrs = Math.ceil(bossRemaining / 3600000);
+                    this.ui.showToast(`⏳ [FLOOR BOSS COOLDOWN] ${sp.name} respawns in ~${hrs} hours.`);
+                    continue;
+                }
+
                 const mob = new Monster3D(sp, sp.position);
+                if (isDungeon) {
+                    mob.noRespawn = true;
+                }
                 this.engine.scene.add(mob.group);
                 this.monsters.push(mob);
                 if (sp.category === 'floor_boss') {
@@ -1726,7 +1794,7 @@ export class GameApp {
                     drop.rarity === 'Legendary' || drop.rarity === 'Godly' || drop.rarity === 'Divine',
                     true
                 );
-                if (['Rare', 'Unique', 'Legendary', 'Godly', 'Divine'].includes(drop.rarity)) {
+                if (['Legendary', 'Godly', 'Divine'].includes(drop.rarity)) {
                     this.ui.showWorldAnnouncement(
                         `🌟 <strong style="color:#00e5ff;">${this.player.name}</strong> obtained <strong style="color:#ffd700;">[${drop.rarity}] ${drop.name}</strong> from <strong>${mob.name}</strong>!`,
                         '#ffd700'
@@ -1880,10 +1948,92 @@ export class GameApp {
                 `⚔️ <strong style="color:#00e5ff;">[WORLD ANNOUNCEMENT] ${this.player.name}</strong> has defeated <strong>[BOSS] ${mob.name} (Lv.${mob.level})</strong> on <strong>${this.currentMapId.toUpperCase()}</strong>!`,
                 '#00e5ff'
             );
+            // 24-hour Floor Boss Cooldown matching 2D Exonie (persisted to Supabase boss_timers)
+            const respawnAt = Date.now() + (24 * 60 * 60 * 1000);
+            this.bossCooldowns[this.currentMapId] = respawnAt;
+            if (this.socket) {
+                this.socket.emit('floorBossKilled', { floorId: this.currentMapId, bossName: mob.name });
+            }
         }
 
         if (this.currentMapId === 'floor10') {
             alert("🌟 CONGRATULATIONS! You have defeated The Void King on Floor 10! You have conquered the current pinnacle floor of Exonie Remastered!");
+        }
+    }
+
+    // ==========================================
+    // TECH GENIUS 3D GAMMA SHIELD & GOLEM SUMMON
+    // ==========================================
+    createPlayerShieldVFX() {
+        if (this.playerShieldMesh && this.player.char3D?.group) {
+            this.player.char3D.group.remove(this.playerShieldMesh);
+            this.playerShieldMesh = null;
+        }
+        if (!this.player.char3D?.group) return;
+        const geo = new THREE.SphereGeometry(1.35, 24, 24);
+        const mat = new THREE.MeshStandardMaterial({
+            color: 0x00e5ff,
+            transparent: true,
+            opacity: 0.38,
+            roughness: 0.1,
+            metalness: 0.8,
+            emissive: 0x00e5ff,
+            emissiveIntensity: 0.65
+        });
+        this.playerShieldMesh = new THREE.Mesh(geo, mat);
+        this.playerShieldMesh.position.set(0, 0.9, 0);
+        this.player.char3D.group.add(this.playerShieldMesh);
+    }
+
+    destroyPlayerShieldVFX() {
+        if (this.playerShieldMesh && this.player.char3D?.group) {
+            this.engine.spawnHitSparks(this.player.pos, 0x00e5ff, 28);
+            this.engine.spawnGroundShockwave(this.player.pos, 0x00e5ff, 3.8);
+            this.combat.spawnFloatingDamage(this.player.pos, '💥 SHIELD BROKEN!', true, true);
+            this.audio.playSfx('bump');
+            this.player.char3D.group.remove(this.playerShieldMesh);
+            this.playerShieldMesh = null;
+        }
+        this.player.shieldHp = 0;
+    }
+
+    spawnGolemBusterMinion() {
+        const intVal = this.player.baseStats?.int || 10;
+        const matk = Math.max(15, Math.floor((this.player.baseStats?.int || 10) * 1.8) + (this.player.mag || 10));
+        this.combat.spawnGolemBuster(this.player, intVal, matk);
+    }
+
+    onMonsterHitPlayer(rawDmg, attackType = 'Attack') {
+        if (this.isGhost || this.player.isInvulnerable) return;
+
+        let dmg = Math.max(1, rawDmg - this.player.def);
+
+        // Tech Genius Gamma Shield absorption
+        if ((this.player.shieldHp || 0) > 0) {
+            const absorbed = Math.min(this.player.shieldHp, dmg);
+            this.player.shieldHp -= absorbed;
+            dmg -= absorbed;
+            if (this.player.shieldHp <= 0) {
+                this.destroyPlayerShieldVFX();
+            } else {
+                this.combat.spawnFloatingDamage(this.player.pos, `SHIELD (${this.player.shieldHp})`, false, true);
+            }
+            if (dmg <= 0) return;
+        }
+
+        this.player.hp = Math.max(this.player.isImmortal ? 1 : 0, this.player.hp - dmg);
+        this.audio.playSfx('bump');
+        this.combat.spawnFloatingDamage(this.player.pos, `-${dmg} (${attackType})`, false);
+        this.engine.addScreenshake(0.4);
+        this.ui.updatePlayerHUD(this.player);
+
+        if (this.player.hp <= 0) {
+            this.player.hp = 0;
+            this.isGhost = true;
+            this.destroyPlayerShieldVFX();
+            this.audio.playSfx('bump');
+            this.ui.updatePlayerHUD(this.player);
+            this.ui.showDeathScreen(this.hasRevivalJuice());
         }
     }
 
@@ -2331,8 +2481,12 @@ export class GameApp {
                         const absorbed = Math.min(this.player.shieldHp, dmg);
                         this.player.shieldHp -= absorbed;
                         dmg -= absorbed;
-                        if (dmg <= 0) {
+                        if (this.player.shieldHp <= 0) {
+                            this.destroyPlayerShieldVFX();
+                        } else {
                             this.combat.spawnFloatingDamage(this.player.pos, `SHIELD (${this.player.shieldHp})`, false, true);
+                        }
+                        if (dmg <= 0) {
                             continue;
                         }
                     }

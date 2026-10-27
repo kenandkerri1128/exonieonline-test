@@ -104,11 +104,29 @@ export class Monster3D {
         this.attackAnimTimer = 0;
 
         this.state = 'idle'; // idle, chase, attack, dead
-        this.aggroRange = this.type === 'floor_boss' ? 22 : (this.type === 'mini_boss' ? 17 : 13);
-        this.attackRange = 2.2 + this.scaleFactor * 0.85;
+
+        // Monster Subtypes & Classification
+        this.isRanged = this.dbKey.includes('mobs3') || this.dbKey.includes('boss3') || this.dbKey.includes('wraith') || this.dbKey.includes('dragon');
+        this.isGolem = this.dbKey.includes('golem');
+        this.isSlime = this.dbKey.includes('slime') || this.dbKey.includes('mobs1') || this.dbKey.includes('boss1');
+        this.isWraith = this.dbKey.includes('wraith');
+
+        // Aggro & Attack Range (Significantly expanded per user request, especially ranged mobs)
+        if (this.isRanged) {
+            this.aggroRange = this.type === 'floor_boss' ? 48.0 : (this.type === 'mini_boss' ? 38.0 : 30.0);
+            this.attackRange = this.type === 'floor_boss' ? 18.0 : (this.type === 'mini_boss' ? 14.0 : 10.0);
+        } else {
+            this.aggroRange = this.type === 'floor_boss' ? 44.0 : (this.type === 'mini_boss' ? 30.0 : 22.0);
+            this.attackRange = 2.4 + this.scaleFactor * 0.85;
+        }
+
         this.attackCooldown = 0;
         this.respawnTimer = 0;
         this.hitFlashTimer = 0;
+
+        // Skills Cooldowns
+        this.earthquakeCooldown = 6.0 + Math.random() * 5.0;
+        this.voidBlinkCooldown = 5.0 + Math.random() * 5.0;
 
         this.isFrozen = false;
         this.freezeTimer = 0;
@@ -1250,14 +1268,68 @@ export class Monster3D {
                 }
             }
 
+            // Mini Boss & Floor Boss Earthquake Skill (Slimes, Golems, Minotaurs)
+            if ((this.isGolem || this.isSlime || this.type === 'mini_boss' || this.type === 'floor_boss') && distToPlayer <= this.aggroRange && distToSpawn < 90) {
+                this.earthquakeCooldown = (this.earthquakeCooldown || 10.0) - dt;
+                if (this.earthquakeCooldown <= 0) {
+                    this.earthquakeCooldown = this.type === 'floor_boss' ? 8.5 : 12.0;
+                    const aoeRadius = this.type === 'floor_boss' ? 20.0 : 12.0;
+                    if (window.game) {
+                        window.game.engine.spawnGroundShockwave(this.pos, this.isGolem ? 0x795548 : 0x00e5ff, aoeRadius);
+                        window.game.engine.addScreenshake(this.type === 'floor_boss' ? 1.0 : 0.6);
+                        window.game.audio.playSfx('bump');
+                        window.game.combat.spawnFloatingDamage(this.pos, '🌋 EARTHQUAKE!', true);
+                        if (distToPlayer <= aoeRadius) {
+                            const eqDmg = Math.max(5, Math.floor(this.attackPower * 1.5));
+                            window.game.onMonsterHitPlayer(eqDmg, 'Earthquake');
+                        }
+                    }
+                }
+            }
+
+            // Void Blink / Vanish Skill (Spectral Wraiths, Soul Reaper, The Void King)
+            if (this.isWraith && distToPlayer <= this.aggroRange && distToPlayer > 3.0 && distToSpawn < 90) {
+                this.voidBlinkCooldown = (this.voidBlinkCooldown || 9.0) - dt;
+                if (this.voidBlinkCooldown <= 0) {
+                    this.voidBlinkCooldown = this.type === 'floor_boss' ? 7.5 : 11.0;
+                    if (window.game) {
+                        window.game.engine.spawnHitSparks(this.pos, 0x9c27b0, 32);
+                        window.game.audio.playSfx('lightning');
+                        // Teleport 2.2m behind the player
+                        const pRot = window.game.player.rotY || 0;
+                        const behind = targetPos.clone().add(new THREE.Vector3(
+                            -Math.sin(pRot) * 2.2,
+                            0,
+                            -Math.cos(pRot) * 2.2
+                        ));
+                        this.pos.copy(behind);
+                        this.group.position.copy(behind);
+                        window.game.engine.spawnHitSparks(this.pos, 0x9c27b0, 24);
+                        window.game.engine.spawnGroundShockwave(this.pos, 0x7b1fa2, 3.5);
+                        window.game.ui.showToast(`👻 ${this.name} flickers into the void... it is watching you.`);
+                        window.game.combat.spawnFloatingDamage(this.pos, '👻 VOID BLINK!', true);
+                    }
+                }
+            }
+
             if (distToPlayer <= this.attackRange) {
                 this.state = 'attack';
                 const angle = Math.atan2(targetPos.x - this.pos.x, targetPos.z - this.pos.z);
                 this.group.rotation.y = angle;
                 if (this.attackCooldown <= 0.15 && this.attackAnimTimer <= 0) {
                     this.triggerAttackAnim();
+                    // Ranged attack visual fx
+                    if (this.isRanged && distToPlayer > 3.2 && window.game?.engine) {
+                        const boltCol = this.dbKey.includes('wraith') ? 0x9c27b0 : 0xff5722;
+                        window.game.engine.spawnLaserBolt(
+                            this.pos.clone().add(new THREE.Vector3(0, 1.1, 0)),
+                            targetPos.clone().add(new THREE.Vector3(0, 0.8, 0)),
+                            boltCol,
+                            0.16
+                        );
+                    }
                 }
-            } else if ((distToPlayer <= this.aggroRange || this.provokeTimer > 0) && distToSpawn < 65) {
+            } else if ((distToPlayer <= this.aggroRange || this.provokeTimer > 0) && distToSpawn < 90) {
                 this.state = 'chase';
                 const dir = new THREE.Vector3().subVectors(targetPos, this.pos);
                 dir.y = 0;

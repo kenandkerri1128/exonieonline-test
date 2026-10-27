@@ -198,7 +198,7 @@ function getStarterItems() {
     };
 
     const starterInventory = [];
-    for (let i = 0; i < 20; i++) starterInventory.push(null);
+    for (let i = 0; i < 30; i++) starterInventory.push(null);
 
     starterInventory[0] = { id: 'wpn_1_' + Date.now(), name: "Starter Sword", type: "weapon", weaponType: "sword", sprite: "startersword", level: 1, rarity: "Starter", color: "#aaaaaa", fixedStat: { attack: 3 }, randomStat: {} };
     starterInventory[1] = { id: 'wpn_2_' + Date.now(), name: "Starter Staff", type: "weapon", weaponType: "staff", sprite: "starterstaff", level: 1, rarity: "Starter", color: "#aaaaaa", fixedStat: { magic: 3 }, randomStat: {} };
@@ -213,6 +213,8 @@ function getStarterItems() {
 
 // In-memory player state for active online players
 const onlinePlayers = {};
+const memoryAuctions = {};
+const bossTimersMemory = {};
 
 // ==========================================
 // 🛡️ 3-SLOT MULTI-CHARACTER PARSER & SERIALIZER
@@ -323,6 +325,7 @@ function convert2DRowToSlot(row, slotIndex = 0) {
     if (!Array.isArray(inventory)) {
         inventory = getStarterItems().starterInventory;
     }
+    while (inventory.length < 30) inventory.push(null);
 
     // Hair style in 2D is integer 1 to 5
     let rawStyle = String(row.hair_style !== undefined ? row.hair_style : '1').trim();
@@ -1254,6 +1257,26 @@ io.on('connection', (socket) => {
 
             socket.emit('gameState', { self: onlinePlayers[socket.id], players: onlinePlayers });
             socket.broadcast.emit('playerJoined', onlinePlayers[socket.id]);
+
+            // Sync Floor Boss Cooldowns from Supabase
+            let activeCooldowns = Object.assign({}, bossTimersMemory);
+            if (supabase) {
+                try {
+                    const { data: bTimers } = await supabase.from('boss_timers').select('*');
+                    if (bTimers) {
+                        const now = Date.now();
+                        bTimers.forEach(t => {
+                            const deathTime = parseInt(t.last_death_time) || 0;
+                            const rem = (deathTime + (24 * 60 * 60 * 1000)) - now;
+                            if (rem > 0) {
+                                activeCooldowns[t.boss_id] = now + rem;
+                            }
+                        });
+                    }
+                } catch (e) {}
+            }
+            socket.emit('bossCooldownSync', activeCooldowns);
+
             console.log(`[WORLD] ${finalName} (Email: ${userEmail}, Slot ${slotIdx + 1}) entered 3D world (Socket: ${socket.id})`);
 
         } catch (e) {
@@ -1317,6 +1340,247 @@ io.on('connection', (socket) => {
 
         // Broadcast to all other sockets without double-sending to sender
         socket.broadcast.emit('worldChatMessage', { id: name, text: safeText });
+    });
+
+    // ==========================================
+    // 📢 WORLD ANNOUNCEMENTS & GLOBAL SYNC
+    // ==========================================
+    socket.on('broadcastWorldAnnouncement', (data) => {
+        if (data && data.html) {
+            io.emit('worldAnnouncement', data);
+            io.emit('worldChatMessage', { id: 'ANNOUNCEMENT', text: data.html.replace(/<[^>]+>/g, '') });
+        }
+    });
+
+    // ==========================================
+    // ⚔️ FLOOR BOSS RESPAWN & SUPABASE COOLDOWNS
+    // ==========================================
+    socket.on('floorBossKilled', async (data) => {
+        if (!data || !data.floorId) return;
+        const floorId = String(data.floorId).toLowerCase();
+        const now = Date.now();
+        const cdDuration = 24 * 60 * 60 * 1000; // 24 Hours matching 2D Exonie
+        bossTimersMemory[floorId] = now + cdDuration;
+        io.emit('bossCooldownActive', { floorId: floorId, remaining: cdDuration });
+
+        if (supabase) {
+            try {
+                const { data: existing } = await supabase.from('boss_timers').select('boss_id').eq('boss_id', floorId).maybeSingle();
+                if (existing) {
+                    await supabase.from('boss_timers').update({ last_death_time: now }).eq('boss_id', floorId);
+                } else {
+                    await supabase.from('boss_timers').insert([{ boss_id: floorId, last_death_time: now }]);
+                }
+            } catch (e) {
+                console.error('[Supabase Boss Timer Save Error]:', e.message);
+            }
+        }
+    });
+
+    // ==========================================
+    // 🏛️ AUCTION HOUSE (AUTHENTIC 2D EXONIE ENGINE)
+    // ==========================================
+    socket.on('ah_search', async (query) => {
+        try {
+            if (supabase) {
+                let q = supabase.from('Auction_House').select('*').order('created_at', { ascending: false }).limit(50);
+                if (query && String(query).trim() !== '') {
+                    q = q.ilike('item_name', `%${String(query).trim()}%`);
+                }
+                const { data, error } = await q;
+                if (!error && data) {
+                    return socket.emit('ah_searchResults', data);
+                }
+            }
+
+            // In-memory fallback
+            let results = Object.values(memoryAuctions);
+            if (query && String(query).trim() !== '') {
+                const qLow = String(query).trim().toLowerCase();
+                results = results.filter(a => (a.item_name || '').toLowerCase().includes(qLow));
+            }
+            socket.emit('ah_searchResults', results);
+        } catch (e) {
+            console.error('AH Search Error:', e);
+            socket.emit('ah_searchResults', []);
+        }
+    });
+
+    socket.on('ah_getMyAuctions', async () => {
+        const p = onlinePlayers[socket.id];
+        if (!p) return;
+        try {
+            if (supabase) {
+                const { data, error } = await supabase.from('Auction_House').select('*').eq('seller_name', p.name).order('created_at', { ascending: false });
+                if (!error && data) {
+                    return socket.emit('ah_myAuctions', { count: data.length, auctions: data });
+                }
+            }
+            const myAucs = Object.values(memoryAuctions).filter(a => a.seller_name === p.name);
+            socket.emit('ah_myAuctions', { count: myAucs.length, auctions: myAucs });
+        } catch (e) {
+            console.error('AH Get My Error:', e);
+        }
+    });
+
+    socket.on('ah_list', async (data) => {
+        const p = onlinePlayers[socket.id];
+        if (!p || typeof data?.invIndex !== 'number' || !data?.price || data.price < 1) return;
+
+        try {
+            // Check active listing count (Max 5 items, matching 2D Exonie)
+            let currentCount = 0;
+            if (supabase) {
+                const { count } = await supabase.from('Auction_House').select('*', { count: 'exact', head: true }).eq('seller_name', p.name);
+                currentCount = count || 0;
+            } else {
+                currentCount = Object.values(memoryAuctions).filter(a => a.seller_name === p.name).length;
+            }
+
+            if (currentCount >= 5) {
+                return socket.emit('chatMessage', { id: 'System', text: '⚠️ You can only have 5 items listed on the Auction House at once.' });
+            }
+
+            const inv = Array.isArray(p.inventory) ? p.inventory : [];
+            let originalItem = inv[data.invIndex];
+            if (!originalItem) return socket.emit('chatMessage', { id: 'System', text: 'Item not found in your bag.' });
+
+            let auctionItem = JSON.parse(JSON.stringify(originalItem));
+            auctionItem.quantity = 1;
+
+            if (originalItem.quantity && originalItem.quantity > 1) {
+                originalItem.quantity -= 1;
+            } else {
+                inv[data.invIndex] = null;
+            }
+            p.inventory = inv;
+
+            const aucRecord = {
+                id: `auc_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+                seller_name: p.name,
+                item_name: auctionItem.name,
+                item_data: auctionItem,
+                price: Math.floor(data.price),
+                created_at: new Date().toISOString()
+            };
+
+            if (supabase) {
+                try {
+                    await supabase.from('Auction_House').insert([{
+                        seller_name: aucRecord.seller_name,
+                        item_name: aucRecord.item_name,
+                        item_data: aucRecord.item_data,
+                        price: aucRecord.price
+                    }]);
+                } catch (e) {
+                    memoryAuctions[aucRecord.id] = aucRecord;
+                }
+            } else {
+                memoryAuctions[aucRecord.id] = aucRecord;
+            }
+
+            socket.emit('syncInventory', p.inventory);
+            socket.emit('ah_listSuccess');
+        } catch (e) {
+            console.error('AH List Error:', e);
+        }
+    });
+
+    socket.on('ah_cancel', async (data) => {
+        const p = onlinePlayers[socket.id];
+        if (!p || !data?.auctionId) return;
+
+        try {
+            let auc = null;
+            if (supabase) {
+                const { data: dbAuc } = await supabase.from('Auction_House').select('*').eq('id', data.auctionId).maybeSingle();
+                auc = dbAuc;
+                if (auc) await supabase.from('Auction_House').delete().eq('id', data.auctionId);
+            }
+            if (!auc && memoryAuctions[data.auctionId]) {
+                auc = memoryAuctions[data.auctionId];
+                delete memoryAuctions[data.auctionId];
+            }
+            if (!auc) return;
+
+            // Return item to inventory
+            const inv = Array.isArray(p.inventory) ? p.inventory : Array(30).fill(null);
+            const emptySlot = inv.findIndex(i => i === null);
+            if (emptySlot !== -1) {
+                inv[emptySlot] = auc.item_data;
+                p.inventory = inv;
+                socket.emit('syncInventory', p.inventory);
+            }
+
+            if (supabase) {
+                const { data: refreshData } = await supabase.from('Auction_House').select('*').eq('seller_name', p.name).order('created_at', { ascending: false });
+                socket.emit('ah_myAuctions', { count: (refreshData || []).length, auctions: refreshData || [] });
+            } else {
+                const myAucs = Object.values(memoryAuctions).filter(a => a.seller_name === p.name);
+                socket.emit('ah_myAuctions', { count: myAucs.length, auctions: myAucs });
+            }
+        } catch (e) {
+            console.error('AH Cancel Error:', e);
+        }
+    });
+
+    socket.on('ah_buy', async (data) => {
+        const p = onlinePlayers[socket.id];
+        if (!p || !data?.auctionId) return;
+
+        try {
+            let auc = null;
+            if (supabase) {
+                const { data: dbAuc } = await supabase.from('Auction_House').select('*').eq('id', data.auctionId).maybeSingle();
+                auc = dbAuc;
+                if (auc) {
+                    const { error: delErr } = await supabase.from('Auction_House').delete().eq('id', auc.id);
+                    if (delErr) auc = null;
+                }
+            }
+            if (!auc && memoryAuctions[data.auctionId]) {
+                auc = memoryAuctions[data.auctionId];
+                delete memoryAuctions[data.auctionId];
+            }
+            if (!auc) return socket.emit('chatMessage', { id: 'System', text: 'This item has already been sold or cancelled.' });
+
+            if ((p.gold || 0) < auc.price) return socket.emit('chatMessage', { id: 'System', text: 'Not enough Gold to purchase.' });
+
+            const inv = Array.isArray(p.inventory) ? p.inventory : Array(30).fill(null);
+            const emptySlot = inv.findIndex(i => i === null);
+            if (emptySlot === -1) return socket.emit('chatMessage', { id: 'System', text: 'Your bag is full!' });
+
+            p.gold -= auc.price;
+            inv[emptySlot] = auc.item_data;
+            p.inventory = inv;
+
+            socket.emit('syncInventory', p.inventory);
+            socket.emit('purchaseSuccess', { newGold: p.gold, inventory: p.inventory });
+            socket.emit('chatMessage', { id: 'System', text: `Successfully purchased ${auc.item_name} for ${auc.price.toLocaleString()} Gold!` });
+
+            // Reward the seller
+            for (const sid in onlinePlayers) {
+                const sp = onlinePlayers[sid];
+                if (sp.name === auc.seller_name) {
+                    sp.gold = (sp.gold || 0) + auc.price;
+                    io.to(sid).emit('purchaseSuccess', { newGold: sp.gold, inventory: sp.inventory });
+                    io.to(sid).emit('chatMessage', { id: 'System', text: `Auction Sold: ${auc.item_name} for ${auc.price.toLocaleString()} Gold!` });
+                    break;
+                }
+            }
+
+            // Refresh browse listings
+            let freshList = [];
+            if (supabase) {
+                const { data: fresh } = await supabase.from('Auction_House').select('*').order('created_at', { ascending: false }).limit(50);
+                freshList = fresh || [];
+            } else {
+                freshList = Object.values(memoryAuctions);
+            }
+            io.emit('ah_searchResults', freshList);
+        } catch (e) {
+            console.error('AH Buy Error:', e);
+        }
     });
 
     socket.on('disconnect', () => {

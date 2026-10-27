@@ -714,27 +714,36 @@ export class CombatSystem {
         } else if (pClass === 'Tech Genius') {
             if (skillSlot === 1) {
                 // Gamma Shield (Lv.25, 100s CD): Shields party for 100% INT
-                player.shieldHp = intVal * 2;
+                player.shieldHp = Math.max(20, intVal);
+                player.maxShieldHp = player.shieldHp;
                 this.spawnFloatingDamage(player.pos, `🛡️ GAMMA SHIELD (+${player.shieldHp})`, false, true);
                 this.engine.spawnGroundShockwave(player.pos, 0x00e5ff, 5.0);
                 if (this.audio) this.audio.playSfx('lightning');
+                if (window.game && window.game.createPlayerShieldVFX) {
+                    window.game.createPlayerShieldVFX();
+                }
             } else {
-                // Golem Buster (Lv.50, 100s CD): Summons Golem Bot AoE blast + Taunt
+                // Golem Buster (Lv.50, 100s CD): Summons Golem Bot companion + Taunt + AoE blast
                 this.engine.addScreenshake(0.95);
                 this.engine.spawnGroundShockwave(player.pos, 0x18ffff, 8.5);
                 this.spawnFloatingDamage(player.pos, '🤖 GOLEM BUSTER (TAUNT)!', true, true);
                 if (this.audio) this.audio.playSfx('lightning');
 
-                // Provoke all monsters within 20 units
+                // Provoke all monsters within 22 units
                 if (monsters) {
                     for (const mob of monsters) {
-                        if (mob && mob.isAlive && player.pos.distanceTo(mob.group.position) <= 20) {
+                        if (mob && mob.isAlive && player.pos.distanceTo(mob.group.position) <= 22) {
                             if (mob.provoke) mob.provoke(player, 10.0);
                         }
                     }
                 }
 
                 this.damageMonstersInRadius(player, player.pos, 8.5, intVal * 4.5, monsters, onMonsterKilled);
+
+                // Spawn the actual 3D Golem Buster Minion!
+                if (window.game && window.game.spawnGolemBusterMinion) {
+                    window.game.spawnGolemBusterMinion();
+                }
             }
         }
     }
@@ -884,6 +893,88 @@ export class CombatSystem {
         return minion;
     }
 
+    spawnGolemBuster(player, intVal = 10, matk = 50) {
+        const group = new THREE.Group();
+        const scale = 1.15;
+
+        // Dark metallic chassis
+        const chassisMat = new THREE.MeshStandardMaterial({
+            color: 0x1e293b,
+            metalness: 0.85,
+            roughness: 0.35,
+            emissive: 0x0f172a
+        });
+        const glowMat = new THREE.MeshBasicMaterial({ color: 0x00e5ff });
+
+        // Heavy Torso
+        const torsoGeo = new THREE.BoxGeometry(0.85 * scale, 0.75 * scale, 0.55 * scale);
+        const torso = new THREE.Mesh(torsoGeo, chassisMat);
+        torso.position.y = 0.82 * scale;
+        torso.castShadow = true;
+        group.add(torso);
+
+        // Core Reactor Glow on chest
+        const reactorGeo = new THREE.CylinderGeometry(0.16 * scale, 0.16 * scale, 0.12 * scale, 16);
+        reactorGeo.rotateX(Math.PI / 2);
+        const reactor = new THREE.Mesh(reactorGeo, glowMat);
+        reactor.position.set(0, 0.82 * scale, 0.28 * scale);
+        group.add(reactor);
+
+        // Head with glowing cyan visor
+        const headGeo = new THREE.BoxGeometry(0.48 * scale, 0.35 * scale, 0.42 * scale);
+        const head = new THREE.Mesh(headGeo, chassisMat);
+        head.position.set(0, 1.30 * scale, 0.05 * scale);
+        group.add(head);
+
+        const visorGeo = new THREE.BoxGeometry(0.38 * scale, 0.10 * scale, 0.08 * scale);
+        const visor = new THREE.Mesh(visorGeo, glowMat);
+        visor.position.set(0, 1.30 * scale, 0.25 * scale);
+        group.add(visor);
+
+        // Heavy arms
+        const armGeo = new THREE.BoxGeometry(0.30 * scale, 0.80 * scale, 0.32 * scale);
+        const leftArm = new THREE.Mesh(armGeo, chassisMat);
+        leftArm.position.set(-0.62 * scale, 0.72 * scale, 0);
+        const rightArm = new THREE.Mesh(armGeo, chassisMat);
+        rightArm.position.set(0.62 * scale, 0.72 * scale, 0);
+        group.add(leftArm, rightArm);
+
+        // Heavy Legs
+        const legGeo = new THREE.BoxGeometry(0.32 * scale, 0.55 * scale, 0.36 * scale);
+        const leftLeg = new THREE.Mesh(legGeo, chassisMat);
+        leftLeg.position.set(-0.24 * scale, 0.28 * scale, 0);
+        const rightLeg = new THREE.Mesh(legGeo, chassisMat);
+        rightLeg.position.set(0.24 * scale, 0.28 * scale, 0);
+        group.add(leftLeg, rightLeg);
+
+        const angle = Math.random() * Math.PI * 2;
+        group.position.set(
+            player.pos.x + Math.sin(angle) * 2.2,
+            0,
+            player.pos.z + Math.cos(angle) * 2.2
+        );
+
+        this.engine.scene.add(group);
+        this.engine.spawnHitSparks(group.position, 0x00e5ff, 20);
+        this.engine.spawnGroundShockwave(group.position, 0x00e5ff, 4.0);
+
+        const minion = {
+            group: group,
+            isGolemBuster: true,
+            isBoss: true,
+            intVal: intVal,
+            matk: matk,
+            hp: intVal * 10,
+            maxHp: intVal * 10,
+            lifeTimer: 75.0,
+            attackCooldown: 0.6,
+            hopTime: 0
+        };
+
+        this.alliedMinions.push(minion);
+        return minion;
+    }
+
     updateAlliedMinions(delta, player, monsters, onMonsterKilled) {
         if (!this.alliedMinions || this.alliedMinions.length === 0) return;
 
@@ -901,7 +992,7 @@ export class CombatSystem {
             }
 
             let target = null;
-            let minDist = 14.0;
+            let minDist = 18.0;
             if (monsters && monsters.length > 0) {
                 for (const mob of monsters) {
                     if (!mob.isAlive) continue;
@@ -913,34 +1004,42 @@ export class CombatSystem {
                 }
             }
 
-            const hopY = Math.abs(Math.sin(m.hopTime)) * 0.42;
+            const hopY = m.isGolemBuster ? 0 : Math.abs(Math.sin(m.hopTime)) * 0.42;
 
             if (target) {
                 const dir = target.group.position.clone().sub(m.group.position);
                 dir.y = 0;
                 const dist = dir.length();
-                if (dist > 1.8) {
+                if (dist > 2.0) {
                     dir.normalize();
-                    m.group.position.add(dir.multiplyScalar(4.5 * delta));
+                    const walkSpeed = m.isGolemBuster ? 5.2 : 4.5;
+                    m.group.position.add(dir.multiplyScalar(walkSpeed * delta));
                     m.group.rotation.y = Math.atan2(dir.x, dir.z);
                 }
                 m.group.position.y = hopY;
 
-                if (dist <= 2.4 && m.attackCooldown <= 0) {
-                    m.attackCooldown = 1.1;
-                    const mult = m.isBoss ? 3.0 : 1.5;
-                    const rawDmg = Math.floor(m.intVal * mult);
-                    // Authoritative 2D summon damage formula: (player INT * mult) - monster defense
-                    const dmg = Math.max(1, rawDmg - (target.def || 0));
-                    target.takeDamage(dmg);
-
-                    // Slime / Boss Slime Provoke (Taunts monster to focus attack on summon)
-                    if (target.provoke && (!target.provokeTimer || target.provokeTimer <= 0)) {
-                        target.provoke(m, m.isBoss ? 8.0 : 4.0);
+                if (dist <= 2.8 && m.attackCooldown <= 0) {
+                    m.attackCooldown = m.isGolemBuster ? 1.5 : 1.1;
+                    let dmg = 0;
+                    if (m.isGolemBuster) {
+                        const rawDmg = Math.floor(m.matk || (m.intVal * 2.5));
+                        dmg = Math.max(1, rawDmg - (target.def || 0));
+                        target.takeDamage(dmg);
+                        if (target.provoke) target.provoke(m, 10.0);
+                        this.engine.spawnHitSparks(target.group.position, 0x00e5ff, 20);
+                        this.engine.spawnGroundShockwave(target.group.position, 0x00e5ff, 3.2);
+                        this.spawnFloatingDamage(target.group.position, `🤖 BUSTER SLAM: ${dmg}`, true, true);
+                    } else {
+                        const mult = m.isBoss ? 3.0 : 1.5;
+                        const rawDmg = Math.floor(m.intVal * mult);
+                        dmg = Math.max(1, rawDmg - (target.def || 0));
+                        target.takeDamage(dmg);
+                        if (target.provoke && (!target.provokeTimer || target.provokeTimer <= 0)) {
+                            target.provoke(m, m.isBoss ? 8.0 : 4.0);
+                        }
+                        this.engine.spawnHitSparks(target.group.position, m.isBoss ? 0xffd700 : 0x00e5ff, 14);
+                        this.spawnFloatingDamage(target.group.position, `💧 SLIME: ${dmg}`, m.isBoss);
                     }
-
-                    this.engine.spawnHitSparks(target.group.position, m.isBoss ? 0xffd700 : 0x00e5ff, 14);
-                    this.spawnFloatingDamage(target.group.position, `💥 SLIME: ${dmg}`, m.isBoss);
                     this.registerComboHit(1);
                     if (!target.isAlive && onMonsterKilled) {
                         onMonsterKilled(target);

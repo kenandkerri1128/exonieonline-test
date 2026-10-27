@@ -199,6 +199,24 @@ function rollRarity(isBoss = false) {
 // ============================================================================
 export function getItemSellPrice(item) {
     if (!item) return 0;
+    const name = String(item.name || '').trim();
+    if (name.includes('Huge Nugget') || name.includes('Huge Gold Nugget')) {
+        const qty = Math.max(1, Number(item.quantity) || 1);
+        return 500000 * qty;
+    }
+    if (name.includes('Big Gold Bar')) {
+        const qty = Math.max(1, Number(item.quantity) || 1);
+        return 250000 * qty;
+    }
+    if (name.includes('Normal Gold Bar')) {
+        const qty = Math.max(1, Number(item.quantity) || 1);
+        return 25000 * qty;
+    }
+    if (name.includes('Small Gold Bar')) {
+        const qty = Math.max(1, Number(item.quantity) || 1);
+        return 10000 * qty;
+    }
+
     let sellPrice = Number(item.sellPrice) || 0;
     if (!sellPrice) {
         const baseVal = (Number(item.level) || 1) * 2;
@@ -214,7 +232,7 @@ export function getItemSellPrice(item) {
         sellPrice = Math.floor(baseVal * multiplier);
     }
     const qty = Math.max(1, Math.min(999, Number(item.quantity) || 1));
-    return Math.min(500000, sellPrice * qty);
+    return sellPrice * qty;
 }
 
 // ==========================================
