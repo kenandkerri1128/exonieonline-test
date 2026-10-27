@@ -576,12 +576,6 @@ export class CombatSystem {
                 this.engine.spawnLevelUpVFX(player.pos);
                 if (this.audio) this.audio.playSfx('splash');
             }
-                player.isImmortal = true;
-                setTimeout(() => { player.isImmortal = false; }, 10000);
-                this.spawnFloatingDamage(player.pos, '🔥 IMMORTAL (10s)!', true, true);
-                this.engine.spawnLevelUpVFX(player.pos);
-                if (this.audio) this.audio.playSfx('splash');
-            }
         } else if (pClass === 'Healer') {
             // Boost Passive (Lv.25): Makes Heal 3x INT instead of 2x INT
             const mult = player.level >= 25 ? 3 : 2;
@@ -749,7 +743,7 @@ export class CombatSystem {
         for (const m of monsters) {
             if (!m.isAlive) continue;
             if (pos.distanceTo(m.group.position) <= radius) {
-                const finalDmg = Math.max(1, Math.floor(damage));
+                const finalDmg = Math.max(1, Math.floor(damage) - (m.def || 0));
                 m.takeDamage(finalDmg);
                 if (freeze) {
                     m.isFrozen = true;
@@ -771,7 +765,7 @@ export class CombatSystem {
 
             const dir = m.group.position.clone().sub(pos).normalize();
             if (forward.dot(dir) > 0.35) {
-                const finalDmg = Math.max(1, Math.floor(damage));
+                const finalDmg = Math.max(1, Math.floor(damage) - (m.def || 0));
                 m.takeDamage(finalDmg);
                 this.spawnFloatingDamage(m.group.position, finalDmg, true);
                 this.registerComboHit(1);

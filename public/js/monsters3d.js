@@ -892,8 +892,8 @@ export class Monster3D {
             this.mainMat.emissiveIntensity = 1.4;
         }
 
-        // Engage boss HUD when boss is attacked
-        if (window.game && this === window.game.floorBoss) {
+        // Engage boss HUD ONLY when boss is attacked
+        if (window.game && (this === window.game.floorBoss || this.type === 'floor_boss')) {
             window.game.bossEngaged = true;
         }
 

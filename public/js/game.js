@@ -198,6 +198,8 @@ export class GameApp {
             const previewCol = document.querySelector('.customizer-preview-col');
             if (!previewCol) return;
 
+            const existingCanvas = document.getElementById('char-preview-canvas') || previewCol.querySelector('canvas');
+
             const w = Math.max(300, previewCol.clientWidth || 360);
             const h = Math.max(360, previewCol.clientHeight || 480);
 
@@ -214,40 +216,58 @@ export class GameApp {
                 previewCamera.aspect = w / h;
                 previewCamera.updateProjectionMatrix();
                 previewRenderer.setSize(w, h);
-                if (!previewCol.contains(previewRenderer.domElement)) {
-                    previewCol.appendChild(previewRenderer.domElement);
-                }
                 return;
             }
 
             previewScene = new THREE.Scene();
-            previewScene.background = new THREE.Color(0x0a101d);
+            // Transparent background so glowing pedestal ring and radial backdrop show through
+            previewScene.background = null;
 
-            previewCamera = new THREE.PerspectiveCamera(38, w / h, 0.1, 100);
-            previewCamera.position.set(0, 1.15, 6.2);
-            previewCamera.lookAt(0, 1.05, 0);
+            previewCamera = new THREE.PerspectiveCamera(36, w / h, 0.1, 50);
+            previewCamera.position.set(0, 1.05, 3.4);
+            previewCamera.lookAt(0, 0.95, 0);
 
-            previewRenderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            previewRenderer = new THREE.WebGLRenderer({
+                canvas: existingCanvas,
+                antialias: true,
+                alpha: true
+            });
             previewRenderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
             previewRenderer.setSize(w, h);
             previewRenderer.toneMapping = THREE.ACESFilmicToneMapping;
-            previewRenderer.toneMappingExposure = 1.25;
+            previewRenderer.toneMappingExposure = 1.35;
             if (THREE.SRGBColorSpace) previewRenderer.outputColorSpace = THREE.SRGBColorSpace;
-            previewRenderer.domElement.id = 'char-preview-canvas';
-            previewCol.appendChild(previewRenderer.domElement);
 
-            const ambLight = new THREE.AmbientLight(0xffffff, 1.8);
+            // Pedestal platform disk under the avatar
+            const pedestalGeo = new THREE.CylinderGeometry(0.85, 0.95, 0.08, 32);
+            const pedestalMat = new THREE.MeshStandardMaterial({
+                color: 0x0f172a,
+                metalness: 0.85,
+                roughness: 0.25
+            });
+            const pedestalMesh = new THREE.Mesh(pedestalGeo, pedestalMat);
+            pedestalMesh.position.set(0, -0.04, 0);
+            previewScene.add(pedestalMesh);
+
+            const rimGeo = new THREE.TorusGeometry(0.90, 0.02, 12, 48);
+            rimGeo.rotateX(Math.PI / 2);
+            const rimMat = new THREE.MeshBasicMaterial({ color: 0x00e5ff });
+            const rimMesh = new THREE.Mesh(rimGeo, rimMat);
+            rimMesh.position.set(0, 0.005, 0);
+            previewScene.add(rimMesh);
+
+            const ambLight = new THREE.AmbientLight(0xffffff, 2.0);
             previewScene.add(ambLight);
 
-            const keyLight = new THREE.DirectionalLight(0xffffff, 2.2);
+            const keyLight = new THREE.DirectionalLight(0xffffff, 2.4);
             keyLight.position.set(2, 4, 3);
             previewScene.add(keyLight);
 
-            const fillLight = new THREE.DirectionalLight(0x00e5ff, 1.2);
+            const fillLight = new THREE.DirectionalLight(0x00e5ff, 1.4);
             fillLight.position.set(-2, 2, -2);
             previewScene.add(fillLight);
 
-            const backLight = new THREE.DirectionalLight(0xfffaed, 0.8);
+            const backLight = new THREE.DirectionalLight(0xfffaed, 0.9);
             backLight.position.set(0, 3, -3);
             previewScene.add(backLight);
 
@@ -276,16 +296,17 @@ export class GameApp {
                 if (isDraggingPreview && previewChar) {
                     const dx = clientX - lastPreviewX;
                     lastPreviewX = clientX;
-                    previewChar.group.rotation.y += dx * 0.012;
+                    previewChar.group.rotation.y += dx * 0.014;
                 }
             };
             const endDrag = () => { isDraggingPreview = false; };
 
-            previewRenderer.domElement.addEventListener('mousedown', (e) => startDrag(e.clientX));
+            const targetCanvas = previewRenderer.domElement;
+            targetCanvas.addEventListener('mousedown', (e) => startDrag(e.clientX));
             window.addEventListener('mouseup', endDrag);
             window.addEventListener('mousemove', (e) => moveDrag(e.clientX));
 
-            previewRenderer.domElement.addEventListener('touchstart', (e) => {
+            targetCanvas.addEventListener('touchstart', (e) => {
                 if (e.touches && e.touches[0]) startDrag(e.touches[0].clientX);
             }, { passive: true });
             window.addEventListener('touchend', endDrag);
@@ -332,6 +353,10 @@ export class GameApp {
         };
 
         window.updateCustomizerPreview = (charData) => {
+            if (!previewChar) {
+                if (window.initCustomizer3D) window.initCustomizer3D(charData);
+                return;
+            }
             const previewCol = document.querySelector('.customizer-preview-col');
             if (previewRenderer && previewCamera && previewCol && previewCol.clientWidth > 50 && previewCol.clientHeight > 50) {
                 const curW = previewCol.clientWidth;
@@ -340,7 +365,7 @@ export class GameApp {
                 previewCamera.updateProjectionMatrix();
                 previewRenderer.setSize(curW, curH);
             }
-            if (previewChar && charData) {
+            if (charData) {
                 previewChar.setCustomization({
                     gender: charData.gender || 'female',
                     hairStyle: charData.hairStyle || '1',
@@ -355,16 +380,16 @@ export class GameApp {
     initSocket() {
         try {
             if (typeof io !== 'undefined') {
-                // 🌐 Connect to Render Test Server (exonieonline-test) or Live
+                // 🌐 Connect to Render Test Server (exonieonline-test) or Localhost
                 let serverUrl = 'https://exonieonline-test.onrender.com';
                 if (typeof window !== 'undefined' && window.location) {
                     const host = window.location.hostname;
-                    if (host.includes('exonieonline-test') || host.includes('testexonie') || host.includes('test-exonie')) {
+                    if (host === 'localhost' || host === '127.0.0.1') {
+                        serverUrl = 'http://localhost:3003';
+                    } else if (host.includes('exonieonline-test') || host.includes('testexonie') || host.includes('test-exonie')) {
                         serverUrl = 'https://exonieonline-test.onrender.com';
                     } else if (host === 'exonieonline.onrender.com') {
                         serverUrl = 'https://exonieonline.onrender.com';
-                    } else if (window.USE_LOCAL_SOCKET) {
-                        serverUrl = 'http://localhost:3003';
                     }
                 }
                 console.log(`[Socket] Connecting to Exonie server at: ${serverUrl}`);
@@ -382,6 +407,9 @@ export class GameApp {
                 this.socket.on('connect', () => {
                     console.log(`[Socket] Connected to Exonie server at ${serverUrl} (Socket ID: ${this.socket.id})`);
                     this.appendChatLine('system', `📡 Connected to Exonie Server (${serverUrl})`);
+                    if (this.player && this.player.name) {
+                        this.sendEnterWorld();
+                    }
                 });
 
                 this.socket.on('disconnect', (reason) => {
@@ -510,6 +538,28 @@ export class GameApp {
             rp.char3D.update(delta, isMoving, 1.0);
             rp.char3D.updateOverheadUI(rp.name, rp.level, rp.hp, rp.maxHp, false);
         }
+    }
+
+    sendEnterWorld() {
+        if (!this.socket || !this.socket.connected) return;
+        this.socket.emit('enterWorld', {
+            email: this.player.email || window.ExonieFlow?.accountEmail || '',
+            slotIndex: this.player.slotIndex || 0,
+            character_name: this.player.name,
+            name: this.player.name,
+            gender: this.player.gender || 'female',
+            hairStyle: this.player.hairStyle || '1',
+            hairColor: this.player.hairColor || '#111111',
+            skinColor: this.player.skinColor || '#f5c6a5',
+            level: this.player.level || 1,
+            playerClass: this.player.baseStats?.playerClass || 'Novice',
+            hp: this.player.hp || 100,
+            maxHp: this.player.maxHp || 100,
+            x: this.player.pos ? this.player.pos.x : 0,
+            y: this.player.pos ? this.player.pos.y : 0,
+            z: this.player.pos ? this.player.pos.z : 0,
+            rotY: this.player.rotY || 0
+        });
     }
 
     setupChatSystem() {
@@ -657,33 +707,54 @@ export class GameApp {
 
         const isExisting = charData && charData.isNewCharacter === false;
         this.player.name = charData.name || 'Hero';
-        this.player.gender = charData.gender || 'female';
-        this.player.hairStyle = String(charData.hairStyle || '1');
+        this.player.gender = charData.gender === 'male' ? 'male' : 'female';
+        let rawStyle = String(charData.hairStyle !== undefined ? charData.hairStyle : '1').trim();
+        if (!['1', '2', '3', '4', '5'].includes(rawStyle)) rawStyle = '1';
+        this.player.hairStyle = rawStyle;
         this.player.hairColor = charData.hairColor || '#111111';
         this.player.skinColor = charData.skinColor || '#f5c6a5';
-        this.player.slotIndex = charData.slotIndex !== undefined ? charData.slotIndex : (window.ExonieFlow?.activeSlotIndex || 0);
+        this.player.slotIndex = charData.slotIndex !== undefined ? Number(charData.slotIndex) || 0 : (window.ExonieFlow?.activeSlotIndex || 0);
         this.player.email = charData.email || window.ExonieFlow?.accountEmail || '';
 
         if (isExisting) {
-            this.player.level = charData.level || 1;
-            this.player.exp = charData.exp || 0;
-            this.player.maxExp = charData.maxExp || getExpForNextLevel(this.player.level);
-            this.player.gold = charData.gold !== undefined ? charData.gold : 500;
-            this.player.baseStats = charData.baseStats
-                ? JSON.parse(JSON.stringify(charData.baseStats))
-                : JSON.parse(JSON.stringify(DEFAULT_BASE_STATS));
-            this.player.equips = charData.equips
-                ? JSON.parse(JSON.stringify(charData.equips))
-                : JSON.parse(JSON.stringify(STARTER_ITEMS.equips));
-            this.player.inventory = charData.inventory
-                ? JSON.parse(JSON.stringify(charData.inventory))
-                : JSON.parse(JSON.stringify(STARTER_ITEMS.inventory));
+            let baseStats = charData.baseStats || charData.base_stats;
+            if (typeof baseStats === 'string') {
+                try { baseStats = JSON.parse(baseStats); } catch(e) { baseStats = null; }
+            }
+            if (!baseStats || typeof baseStats !== 'object') {
+                baseStats = JSON.parse(JSON.stringify(DEFAULT_BASE_STATS));
+            }
+            this.player.baseStats = baseStats;
+
+            let equips = charData.equips;
+            if (typeof equips === 'string') {
+                try { equips = JSON.parse(equips); } catch(e) { equips = null; }
+            }
+            if (!equips || typeof equips !== 'object' || Array.isArray(equips)) {
+                equips = JSON.parse(JSON.stringify(STARTER_ITEMS.equips));
+            }
+            this.player.equips = equips;
+
+            let inventory = charData.inventory;
+            if (typeof inventory === 'string') {
+                try { inventory = JSON.parse(inventory); } catch(e) { inventory = null; }
+            }
+            if (!Array.isArray(inventory)) {
+                inventory = JSON.parse(JSON.stringify(STARTER_ITEMS.inventory));
+            }
+            this.player.inventory = inventory;
+
+            this.player.level = Number(charData.level) || Number(baseStats.level) || 1;
+            this.player.exp = Number(charData.exp) || 0;
+            this.player.maxExp = Number(charData.maxExp) || getExpForNextLevel(this.player.level) || 100;
+            this.player.gold = Number(charData.gold !== undefined ? charData.gold : (baseStats.gold !== undefined ? baseStats.gold : 500)) || 0;
+
             this.player.storage = Array.isArray(charData.storage) && charData.storage.length === 15
                 ? JSON.parse(JSON.stringify(charData.storage))
                 : Array(15).fill(null);
             this.player.dailyMission = charData.dailyMission || null;
-            this.player.tavernEntries = charData.tavernEntries !== undefined ? charData.tavernEntries : 5;
-            this.player.dungeonEntries = charData.dungeonEntries !== undefined ? charData.dungeonEntries : 7;
+            this.player.tavernEntries = charData.tavernEntries !== undefined ? Number(charData.tavernEntries) || 5 : 5;
+            this.player.dungeonEntries = charData.dungeonEntries !== undefined ? Number(charData.dungeonEntries) || 7 : 7;
         } else {
             this.player.level = 1;
             this.player.exp = 0;
@@ -697,6 +768,11 @@ export class GameApp {
             this.player.tavernEntries = 5;
             this.player.dungeonEntries = 7;
         }
+
+        if (!this.player.pos || Number.isNaN(this.player.pos.x) || Number.isNaN(this.player.pos.z)) {
+            this.player.pos = new THREE.Vector3(0, 0, 0);
+        }
+        this.player.speed = 6.8;
 
         this.recalculateStats();
         this.player.hp = this.player.maxHp;
@@ -1006,13 +1082,13 @@ export class GameApp {
     // STATS CALCULATION (EXACT 2D EXONIE RULES)
     // ==========================================
     recalculateStats() {
-        const base = this.player.baseStats;
-        const equips = this.player.equips;
+        const base = this.player.baseStats || DEFAULT_BASE_STATS;
+        const equips = this.player.equips || STARTER_ITEMS.equips;
 
-        let totalHp = base.hp;
-        let totalAtk = base.attack;
-        let totalMag = base.magic;
-        let totalDef = base.defense;
+        let totalHp = Number(base.hp) || 100;
+        let totalAtk = Number(base.attack) || 5;
+        let totalMag = Number(base.magic) || 5;
+        let totalDef = Number(base.defense) || 2;
         let bonusStr = 0;
         let bonusInt = 0;
 
@@ -1021,28 +1097,29 @@ export class GameApp {
             const eq = equips[slot];
             if (eq) {
                 if (eq.fixedStat) {
-                    if (eq.fixedStat.hp) totalHp += eq.fixedStat.hp;
-                    if (eq.fixedStat.defense) totalDef += eq.fixedStat.defense;
-                    if (eq.fixedStat.attack) totalAtk += eq.fixedStat.attack;
-                    if (eq.fixedStat.magic) totalMag += eq.fixedStat.magic;
+                    if (eq.fixedStat.hp) totalHp += Number(eq.fixedStat.hp) || 0;
+                    if (eq.fixedStat.defense) totalDef += Number(eq.fixedStat.defense) || 0;
+                    if (eq.fixedStat.attack) totalAtk += Number(eq.fixedStat.attack) || 0;
+                    if (eq.fixedStat.magic) totalMag += Number(eq.fixedStat.magic) || 0;
                 }
                 if (eq.randomStat) {
-                    if (eq.randomStat.hp) totalHp += eq.randomStat.hp;
-                    if (eq.randomStat.defense) totalDef += eq.randomStat.defense;
-                    if (eq.randomStat.attack) totalAtk += eq.randomStat.attack;
-                    if (eq.randomStat.magic) totalMag += eq.randomStat.magic;
-                    if (eq.randomStat.str) bonusStr += eq.randomStat.str;
-                    if (eq.randomStat.int) bonusInt += eq.randomStat.int;
+                    if (eq.randomStat.hp) totalHp += Number(eq.randomStat.hp) || 0;
+                    if (eq.randomStat.defense) totalDef += Number(eq.randomStat.defense) || 0;
+                    if (eq.randomStat.attack) totalAtk += Number(eq.randomStat.attack) || 0;
+                    if (eq.randomStat.magic) totalMag += Number(eq.randomStat.magic) || 0;
+                    if (eq.randomStat.str) bonusStr += Number(eq.randomStat.str) || 0;
+                    if (eq.randomStat.int) bonusInt += Number(eq.randomStat.int) || 0;
                 }
             }
         }
 
+        const pClass = base.playerClass;
         // Class specific 2D passives
-        if (base.playerClass === 'Berserker' && this.player.level >= 25) {
+        if (pClass === 'Berserker' && this.player.level >= 25) {
             // Bulk Up! (Lv.25): +25% Base DEF and HP
             totalHp = Math.floor(totalHp * 1.25);
             totalDef = Math.floor(totalDef * 1.25);
-        } else if (base.playerClass === 'Blademaster') {
+        } else if (pClass === 'Blademaster') {
             // Sharpen Up! (Lv.1): +25% Base Attack
             totalAtk = Math.floor(totalAtk * 1.25);
         }
@@ -1051,14 +1128,18 @@ export class GameApp {
             totalDef *= 3;
         }
 
-        this.player.maxHp = totalHp;
-        this.player.hp = Math.min(this.player.hp || totalHp, totalHp);
-        this.player.totalStr = base.str + bonusStr;
-        this.player.totalInt = base.int + bonusInt;
+        this.player.maxHp = Math.max(1, totalHp);
+        this.player.hp = Math.max(1, Math.min(Number(this.player.hp) || totalHp, totalHp));
+        this.player.totalStr = (Number(base.str) || 10) + bonusStr;
+        this.player.totalInt = (Number(base.int) || 10) + bonusInt;
         this.player.atk = totalAtk + Math.floor(this.player.totalStr / 2);
         this.player.mag = totalMag + Math.floor(this.player.totalInt / 2);
         this.player.def = totalDef;
         this.player.speed = 6.8;
+
+        if (!this.player.pos || Number.isNaN(this.player.pos.x) || Number.isNaN(this.player.pos.z)) {
+            this.player.pos = new THREE.Vector3(0, 0, 0);
+        }
 
         this.ui.updatePlayerHUD(this.player);
     }
@@ -1799,53 +1880,54 @@ export class GameApp {
     // Check if player stepped into any map teleport portal or interactive Town house doorway
     checkPortalCollision() {
         if (this.portalCooldown > 0 || this.isGhost) return;
+        if (this.ui && this.ui.isAnyModalOpen()) return;
 
         const triggeredPortal = this.world.checkPortalTrigger(this.player.pos.x, this.player.pos.z);
         if (triggeredPortal) {
             const tid = triggeredPortal.targetMapId;
             if (tid === 'marketplace') {
                 if (this.ui.marketplaceModal && this.ui.marketplaceModal.style.display === 'flex') return;
-                this.portalCooldown = 2.5;
+                this.portalCooldown = 4.0;
                 this.audio.playSfx('bump');
                 this.ui.toggleMarketplace();
                 return;
             }
             if (tid === 'storage') {
                 if (this.ui.storageModal && this.ui.storageModal.style.display === 'flex') return;
-                this.portalCooldown = 2.5;
+                this.portalCooldown = 4.0;
                 this.audio.playSfx('bump');
                 this.ui.openStorageUI();
                 return;
             }
             if (tid === 'daily_missions') {
                 if (this.ui.dailyMissionsModal && this.ui.dailyMissionsModal.style.display === 'flex') return;
-                this.portalCooldown = 2.5;
+                this.portalCooldown = 4.0;
                 this.audio.playSfx('bump');
                 this.ui.openDailyMissionsUI();
                 return;
             }
             if (tid === 'trainingtavern') {
                 if (this.ui.tavernModal && this.ui.tavernModal.style.display === 'flex') return;
-                this.portalCooldown = 2.5;
+                this.portalCooldown = 4.0;
                 this.audio.playSfx('bump');
                 this.ui.openTavernModal();
                 return;
             }
             if (tid === 'leaderboard') {
                 if (this.ui.leaderboardModal && this.ui.leaderboardModal.style.display === 'flex') return;
-                this.portalCooldown = 2.5;
+                this.portalCooldown = 4.0;
                 this.audio.playSfx('bump');
                 this.ui.openLeaderboardModal('floor');
                 return;
             }
             if (tid === 'maze_guide') {
-                this.portalCooldown = 2.5;
+                this.portalCooldown = 4.0;
                 this.audio.playSfx('bump');
                 this.ui.openMazeGuideModal();
                 return;
             }
             if (tid === 'dungeon1' || tid === 'dungeon2a') {
-                this.portalCooldown = 2.5;
+                this.portalCooldown = 4.0;
                 this.audio.playSfx('bump');
                 this.ui.openDungeonModal(tid, triggeredPortal.label);
                 return;
@@ -2271,7 +2353,13 @@ export class GameApp {
             }
         }
 
-        // 7. Update Systems
+        // 7. Update Systems & 15-Minute Day/Night Cycle Rotation
+        const isTown = this.currentMapId === 'town';
+        const dayNight = this.engine.updateDayNightCycle(delta, isTown);
+        if (this.ui && this.ui.updateDayNightIndicator) {
+            this.ui.updateDayNightIndicator(dayNight);
+        }
+
         this.world.update(delta, this.player.pos);
         this.combat.update(delta, this.player, this.monsters, (deadMob) => {
             this.onMonsterDefeated(deadMob);

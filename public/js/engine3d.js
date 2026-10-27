@@ -141,6 +141,99 @@ export class Engine3D {
         this.scene.add(this.rimLight);
     }
 
+    // ============================================================
+    // ☀️ DYNAMIC DAY / NIGHT CYCLE (15-Minute Morning & Night Shift)
+    // ============================================================
+    updateDayNightCycle(dt, isTown = true) {
+        if (!isTown) {
+            this.setEnvironmentTheme('dungeon');
+            return { isDay: false, label: 'Dungeon', tDay: 0 };
+        }
+
+        // 15 minutes morning/day (900s), 15 minutes night (900s) -> 1800s total period
+        // Synchronized with wall clock (Date.now())
+        const cycleSec = (Date.now() / 1000) % 1800;
+        
+        let tDay = 1.0;
+        let phaseLabel = '☀️ Morning';
+
+        if (cycleSec < 60) {
+            // Dawn: Night shifting into morning (0.0 -> 1.0)
+            tDay = cycleSec / 60;
+            phaseLabel = '🌅 Sunrise';
+        } else if (cycleSec < 780) {
+            // Full morning / day
+            tDay = 1.0;
+            phaseLabel = cycleSec < 420 ? '☀️ Morning' : '☀️ Day';
+        } else if (cycleSec < 900) {
+            // Sunset: Day shifting into night (1.0 -> 0.0)
+            tDay = 1 - ((cycleSec - 780) / 120);
+            phaseLabel = '🌇 Sunset';
+        } else if (cycleSec < 960) {
+            // Twilight into night
+            tDay = 0.0;
+            phaseLabel = '🌆 Twilight';
+        } else if (cycleSec < 1740) {
+            // Full night
+            tDay = 0.0;
+            phaseLabel = '🌙 Night';
+        } else {
+            // Pre-dawn transition (1740 -> 1800)
+            tDay = (cycleSec - 1740) / 60 * 0.25;
+            phaseLabel = '🌌 Pre-Dawn';
+        }
+
+        tDay = Math.max(0, Math.min(1, tDay));
+
+        // Background & Atmospheric Fog Colors
+        const daySky = new THREE.Color(0x192e47);
+        const sunsetSky = new THREE.Color(0x381822);
+        const nightSky = new THREE.Color(0x070b16);
+
+        let curSky = new THREE.Color();
+        if (tDay > 0.5) {
+            curSky.lerpColors(sunsetSky, daySky, (tDay - 0.5) * 2);
+        } else {
+            curSky.lerpColors(nightSky, sunsetSky, tDay * 2);
+        }
+
+        this.scene.background = curSky;
+        if (!this.scene.fog) {
+            this.scene.fog = new THREE.FogExp2(curSky, 0.0065);
+        } else {
+            this.scene.fog.color.copy(curSky);
+            this.scene.fog.density = 0.0055 + (1 - tDay) * 0.0025;
+        }
+
+        // Hemisphere Light (Sky & Ground Ambient)
+        const dayHemiSky = new THREE.Color(0xe0f2fe);
+        const nightHemiSky = new THREE.Color(0x25476a);
+        this.hemiLight.color.lerpColors(nightHemiSky, dayHemiSky, tDay);
+
+        const dayHemiGnd = new THREE.Color(0x1e293b);
+        const nightHemiGnd = new THREE.Color(0x060911);
+        this.hemiLight.groundColor.lerpColors(nightHemiGnd, dayHemiGnd, tDay);
+        this.hemiLight.intensity = 0.48 + tDay * 0.52;
+
+        // Directional Light: Sun (Golden Warm Sunlight) vs Moon (Pale Silvery Cyan Moonlight)
+        const dayDir = new THREE.Color(0xfff7ed);
+        const nightDir = new THREE.Color(0x93c5fd);
+        this.dirLight.color.lerpColors(nightDir, dayDir, tDay);
+        this.dirLight.intensity = 0.65 + tDay * 0.95;
+
+        // Rim light
+        const dayRim = new THREE.Color(0x38bdf8);
+        const nightRim = new THREE.Color(0x6366f1);
+        this.rimLight.color.lerpColors(nightRim, dayRim, tDay);
+        this.rimLight.intensity = 0.35 + tDay * 0.35;
+
+        return {
+            isDay: tDay >= 0.5,
+            label: phaseLabel,
+            tDay: tDay
+        };
+    }
+
     setEnvironmentTheme(themeName) {
         if (themeName === 'dungeon') {
             this.scene.background = new THREE.Color(0x090612);

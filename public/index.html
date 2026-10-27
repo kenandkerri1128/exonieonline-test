@@ -131,6 +131,7 @@
         <div class="customizer-container">
             <!-- 3D Avatar Preview Column (Static Facing Front + Manual Rotate Controls) -->
             <div class="customizer-preview-col">
+                <canvas id="char-preview-canvas"></canvas>
                 <div class="preview-glow-ring"></div>
                 <div class="preview-rotate-controls">
                     <button type="button" class="pill-btn" onclick="window.rotateCustomizerPreview && window.rotateCustomizerPreview(-0.45)">⟲ Turn Left</button>
@@ -277,6 +278,7 @@
         <div class="hud-top-center">
             <span class="floor-title">Town of Exonie</span>
             <span class="floor-subtitle">Safe Haven</span>
+            <div id="day-night-indicator" class="day-night-badge">☀️ Morning</div>
             <div id="tavern-timer-ui" style="display:none;">⏱️ 00:00.00</div>
         </div>
 

@@ -202,10 +202,20 @@ const onlinePlayers = {};
 
 // ==========================================
 // 🛡️ 3-SLOT MULTI-CHARACTER PARSER & SERIALIZER
-// Allows 1 account (Email) to store up to 3 isolated characters
-// in the same row in the Supabase 'Exonians' table, separated by '|'.
-// Weapons, stats, inventory, levels, etc. are segregated per slot.
+// Seamlessly bridges 2D Exonie (multi-row per email) AND 3D Remastered (pipe-separated)
+// Weapons, stats, inventory, levels, and gold are segregated per slot.
 // ==========================================
+
+function safeParseJson(raw, fallback) {
+    if (!raw) return fallback;
+    if (typeof raw === 'object') return raw;
+    try {
+        const parsed = JSON.parse(raw);
+        return (parsed && typeof parsed === 'object') ? parsed : fallback;
+    } catch (e) {
+        return fallback;
+    }
+}
 
 function parseSlotArray(fieldValue, defaultFactory) {
     if (fieldValue === null || fieldValue === undefined) {
@@ -240,6 +250,13 @@ function parseSlotArray(fieldValue, defaultFactory) {
 
     if (typeof fieldValue === 'string') {
         const str = fieldValue.trim();
+        if (str.startsWith('[') || str.startsWith('{')) {
+            try {
+                const parsed = JSON.parse(str);
+                return parseSlotArray(parsed, defaultFactory);
+            } catch (e) {}
+        }
+
         let delimiter = null;
         if (str.includes('|||')) delimiter = '|||';
         else if (str.includes(';;;')) delimiter = ';;;';
@@ -263,42 +280,95 @@ function parseSlotArray(fieldValue, defaultFactory) {
             return res;
         }
 
-        try {
-            const parsed = JSON.parse(str);
-            return parseSlotArray(parsed, defaultFactory);
-        } catch (e) {
-            return [str, defaultFactory(), defaultFactory()];
-        }
+        return [str, defaultFactory(), defaultFactory()];
     }
 
     return [defaultFactory(), defaultFactory(), defaultFactory()];
 }
 
+function convert2DRowToSlot(row, slotIndex = 0) {
+    if (!row) return null;
+    const charName = String(row.character_name || '').trim();
+    if (!charName || charName === 'none' || charName === 'null' || charName === 'undefined') return null;
+
+    let baseStats = safeParseJson(row.base_stats, null);
+    if (!baseStats || typeof baseStats !== 'object') {
+        baseStats = {
+            hp: 100, attack: 5, magic: 5, defense: 2, speed: 1, str: 10, int: 10,
+            playerClass: null, title: null, homeStorage: Array(15).fill(null),
+            tavernEntries: 5, dungeonEntries: 7
+        };
+    }
+
+    let equips = safeParseJson(row.equips, null);
+    if (!equips || typeof equips !== 'object' || Array.isArray(equips)) {
+        equips = getStarterItems().starterEquips;
+    }
+
+    let inventory = safeParseJson(row.inventory, null);
+    if (!Array.isArray(inventory)) {
+        inventory = getStarterItems().starterInventory;
+    }
+
+    // Hair style in 2D is integer 1 to 5
+    let rawStyle = String(row.hair_style !== undefined ? row.hair_style : '1').trim();
+    if (!['1', '2', '3', '4', '5'].includes(rawStyle)) rawStyle = '1';
+
+    // 2D Supabase has NO gender column; safely default to 'female'
+    const gender = String((row.gender && row.gender !== 'none') ? row.gender : (baseStats.gender || 'female')).trim();
+
+    const lvl = Number(row.level) || (baseStats.level ? Number(baseStats.level) : 1);
+    const gld = row.gold !== undefined ? Number(row.gold) : (baseStats.gold !== undefined ? Number(baseStats.gold) : 500);
+    const xp = Number(row.exp) || 0;
+
+    return {
+        slotIndex: slotIndex,
+        character_name: charName,
+        name: charName,
+        email: row.email || '',
+        skin_color: String(row.skin_color || '#f5c6a5').trim(),
+        skinColor: String(row.skin_color || '#f5c6a5').trim(),
+        hair_color: String(row.hair_color || '#111111').trim(),
+        hairColor: String(row.hair_color || '#111111').trim(),
+        hair_style: rawStyle,
+        hairStyle: rawStyle,
+        gender: gender,
+        level: lvl,
+        gold: gld,
+        exp: xp,
+        equips: equips,
+        inventory: inventory,
+        base_stats: baseStats,
+        baseStats: baseStats,
+        playerClass: baseStats.playerClass || null
+    };
+}
+
 function parseAccountSlots(userRow) {
     if (!userRow) return [null, null, null];
 
-    const rawNames = userRow.character_name || '';
+    const rawNames = String(userRow.character_name !== undefined ? userRow.character_name : '');
     const nameParts = rawNames.includes('|') ? rawNames.split('|') : [rawNames];
 
-    const rawSkins = userRow.skin_color || '';
+    const rawSkins = String(userRow.skin_color !== undefined ? userRow.skin_color : '');
     const skinParts = rawSkins.includes('|') ? rawSkins.split('|') : [rawSkins];
 
-    const rawHairs = userRow.hair_color || '';
+    const rawHairs = String(userRow.hair_color !== undefined ? userRow.hair_color : '');
     const hairParts = rawHairs.includes('|') ? rawHairs.split('|') : [rawHairs];
 
-    const rawStyles = userRow.hair_style || '';
+    const rawStyles = String(userRow.hair_style !== undefined ? userRow.hair_style : '1');
     const styleParts = rawStyles.includes('|') ? rawStyles.split('|') : [rawStyles];
 
-    const rawGenders = userRow.gender || '';
+    const rawGenders = String(userRow.gender !== undefined ? userRow.gender : 'female');
     const genderParts = rawGenders.includes('|') ? rawGenders.split('|') : [rawGenders];
 
-    const rawGolds = String(userRow.gold !== undefined ? userRow.gold : 500);
+    const rawGolds = String(userRow.gold !== undefined ? userRow.gold : '500');
     const goldParts = rawGolds.includes('|') ? rawGolds.split('|') : [rawGolds];
 
-    const rawLevels = String(userRow.level !== undefined ? userRow.level : 1);
+    const rawLevels = String(userRow.level !== undefined ? userRow.level : '1');
     const levelParts = rawLevels.includes('|') ? rawLevels.split('|') : [rawLevels];
 
-    const rawExps = String(userRow.exp !== undefined ? userRow.exp : 0);
+    const rawExps = String(userRow.exp !== undefined ? userRow.exp : '0');
     const expParts = rawExps.includes('|') ? rawExps.split('|') : [rawExps];
 
     const equipsSlots = parseSlotArray(userRow.equips, () => getStarterItems().starterEquips);
@@ -321,17 +391,20 @@ function parseAccountSlots(userRow) {
             const gld = (slotStats && slotStats.gold !== undefined) ? Number(slotStats.gold) : (Number(goldParts[i]) || Number(goldParts[0]) || 500);
             const xp = (slotStats && slotStats.exp !== undefined) ? Number(slotStats.exp) : (Number(expParts[i]) || Number(expParts[0]) || 0);
 
+            let styleStr = String(styleParts[i] || '1').trim();
+            if (!['1', '2', '3', '4', '5'].includes(styleStr)) styleStr = '1';
+
             slots[i] = {
                 slotIndex: i,
                 character_name: name,
                 name: name,
-                email: userRow.email,
+                email: userRow.email || '',
                 skin_color: skin || '#f5c6a5',
                 skinColor: skin || '#f5c6a5',
                 hair_color: (hairParts[i] || '#111111').trim(),
                 hairColor: (hairParts[i] || '#111111').trim(),
-                hair_style: String(styleParts[i] || '1').trim(),
-                hairStyle: String(styleParts[i] || '1').trim(),
+                hair_style: styleStr,
+                hairStyle: styleStr,
                 gender: (genderParts[i] || 'female').trim(),
                 level: lvl,
                 gold: gld,
@@ -346,6 +419,34 @@ function parseAccountSlots(userRow) {
     }
 
     return slots;
+}
+
+function parseRowsToSlots(dbRows) {
+    if (!dbRows) return [null, null, null];
+    const rows = Array.isArray(dbRows) ? dbRows : [dbRows];
+    if (rows.length === 0) return [null, null, null];
+
+    // Case 1: Multiple rows for this email (2D Exonie multi-row schema)
+    if (rows.length > 1) {
+        return [
+            convert2DRowToSlot(rows[0], 0),
+            convert2DRowToSlot(rows[1], 1),
+            rows[2] ? convert2DRowToSlot(rows[2], 2) : null
+        ];
+    }
+
+    // Case 2: Exactly 1 row returned
+    const singleRow = rows[0];
+    const rawNames = String(singleRow.character_name || '');
+    if (rawNames.includes('|')) {
+        return parseAccountSlots(singleRow);
+    }
+
+    return [
+        convert2DRowToSlot(singleRow, 0),
+        null,
+        null
+    ];
 }
 
 function serializeSlotsToRow(slots, existingRow = {}) {
@@ -380,7 +481,8 @@ function serializeSlotsToRow(slots, existingRow = {}) {
             const slotStats = Object.assign({}, c.base_stats || c.baseStats || { hp: 100, str: 10, int: 10, playerClass: null }, {
                 level: lvl,
                 gold: gld,
-                exp: xp
+                exp: xp,
+                gender: c.gender || 'female'
             });
             statsArr.push(slotStats);
         } else {
@@ -403,7 +505,6 @@ function serializeSlotsToRow(slots, existingRow = {}) {
         skin_color: skins.join('|'),
         hair_color: hairs.join('|'),
         hair_style: styles.join('|'),
-        gender: genders.join('|'),
         level: Number(levels[0]) || 1,
         gold: Number(golds[0]) || 500,
         exp: Number(exps[0]) || 0,
@@ -419,6 +520,11 @@ function serializeSlotsToRow(slots, existingRow = {}) {
 io.on('connection', (socket) => {
     console.log(`[Socket] Connection established: ${socket.id}`);
 
+    // Chat rate limiting tracking per socket
+    socket._lastWorldChatTime = 0;
+    socket._worldChatCount = 0;
+    socket._worldChatWindowStart = 0;
+
     // 1. LOGIN BY EMAIL & PASSWORD
     socket.on('login', async (data) => {
         try {
@@ -431,7 +537,7 @@ io.on('connection', (socket) => {
 
             console.log(`[LOGIN ATTEMPT] Authenticating: ${emailInput}`);
 
-            let userRow = null;
+            let matchedRows = [];
             if (supabase) {
                 let query = supabase.from('Exonians').select('*').eq('password', password);
                 if (emailInput.includes('@')) {
@@ -440,23 +546,26 @@ io.on('connection', (socket) => {
                     query = query.or(`email.ilike.${emailInput},character_name.ilike.%${emailInput}%`);
                 }
 
-                const { data: dbUser, error: dbErr } = await query.maybeSingle();
+                const { data: dbRows, error: dbErr } = await query;
                 if (dbErr) {
                     console.error(`[LOGIN DB ERROR] ${emailInput}:`, dbErr.message);
                     return socket.emit('authError', 'Database error during login. Please try again.');
                 }
-                userRow = dbUser;
+                matchedRows = dbRows || [];
             } else {
-                userRow = memoryDb.users[emailInput.toLowerCase()];
-                if (userRow && userRow.password !== password) userRow = null;
+                const mem = memoryDb.users[emailInput.toLowerCase()];
+                if (mem && mem.password === password) {
+                    matchedRows = [mem];
+                }
             }
 
-            if (!userRow) {
+            if (!matchedRows || matchedRows.length === 0) {
                 return socket.emit('authError', 'Invalid Email or Password.');
             }
 
-            const characterSlots = parseAccountSlots(userRow);
-            const userEmail = userRow.email || (emailInput.includes('@') ? emailInput : `${userRow.character_name || 'user'}@exonie.com`);
+            const characterSlots = parseRowsToSlots(matchedRows);
+            const primaryRow = matchedRows[0];
+            const userEmail = primaryRow.email || (emailInput.includes('@') ? emailInput : `${primaryRow.character_name || 'user'}@exonie.com`);
 
             socket.email = userEmail;
             socket.accountEmail = userEmail;
@@ -500,13 +609,12 @@ io.on('connection', (socket) => {
             const clientIp = socket.handshake.headers['x-forwarded-for']?.split(',')[0] || socket.handshake.address;
 
             if (supabase) {
-                const { data: existing } = await supabase
+                const { data: existingRows } = await supabase
                     .from('Exonians')
                     .select('email')
-                    .ilike('email', email)
-                    .maybeSingle();
+                    .ilike('email', email);
 
-                if (existing) {
+                if (existingRows && existingRows.length > 0) {
                     return socket.emit('authError', 'An account with this Email already exists!');
                 }
 
@@ -560,13 +668,13 @@ io.on('connection', (socket) => {
                 } else {
                     query = query.or(`email.ilike.${userEmail},character_name.ilike.%${userEmail}%`);
                 }
-                const { data: userRow } = await query.maybeSingle();
-                if (userRow) {
-                    slots = parseAccountSlots(userRow);
+                const { data: dbRows } = await query;
+                if (dbRows && dbRows.length > 0) {
+                    slots = parseRowsToSlots(dbRows);
                 }
             } else {
                 const mem = memoryDb.users[userEmail.toLowerCase()];
-                if (mem) slots = parseAccountSlots(mem);
+                if (mem) slots = parseRowsToSlots([mem]);
             }
             socket.emit('accountCharacters', slots);
         } catch (e) {
@@ -584,19 +692,20 @@ io.on('connection', (socket) => {
 
             console.log(`[CREATE CHAR] Email: ${userEmail}, Char: ${charName}, Slot: ${slotIdx}`);
 
-            let userRow = null;
+            let dbRows = [];
             if (supabase) {
-                const { data: fetched } = await supabase.from('Exonians').select('*').ilike('email', userEmail).maybeSingle();
-                userRow = fetched;
+                const { data: fetched } = await supabase.from('Exonians').select('*').ilike('email', userEmail);
+                dbRows = fetched || [];
             } else {
-                userRow = memoryDb.users[userEmail.toLowerCase()];
+                const mem = memoryDb.users[userEmail.toLowerCase()];
+                if (mem) dbRows = [mem];
             }
 
-            if (!userRow) {
+            if (!dbRows || dbRows.length === 0) {
                 return socket.emit('authError', 'Account record not found.');
             }
 
-            const slots = parseAccountSlots(userRow);
+            const slots = parseRowsToSlots(dbRows);
 
             const { starterEquips, starterInventory } = getStarterItems();
             const defaultBaseStats = {
@@ -605,6 +714,9 @@ io.on('connection', (socket) => {
                 title: null, homeStorage: Array(15).fill(null),
                 tavernEntries: 5, dungeonEntries: 7
             };
+
+            let safeStyle = String(charData.hairStyle || '1').trim();
+            if (!['1', '2', '3', '4', '5'].includes(safeStyle)) safeStyle = '1';
 
             const newChar = {
                 slotIndex: slotIdx,
@@ -615,8 +727,8 @@ io.on('connection', (socket) => {
                 skinColor: charData.skinColor || '#f5c6a5',
                 hair_color: charData.hairColor || '#111111',
                 hairColor: charData.hairColor || '#111111',
-                hair_style: String(charData.hairStyle || '1'),
-                hairStyle: String(charData.hairStyle || '1'),
+                hair_style: safeStyle,
+                hairStyle: safeStyle,
                 gender: charData.gender || 'female',
                 equips: starterEquips,
                 inventory: starterInventory,
@@ -630,19 +742,47 @@ io.on('connection', (socket) => {
 
             slots[slotIdx] = newChar;
 
-            const updatePayload = serializeSlotsToRow(slots, userRow);
-
+            // Handle multi-row vs single-row persistence
             if (supabase) {
-                const { error: upErr } = await supabase
-                    .from('Exonians')
-                    .update(updatePayload)
-                    .ilike('email', userEmail);
-
-                if (upErr) {
-                    console.error('[CREATE CHAR DB ERROR]', upErr.message);
-                    return socket.emit('authError', `Failed to save character: ${upErr.message}`);
+                if (dbRows.length > 1) {
+                    // 2D multi-row schema: update existing slot row if present, else insert new row
+                    if (dbRows[slotIdx]) {
+                        await supabase.from('Exonians').update({
+                            character_name: charName,
+                            skin_color: newChar.skinColor,
+                            hair_color: newChar.hairColor,
+                            hair_style: parseInt(safeStyle, 10) || 1,
+                            base_stats: defaultBaseStats,
+                            equips: starterEquips,
+                            inventory: starterInventory,
+                            gold: 500,
+                            level: 1,
+                            exp: 0
+                        }).eq('character_name', dbRows[slotIdx].character_name);
+                    } else {
+                        await supabase.from('Exonians').insert([{
+                            email: userEmail,
+                            password: dbRows[0].password,
+                            character_name: charName,
+                            skin_color: newChar.skinColor,
+                            hair_color: newChar.hairColor,
+                            hair_style: parseInt(safeStyle, 10) || 1,
+                            base_stats: defaultBaseStats,
+                            equips: starterEquips,
+                            inventory: starterInventory,
+                            gold: 500,
+                            level: 1,
+                            exp: 0,
+                            email_verified: true
+                        }]);
+                    }
+                } else {
+                    // Single row: serialize using 3D multi-character pipe format
+                    const updatePayload = serializeSlotsToRow(slots, dbRows[0]);
+                    await supabase.from('Exonians').update(updatePayload).ilike('email', userEmail);
                 }
             } else {
+                const updatePayload = serializeSlotsToRow(slots, dbRows[0]);
                 Object.assign(memoryDb.users[userEmail.toLowerCase()], updatePayload);
             }
 
@@ -663,24 +803,30 @@ io.on('connection', (socket) => {
 
             if (!userEmail) return;
 
-            let userRow = null;
+            let dbRows = [];
             if (supabase) {
-                const { data: fetched } = await supabase.from('Exonians').select('*').ilike('email', userEmail).maybeSingle();
-                userRow = fetched;
+                const { data: fetched } = await supabase.from('Exonians').select('*').ilike('email', userEmail);
+                dbRows = fetched || [];
             } else {
-                userRow = memoryDb.users[userEmail.toLowerCase()];
+                const mem = memoryDb.users[userEmail.toLowerCase()];
+                if (mem) dbRows = [mem];
             }
 
-            if (!userRow) return;
+            if (!dbRows || dbRows.length === 0) return;
 
-            const slots = parseAccountSlots(userRow);
+            const slots = parseRowsToSlots(dbRows);
             slots[slotIdx] = null;
 
-            const updatePayload = serializeSlotsToRow(slots, userRow);
-
             if (supabase) {
-                await supabase.from('Exonians').update(updatePayload).ilike('email', userEmail);
+                if (dbRows.length > 1 && dbRows[slotIdx]) {
+                    // In 2D multi-row, delete the specific row
+                    await supabase.from('Exonians').delete().eq('character_name', dbRows[slotIdx].character_name);
+                } else {
+                    const updatePayload = serializeSlotsToRow(slots, dbRows[0]);
+                    await supabase.from('Exonians').update(updatePayload).ilike('email', userEmail);
+                }
             } else {
+                const updatePayload = serializeSlotsToRow(slots, dbRows[0]);
                 Object.assign(memoryDb.users[userEmail.toLowerCase()], updatePayload);
             }
 
@@ -702,20 +848,24 @@ io.on('connection', (socket) => {
 
             if (!userEmail) return;
 
-            let userRow = null;
+            let dbRows = [];
             if (supabase) {
-                const { data: fetched } = await supabase.from('Exonians').select('*').ilike('email', userEmail).maybeSingle();
-                userRow = fetched;
+                const { data: fetched } = await supabase.from('Exonians').select('*').ilike('email', userEmail);
+                dbRows = fetched || [];
             } else {
-                userRow = memoryDb.users[userEmail.toLowerCase()];
+                const mem = memoryDb.users[userEmail.toLowerCase()];
+                if (mem) dbRows = [mem];
             }
 
-            if (!userRow) return;
+            if (!dbRows || dbRows.length === 0) return;
 
-            const slots = parseAccountSlots(userRow);
+            const slots = parseRowsToSlots(dbRows);
             if (!slots[slotIdx]) {
                 slots[slotIdx] = {};
             }
+
+            let safeStyle = String(charState.hairStyle || slots[slotIdx].hair_style || '1').trim();
+            if (!['1', '2', '3', '4', '5'].includes(safeStyle)) safeStyle = '1';
 
             Object.assign(slots[slotIdx], {
                 name: charState.name || slots[slotIdx].name,
@@ -728,14 +878,32 @@ io.on('connection', (socket) => {
                 base_stats: charState.baseStats || charState.base_stats || slots[slotIdx].base_stats,
                 skin_color: charState.skinColor || slots[slotIdx].skin_color,
                 hair_color: charState.hairColor || slots[slotIdx].hair_color,
-                hair_style: charState.hairStyle || slots[slotIdx].hair_style
+                hair_style: safeStyle
             });
 
-            const updatePayload = serializeSlotsToRow(slots, userRow);
-
             if (supabase) {
-                await supabase.from('Exonians').update(updatePayload).ilike('email', userEmail);
+                if (dbRows.length > 1) {
+                    const rowToUpdate = dbRows[slotIdx] || dbRows.find(r => r.character_name === slots[slotIdx].name);
+                    if (rowToUpdate) {
+                        await supabase.from('Exonians').update({
+                            character_name: slots[slotIdx].name,
+                            level: slots[slotIdx].level,
+                            exp: slots[slotIdx].exp,
+                            gold: slots[slotIdx].gold,
+                            equips: slots[slotIdx].equips,
+                            inventory: slots[slotIdx].inventory,
+                            base_stats: slots[slotIdx].base_stats,
+                            skin_color: slots[slotIdx].skin_color,
+                            hair_color: slots[slotIdx].hair_color,
+                            hair_style: parseInt(safeStyle, 10) || 1
+                        }).eq('character_name', rowToUpdate.character_name);
+                    }
+                } else {
+                    const updatePayload = serializeSlotsToRow(slots, dbRows[0]);
+                    await supabase.from('Exonians').update(updatePayload).ilike('email', userEmail);
+                }
             } else {
+                const updatePayload = serializeSlotsToRow(slots, dbRows[0]);
                 Object.assign(memoryDb.users[userEmail.toLowerCase()], updatePayload);
             }
 
@@ -753,18 +921,17 @@ io.on('connection', (socket) => {
             let slotData = null;
 
             if (supabase && userEmail) {
-                const { data: fresh } = await supabase
+                const { data: dbRows } = await supabase
                     .from('Exonians')
                     .select('*')
-                    .ilike('email', userEmail)
-                    .maybeSingle();
-                if (fresh) {
-                    const slots = parseAccountSlots(fresh);
-                    slotData = slots[slotIdx];
+                    .ilike('email', userEmail);
+                if (dbRows && dbRows.length > 0) {
+                    const slots = parseRowsToSlots(dbRows);
+                    slotData = slots[slotIdx] || slots.find(s => s && s.name === charName) || slots[0];
                 }
             } else if (userEmail && memoryDb.users[userEmail.toLowerCase()]) {
-                const slots = parseAccountSlots(memoryDb.users[userEmail.toLowerCase()]);
-                slotData = slots[slotIdx];
+                const slots = parseRowsToSlots([memoryDb.users[userEmail.toLowerCase()]]);
+                slotData = slots[slotIdx] || slots[0];
             }
 
             const pData = slotData || data || {};
@@ -783,7 +950,7 @@ io.on('connection', (socket) => {
                 className: (pData.base_stats && pData.base_stats.playerClass) || pData.playerClass || 'Novice',
                 level: pData.level || 1,
                 exp: pData.exp || 0,
-                gold: pData.gold || 500,
+                gold: pData.gold !== undefined ? pData.gold : 500,
                 equips: pData.equips || {},
                 inventory: pData.inventory || [],
                 baseStats: pData.base_stats || pData.baseStats || {},
@@ -836,11 +1003,35 @@ io.on('connection', (socket) => {
     });
 
     socket.on('chatMessage', (data) => {
-        io.emit('chatMessage', data);
+        socket.broadcast.emit('chatMessage', data);
     });
 
+    // 2D Exonie World Chat with Anti-Spam Limitation & Zero Double-Send
     socket.on('worldChatMessage', (data) => {
-        io.emit('worldChatMessage', data);
+        if (!data || !data.text) return;
+        const now = Date.now();
+
+        // 3-second cooldown
+        if (socket._lastWorldChatTime && (now - socket._lastWorldChatTime) < 3000) {
+            return socket.emit('chatMessage', { id: 'System', text: '⚠️ World Chat has a 3-second cooldown between messages.' });
+        }
+        socket._lastWorldChatTime = now;
+
+        // 10 messages per minute quota
+        if (!socket._worldChatWindowStart || (now - socket._worldChatWindowStart) > 60000) {
+            socket._worldChatWindowStart = now;
+            socket._worldChatCount = 0;
+        }
+        socket._worldChatCount = (socket._worldChatCount || 0) + 1;
+        if (socket._worldChatCount > 10) {
+            return socket.emit('chatMessage', { id: 'System', text: '⚠️ World Chat limit reached (10 msgs/min). Please wait.' });
+        }
+
+        const safeText = String(data.text).slice(0, 120);
+        const name = (onlinePlayers[socket.id] && onlinePlayers[socket.id].name) || data.id || 'Hero';
+
+        // Broadcast to all other sockets without double-sending to sender
+        socket.broadcast.emit('worldChatMessage', { id: name, text: safeText });
     });
 
     socket.on('disconnect', () => {

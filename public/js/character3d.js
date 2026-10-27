@@ -5,6 +5,39 @@
 // ============================================================================
 import * as THREE from 'three';
 
+// 🎨 Authentic 2D Exonie Named Color Mappings (flesh, tan, blonde, etc.)
+export const SKIN_COLOR_MAP = {
+    'flesh': '#f5c6a5',
+    'yellow': '#ffe0b2',
+    'green': '#a5d6a7',
+    'blue': '#90caf9',
+    'white': '#eceff1',
+    'tan': '#d7ccc8',
+    'pale': '#e0e0e0',
+    'bronze': '#8d6e63'
+};
+
+export const HAIR_COLOR_MAP = {
+    'black': '#111111',
+    'blonde': '#fbc02d',
+    'brown': '#5d4037',
+    'blue': '#0288d1',
+    'white': '#eceff1',
+    'red': '#d32f2f',
+    'green': '#388e3c',
+    'purple': '#7b1fa2'
+};
+
+export function safeColorHex(val, fallback = '#f5c6a5') {
+    if (!val) return fallback;
+    const str = String(val).trim().toLowerCase();
+    if (SKIN_COLOR_MAP[str]) return SKIN_COLOR_MAP[str];
+    if (HAIR_COLOR_MAP[str]) return HAIR_COLOR_MAP[str];
+    if (/^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(str)) return str;
+    if (typeof val === 'number') return val;
+    return fallback;
+}
+
 export const RARITY_COLORS = {
     Starter:   0x9e9e9e,
     Basic:     0xffffff,
@@ -146,11 +179,13 @@ function easeOut(t) { return 1 - (1 - t) * (1 - t); }
 export class Character3D {
     constructor(options = {}) {
         this.name = options.name || 'Hero';
-        this.gender = options.gender || 'female';
-        this.hairStyle = String(options.hairStyle || '1');
-        this.hairColor = options.hairColor || '#111111';
-        this.skinColor = options.skinColor || '#f5c6a5';
-        this.eyeColor = options.eyeColor || '#00e5ff';
+        this.gender = options.gender === 'male' ? 'male' : 'female';
+        let rawStyle = String(options.hairStyle !== undefined ? options.hairStyle : '1').trim();
+        if (!['1', '2', '3', '4', '5'].includes(rawStyle)) rawStyle = '1';
+        this.hairStyle = rawStyle;
+        this.hairColor = safeColorHex(options.hairColor, '#111111');
+        this.skinColor = safeColorHex(options.skinColor, '#f5c6a5');
+        this.eyeColor = safeColorHex(options.eyeColor, '#00e5ff');
         this.jobClass = options.jobClass || options.className || 'None';
         this.weaponType = options.weaponType || (options.weapon ? options.weapon.weaponType : null);
         this.weaponRarity = options.weaponRarity || (options.weapon ? options.weapon.rarity : 'Starter');
@@ -173,15 +208,20 @@ export class Character3D {
         this.isGrounded = true;
         this.landTimer = 0;
 
-        this.buildMesh();
         this.ensureOverheadUI();
+        this.buildMesh();
         if (this.weaponType) {
             this.setWeapon(this.weaponType, this.weaponRarity);
         }
     }
 
     ensureOverheadUI() {
-        if (this.overheadGroup) return;
+        if (this.overheadGroup) {
+            if (!this.group.children.includes(this.overheadGroup)) {
+                this.group.add(this.overheadGroup);
+            }
+            return;
+        }
         this.overheadGroup = new THREE.Group();
         this.group.add(this.overheadGroup);
 
@@ -255,33 +295,19 @@ export class Character3D {
         return this.state === 'dodge';
     }
 
-    applyCombatReadyPose() {
-        const p = this.parts;
-        if (!p || !p.hips) return;
-        p.hips.position.y = 1.05;
-        p.hips.position.z = 0;
-        p.hips.rotation.set(0, 0, 0);
-        if (p.torso) p.torso.rotation.set(0.08, -0.20, 0);
-        if (p.head) p.head.rotation.set(-0.03, 0.14, 0);
-        if (p.lShoulder) p.lShoulder.rotation.set(-0.36, 0.22, 0.28);
-        if (p.rShoulder) p.rShoulder.rotation.set(-0.32, -0.28, -0.36);
-        if (p.lElbow) p.lElbow.rotation.set(-0.72, 0, 0);
-        if (p.rElbow) p.rElbow.rotation.set(-0.65, 0, 0);
-        if (p.lHip) p.lHip.rotation.set(-0.08, 0, 0);
-        if (p.rHip) p.rHip.rotation.set(0.10, 0, 0);
-        if (p.lKnee) p.lKnee.rotation.set(0.16, 0, 0);
-        if (p.rKnee) p.rKnee.rotation.set(0.18, 0, 0);
-    }
-
     setEquipVisuals(opts = {}) {
         this.setCustomization(opts);
     }
 
     setCustomization(opts = {}) {
-        if (opts.gender !== undefined) this.gender = opts.gender;
-        if (opts.hairStyle !== undefined) this.hairStyle = String(opts.hairStyle);
-        if (opts.hairColor !== undefined) this.hairColor = opts.hairColor;
-        if (opts.skinColor !== undefined) this.skinColor = opts.skinColor;
+        if (opts.gender !== undefined) this.gender = opts.gender === 'male' ? 'male' : 'female';
+        if (opts.hairStyle !== undefined) {
+            let hs = String(opts.hairStyle).trim();
+            if (!['1', '2', '3', '4', '5'].includes(hs)) hs = '1';
+            this.hairStyle = hs;
+        }
+        if (opts.hairColor !== undefined) this.hairColor = safeColorHex(opts.hairColor, '#111111');
+        if (opts.skinColor !== undefined) this.skinColor = safeColorHex(opts.skinColor, '#f5c6a5');
         if (opts.className !== undefined) this.jobClass = opts.className;
         if (opts.jobClass !== undefined) this.jobClass = opts.jobClass;
         if (opts.weaponRarity !== undefined) this.weaponRarity = opts.weaponRarity;
@@ -306,8 +332,12 @@ export class Character3D {
     }
 
     buildMesh() {
+        const savedOverhead = this.overheadGroup;
         while (this.group.children.length > 0) {
             this.group.remove(this.group.children[0]);
+        }
+        if (savedOverhead) {
+            this.group.add(savedOverhead);
         }
         this.parts = {};
         this.droneGroup = null;
@@ -317,13 +347,16 @@ export class Character3D {
         const armorTheme = EQUIPMENT_RARITY_THEMES[this.armorRarity] || EQUIPMENT_RARITY_THEMES['Starter'];
         const leggingsTheme = EQUIPMENT_RARITY_THEMES[this.leggingsRarity] || EQUIPMENT_RARITY_THEMES['Starter'];
 
+        const skinHex = safeColorHex(this.skinColor, '#f5c6a5');
+        const hairHex = safeColorHex(this.hairColor, '#111111');
+
         const skinMat = new THREE.MeshStandardMaterial({
-            color: new THREE.Color(this.skinColor),
+            color: new THREE.Color(skinHex),
             roughness: 0.52,
             metalness: 0.05
         });
         const hairMat = new THREE.MeshStandardMaterial({
-            color: new THREE.Color(this.hairColor),
+            color: new THREE.Color(hairHex),
             roughness: 0.32,
             metalness: 0.22
         });
@@ -1230,6 +1263,7 @@ export class Character3D {
     // PROCEDURAL ANIMATION TRIGGERS & CIRCUIT SIEGE STATE MACHINE
     // ========================================================================
     triggerAttack(comboStep = 1, weaponType = null) {
+        if (this.state === 'dodge') return; // 🛡️ Prevent attack during dodge roll!
         this.state = 'attack';
         this.attackProgress = 0;
         this.attackComboStep = Math.max(0, (comboStep || 1) - 1);
@@ -1237,6 +1271,7 @@ export class Character3D {
     }
 
     triggerSkillCast(colorHex = 0x00e5ff) {
+        if (this.state === 'dodge') return; // 🛡️ Prevent skills during dodge roll!
         this.state = 'skill';
         this.skillCastTimer = 0.55;
         if (this.auraLight) {
@@ -1257,6 +1292,9 @@ export class Character3D {
     triggerDodge() {
         this.state = 'dodge';
         this.dodgeTimer = 0.36;
+        if (this.parts && this.parts.hips) {
+            this.parts.hips.rotation.set(0, 0, 0);
+        }
     }
 
     update(dt, isMoving = false) {
@@ -1326,8 +1364,10 @@ export class Character3D {
             p.lKnee.rotation.x = 1.1;
             p.rKnee.rotation.x = 1.1;
             if (this.dodgeTimer <= 0) {
-                p.hips.rotation.x = 0;
+                p.hips.rotation.set(0, 0, 0);
                 p.hips.position.y = 1.05;
+                p.lKnee.rotation.x = 0;
+                p.rKnee.rotation.x = 0;
                 this.state = 'idle';
             }
             return;

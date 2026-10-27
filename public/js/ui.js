@@ -240,7 +240,10 @@ export class UIManager {
 
         // Marketplace & Forge Modal Buttons
         const btnCloseMarket = document.getElementById('btn-close-marketplace');
-        if (btnCloseMarket) btnCloseMarket.onclick = () => { if (this.marketplaceModal) this.marketplaceModal.style.display = 'none'; };
+        if (btnCloseMarket) btnCloseMarket.onclick = () => {
+            if (this.marketplaceModal) this.marketplaceModal.style.display = 'none';
+            if (this.game) this.game.portalCooldown = 4.0;
+        };
 
         const btnBuyPot = document.getElementById('btn-buy-potions');
         if (btnBuyPot) btnBuyPot.onclick = () => this.game.buyMarketplaceItem('potions');
@@ -271,14 +274,17 @@ export class UIManager {
         const btnStorageOpenBag = document.getElementById('btn-storage-open-bag');
         if (btnStorageOpenBag) {
             btnStorageOpenBag.onclick = () => {
-                if (this.storageModal) this.storageModal.style.display = 'none';
+                this.closeStorageUI();
                 this.toggleInventory();
             };
         }
 
         // Daily Missions / Quest Board Modal Buttons
         const btnCloseMissions = document.getElementById('btn-close-daily-missions');
-        if (btnCloseMissions) btnCloseMissions.onclick = () => { if (this.dailyMissionsModal) this.dailyMissionsModal.style.display = 'none'; };
+        if (btnCloseMissions) btnCloseMissions.onclick = () => {
+            if (this.dailyMissionsModal) this.dailyMissionsModal.style.display = 'none';
+            if (this.game) this.game.portalCooldown = 4.0;
+        };
 
         const btnAbandonMission = document.getElementById('btn-abandon-mission');
         if (btnAbandonMission) {
@@ -300,7 +306,10 @@ export class UIManager {
 
         // Training Tavern & Leaderboard Modal Buttons
         const btnCloseTavern = document.getElementById('btn-close-tavern');
-        if (btnCloseTavern) btnCloseTavern.onclick = () => { if (this.tavernModal) this.tavernModal.style.display = 'none'; };
+        if (btnCloseTavern) btnCloseTavern.onclick = () => {
+            if (this.tavernModal) this.tavernModal.style.display = 'none';
+            if (this.game) this.game.portalCooldown = 4.0;
+        };
 
         const btnEnterTavern = document.getElementById('btn-enter-tavern');
         if (btnEnterTavern) {
@@ -323,7 +332,10 @@ export class UIManager {
         }
 
         const btnCloseLb = document.getElementById('btn-close-leaderboard');
-        if (btnCloseLb) btnCloseLb.onclick = () => { if (this.leaderboardModal) this.leaderboardModal.style.display = 'none'; };
+        if (btnCloseLb) btnCloseLb.onclick = () => {
+            if (this.leaderboardModal) this.leaderboardModal.style.display = 'none';
+            if (this.game) this.game.portalCooldown = 4.0;
+        };
 
         window.switchLeaderboardTab = (tab) => {
             this.activeLeaderboardTab = tab;
@@ -332,7 +344,10 @@ export class UIManager {
 
         // Dungeon Difficulty & Maze Guide Modal Buttons
         const btnCloseDungeon = document.getElementById('btn-close-dungeon');
-        if (btnCloseDungeon) btnCloseDungeon.onclick = () => { if (this.dungeonModal) this.dungeonModal.style.display = 'none'; };
+        if (btnCloseDungeon) btnCloseDungeon.onclick = () => {
+            if (this.dungeonModal) this.dungeonModal.style.display = 'none';
+            if (this.game) this.game.portalCooldown = 4.0;
+        };
 
         window.enterDungeonWithDifficulty = (diffName, mult) => {
             if (this.dungeonModal) this.dungeonModal.style.display = 'none';
@@ -340,7 +355,10 @@ export class UIManager {
         };
 
         const btnCloseMazeGuide = document.getElementById('btn-close-maze-guide');
-        if (btnCloseMazeGuide) btnCloseMazeGuide.onclick = () => { if (this.mazeGuideModal) this.mazeGuideModal.style.display = 'none'; };
+        if (btnCloseMazeGuide) btnCloseMazeGuide.onclick = () => {
+            if (this.mazeGuideModal) this.mazeGuideModal.style.display = 'none';
+            if (this.game) this.game.portalCooldown = 4.0;
+        };
     }
 
     setupMobileControls() {
@@ -449,7 +467,7 @@ export class UIManager {
         
         const pClass = (player.baseStats && player.baseStats.playerClass) || 'No Class';
         if (this.classBadge) this.classBadge.textContent = pClass;
-        if (this.goldCounter) this.goldCounter.textContent = player.gold.toLocaleString();
+        if (this.goldCounter) this.goldCounter.textContent = Number(player.gold || 0).toLocaleString();
 
         // Potion Quantity in Hotbar
         const potCount = this.game.getPotionCount();
@@ -559,6 +577,15 @@ export class UIManager {
         const combat = this.game.combat;
         if (!combat) return;
 
+        let baseCd1 = (combat.maxCooldowns && combat.maxCooldowns.skill1) || 15;
+        let baseCd2 = (combat.maxCooldowns && combat.maxCooldowns.skill2) || 35;
+        const pClass = (this.game.player.baseStats && this.game.player.baseStats.playerClass);
+        if (pClass && CLASSES[pClass]) {
+            const activeSkills = CLASSES[pClass].skills.filter(s => s.type === 'active');
+            if (activeSkills[0] && activeSkills[0].cd) baseCd1 = Math.round(activeSkills[0].cd / 1000);
+            if (activeSkills[1] && activeSkills[1].cd) baseCd2 = Math.round(activeSkills[1].cd / 1000);
+        }
+
         const updateSlot = (overlayId, txtId, mOverlayId, mTxtId, cdSec, baseCd = 10) => {
             const overlay = document.getElementById(overlayId);
             const txt = document.getElementById(txtId);
@@ -566,7 +593,7 @@ export class UIManager {
             const mTxt = document.getElementById(mTxtId);
 
             if (cdSec > 0) {
-                const pct = Math.min(100, (cdSec / baseCd) * 100);
+                const pct = Math.min(100, (cdSec / Math.max(1, baseCd)) * 100);
                 const ceil = Math.ceil(cdSec);
                 if (overlay) { overlay.style.height = `${pct}%`; }
                 if (txt) { txt.style.display = 'flex'; txt.textContent = ceil; }
@@ -580,8 +607,8 @@ export class UIManager {
             }
         };
 
-        updateSlot('cd-1', 'cdt-1', 'm-cd-skill1', 'm-cdt-skill1', combat.cooldowns.skill1, 15);
-        updateSlot('cd-2', 'cdt-2', 'm-cd-skill2', 'm-cdt-skill2', combat.cooldowns.skill2, 35);
+        updateSlot('cd-1', 'cdt-1', 'm-cd-skill1', 'm-cdt-skill1', combat.cooldowns.skill1, baseCd1);
+        updateSlot('cd-2', 'cdt-2', 'm-cd-skill2', 'm-cdt-skill2', combat.cooldowns.skill2, baseCd2);
     }
 
     updateFloorIndicator(mapId, mapName) {
@@ -596,7 +623,7 @@ export class UIManager {
     }
 
     updateBossHealth(boss) {
-        if (!boss || !boss.isAlive) {
+        if (!this.game.bossEngaged || !boss || !boss.isAlive) {
             if (this.bossBarContainer) this.bossBarContainer.style.display = 'none';
             return;
         }
@@ -604,9 +631,27 @@ export class UIManager {
         if (this.bossBarContainer) this.bossBarContainer.style.display = 'flex';
         if (this.bossName) this.bossName.textContent = `[BOSS] ${boss.name} (Lv.${boss.level})`;
 
-        const pct = Math.max(0, Math.min(100, (boss.hp / boss.maxHp) * 100));
+        const pct = Math.max(0, Math.min(100, (boss.hp / (boss.maxHp || 1)) * 100));
         if (this.bossHpFill) this.bossHpFill.style.width = `${pct}%`;
-        if (this.bossHpText) this.bossHpText.textContent = `${Math.ceil(boss.hp).toLocaleString()} / ${boss.maxHp.toLocaleString()}`;
+        if (this.bossHpText) this.bossHpText.textContent = `${Math.ceil(boss.hp).toLocaleString()} / ${Math.ceil(boss.maxHp || 1).toLocaleString()}`;
+    }
+
+    updateDayNightIndicator(info) {
+        let el = document.getElementById('day-night-indicator');
+        if (!el) {
+            const center = document.querySelector('.hud-top-center');
+            if (center) {
+                el = document.createElement('div');
+                el.id = 'day-night-indicator';
+                el.className = 'day-night-badge';
+                center.appendChild(el);
+            }
+        }
+        if (el && info) {
+            el.textContent = info.label || (info.isDay ? '☀️ Morning' : '🌙 Night');
+            el.style.borderColor = info.isDay ? 'rgba(250, 204, 21, 0.6)' : 'rgba(96, 165, 250, 0.6)';
+            el.style.color = info.isDay ? '#fde047' : '#93c5fd';
+        }
     }
 
     showFloorCleared(mapName) {
@@ -1023,12 +1068,27 @@ export class UIManager {
         }
     }
 
-    toggleMarketplace() {
+    isAnyModalOpen() {
+        const modals = [
+            this.marketplaceModal, this.storageModal, this.dailyMissionsModal,
+            this.tavernModal, this.leaderboardModal, this.dungeonModal,
+            this.mazeGuideModal, this.settingsModal, this.statsModal,
+            this.inventoryModal, this.skillsModal
+        ];
+        return modals.some(m => m && (m.style.display === 'flex' || m.style.display === 'block'));
+    }
+
+    toggleMarketplace(forceState = null) {
         if (!this.marketplaceModal) return;
-        const isHidden = this.marketplaceModal.style.display === 'none' || !this.marketplaceModal.style.display;
+        const isHidden = (forceState !== null)
+            ? !forceState
+            : (this.marketplaceModal.style.display === 'none' || !this.marketplaceModal.style.display);
+
         this.marketplaceModal.style.display = isHidden ? 'flex' : 'none';
         if (isHidden) {
             document.exitPointerLock?.();
+        } else {
+            if (this.game) this.game.portalCooldown = 4.0;
         }
     }
 
@@ -1046,6 +1106,7 @@ export class UIManager {
     closeStorageUI() {
         window.isStorageOpen = false;
         if (this.storageModal) this.storageModal.style.display = 'none';
+        if (this.game) this.game.portalCooldown = 4.0;
         this.hideTooltip();
     }
 
