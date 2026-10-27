@@ -156,6 +156,58 @@ export class UIManager {
             btnCloseInspect.onclick = () => this.closeInspectModal();
         }
 
+        // Player Interaction Context Popup Buttons (Inspect, Add Friend, Invite Party, Invite Raid)
+        const btnCtxInspect = document.getElementById('btn-ctx-inspect');
+        if (btnCtxInspect) {
+            btnCtxInspect.onclick = (e) => {
+                e.stopPropagation();
+                const target = this.selectedTargetPlayer;
+                this.closePlayerInteractionMenu();
+                if (target && this.game) this.game.inspectPlayer(target.name);
+            };
+        }
+        const btnCtxFriend = document.getElementById('btn-ctx-friend');
+        if (btnCtxFriend) {
+            btnCtxFriend.onclick = (e) => {
+                e.stopPropagation();
+                const target = this.selectedTargetPlayer;
+                this.closePlayerInteractionMenu();
+                if (target && this.game) this.game.addFriend(target.name);
+            };
+        }
+        const btnCtxParty = document.getElementById('btn-ctx-party');
+        if (btnCtxParty) {
+            btnCtxParty.onclick = (e) => {
+                e.stopPropagation();
+                const target = this.selectedTargetPlayer;
+                this.closePlayerInteractionMenu();
+                if (target && this.game) this.game.inviteParty(target.name);
+            };
+        }
+        const btnCtxRaid = document.getElementById('btn-ctx-raid');
+        if (btnCtxRaid) {
+            btnCtxRaid.onclick = (e) => {
+                e.stopPropagation();
+                const target = this.selectedTargetPlayer;
+                this.closePlayerInteractionMenu();
+                if (target && this.game) this.game.inviteRaid(target.name);
+            };
+        }
+        const btnCloseCtx = document.getElementById('btn-close-player-ctx');
+        if (btnCloseCtx) {
+            btnCloseCtx.onclick = (e) => {
+                e.stopPropagation();
+                this.closePlayerInteractionMenu();
+            };
+        }
+
+        window.addEventListener('click', (e) => {
+            const menu = document.getElementById('player-interaction-menu');
+            if (menu && menu.style.display !== 'none' && !menu.contains(e.target) && e.target.id !== 'canvas-3d') {
+                this.closePlayerInteractionMenu();
+            }
+        });
+
         // Settings Modal Buttons (ESC Menu)
         const btnSettings = document.getElementById('btn-settings');
         if (btnSettings) btnSettings.onclick = () => this.toggleSettings();
@@ -1176,6 +1228,39 @@ export class UIManager {
     closeInspectModal() {
         const modal = this.inspectModal || document.getElementById('inspect-modal');
         if (modal) modal.style.display = 'none';
+    }
+
+    openPlayerInteractionMenu(targetPlayer, clientX, clientY) {
+        if (!targetPlayer) return;
+        this.selectedTargetPlayer = targetPlayer;
+        const menu = document.getElementById('player-interaction-menu');
+        if (!menu) return;
+
+        const nameEl = document.getElementById('player-ctx-name');
+        const lvlEl = document.getElementById('player-ctx-level');
+        if (nameEl) nameEl.textContent = targetPlayer.name || 'Hero';
+        if (lvlEl) {
+            const pClass = targetPlayer.className || targetPlayer.playerClass || 'Novice';
+            lvlEl.textContent = `Lv.${targetPlayer.level || 1} • ${pClass}`;
+        }
+
+        menu.style.display = 'flex';
+
+        const menuWidth = 210;
+        const menuHeight = 220;
+        const maxX = window.innerWidth - menuWidth - 10;
+        const maxY = window.innerHeight - menuHeight - 10;
+        const left = Math.max(10, Math.min((clientX || window.innerWidth / 2) + 10, maxX));
+        const top = Math.max(10, Math.min((clientY || window.innerHeight / 2) - 30, maxY));
+
+        menu.style.left = `${left}px`;
+        menu.style.top = `${top}px`;
+    }
+
+    closePlayerInteractionMenu() {
+        const menu = document.getElementById('player-interaction-menu');
+        if (menu) menu.style.display = 'none';
+        this.selectedTargetPlayer = null;
     }
 
     toggleMarketplace(forceState = null) {

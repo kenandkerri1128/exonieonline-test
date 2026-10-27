@@ -1018,6 +1018,38 @@
     </div>
 
     <!-- ============================================================
+         PLAYER INTERACTION CONTEXT POPUP (INSPECT, FRIEND, PARTY, RAID)
+         ============================================================ -->
+    <div id="player-interaction-menu" class="player-interaction-menu" style="display:none;">
+        <div class="player-ctx-header">
+            <span class="player-ctx-icon">👤</span>
+            <div class="player-ctx-info">
+                <span id="player-ctx-name" class="player-ctx-name">Hero</span>
+                <span id="player-ctx-level" class="player-ctx-level">Lv.1</span>
+            </div>
+            <button class="player-ctx-close-btn" id="btn-close-player-ctx">✖</button>
+        </div>
+        <div class="player-ctx-body">
+            <button class="player-ctx-btn btn-inspect" id="btn-ctx-inspect">
+                <span class="ctx-btn-icon">🔍</span>
+                <span class="ctx-btn-label">Inspect</span>
+            </button>
+            <button class="player-ctx-btn btn-friend" id="btn-ctx-friend">
+                <span class="ctx-btn-icon">🤝</span>
+                <span class="ctx-btn-label">Add Friend</span>
+            </button>
+            <button class="player-ctx-btn btn-party" id="btn-ctx-party">
+                <span class="ctx-btn-icon">⚔️</span>
+                <span class="ctx-btn-label">Invite Party</span>
+            </button>
+            <button class="player-ctx-btn btn-raid" id="btn-ctx-raid">
+                <span class="ctx-btn-icon">🏰</span>
+                <span class="ctx-btn-label">Invite Raid</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- ============================================================
          INSPECT PLAYER MODAL (AUTHENTIC 2D EXONIE INSPECT SYSTEM)
          ============================================================ -->
     <div class="game-modal" id="inspect-modal" style="display:none;">

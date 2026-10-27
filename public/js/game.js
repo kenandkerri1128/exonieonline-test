@@ -467,6 +467,10 @@ export class GameApp {
                         rp.anim = pData.anim || 'idle';
                         if (pData.hp !== undefined) rp.hp = pData.hp;
                         if (pData.maxHp !== undefined) rp.maxHp = pData.maxHp;
+                        if (pData.weapon && (!rp.weapon || rp.weapon.name !== pData.weapon.name)) {
+                            rp.weapon = pData.weapon;
+                            if (rp.char3D) rp.char3D.setWeaponFromObject(pData.weapon);
+                        }
                     } else {
                         this.addRemotePlayer(sid, pData);
                     }
@@ -557,6 +561,34 @@ export class GameApp {
                         if (this.ui) this.ui.renderInventory();
                     }
                 });
+
+                this.socket.on('playerEquipsChanged', (data) => {
+                    if (!data) return;
+                    const sid = data.socketId || data.id;
+                    const rp = this.remotePlayers[sid] || Object.values(this.remotePlayers).find(p => p.name === data.name);
+                    if (rp) {
+                        rp.equips = data.equips || {};
+                        rp.weapon = data.weapon || data.equips?.weapon || null;
+                        if (rp.char3D) {
+                            rp.char3D.setWeaponFromObject(rp.weapon);
+                        }
+                    }
+                });
+
+                this.socket.on('partyInvite', (data) => {
+                    if (this.ui) this.ui.showToast(`⚔️ [PARTY INVITE] ${data.from} invited you to join their party!`);
+                    this.appendChatLine('system', `⚔️ <b>${data.from}</b> invited you to join their party.`);
+                });
+
+                this.socket.on('raidInvite', (data) => {
+                    if (this.ui) this.ui.showToast(`🏰 [RAID INVITE] ${data.from} invited you to join a Raid Team!`);
+                    this.appendChatLine('system', `🏰 <b>${data.from}</b> invited you to join their Raid team.`);
+                });
+
+                this.socket.on('friendRequest', (data) => {
+                    if (this.ui) this.ui.showToast(`🤝 [FRIEND REQUEST] ${data.from} sent you a friend request!`);
+                    this.appendChatLine('system', `🤝 <b>${data.from}</b> sent you a friend request.`);
+                });
             }
         } catch (e) {
             console.log('Running in standalone local simulation mode', e);
@@ -565,6 +597,7 @@ export class GameApp {
 
     addRemotePlayer(id, data) {
         if (this.remotePlayers[id]) return;
+        const wpn = (data.equips && data.equips.weapon) || data.weapon || null;
         const char3D = new Character3D({
             name: data.name || 'Exonian',
             gender: data.gender || 'female',
@@ -572,8 +605,15 @@ export class GameApp {
             hairColor: data.hairColor || '#111111',
             skinColor: data.skinColor || '#f5c6a5',
             className: data.className || data.playerClass || 'Novice',
-            weaponType: (data.equips && data.equips.weapon) ? (data.equips.weapon.weaponType || data.equips.weapon.sprite) : null
+            weapon: wpn,
+            weaponType: wpn ? (wpn.weaponType || wpn.sprite) : null,
+            weaponRarity: wpn ? (wpn.rarity || 'Starter') : 'Starter',
+            armorRarity: (data.equips && data.equips.armor) ? data.equips.armor.rarity : 'Starter',
+            leggingsRarity: (data.equips && data.equips.leggings) ? data.equips.leggings.rarity : 'Starter'
         });
+        if (wpn) {
+            char3D.setWeaponFromObject(wpn);
+        }
         char3D.group.position.set(data.x || 0, data.y || 0, data.z || 0);
         char3D.group.rotation.y = data.rotY || 0;
         this.engine.scene.add(char3D.group);
@@ -585,6 +625,8 @@ export class GameApp {
             hp: data.hp || 500,
             maxHp: data.maxHp || 500,
             char3D: char3D,
+            equips: data.equips || {},
+            weapon: wpn,
             currentPos: new THREE.Vector3(data.x || 0, data.y || 0, data.z || 0),
             targetPos: new THREE.Vector3(data.x || 0, data.y || 0, data.z || 0),
             targetRotY: data.rotY || 0
@@ -617,17 +659,23 @@ export class GameApp {
 
     sendEnterWorld() {
         if (!this.socket || !this.socket.connected) return;
+        const pClass = this.player.baseStats?.playerClass || 'Novice';
+        const activeSlot = (this.player.slotIndex !== undefined && this.player.slotIndex !== null)
+            ? Number(this.player.slotIndex)
+            : (window.ExonieFlow?.activeSlotIndex ?? 0);
         this.socket.emit('enterWorld', {
             email: this.player.email || window.ExonieFlow?.accountEmail || '',
-            slotIndex: this.player.slotIndex || 0,
+            slotIndex: activeSlot,
             character_name: this.player.name,
             name: this.player.name,
             gender: this.player.gender || 'female',
-            hairStyle: this.player.hairStyle || '1',
+            hairStyle: String(this.player.hairStyle || '1'),
             hairColor: this.player.hairColor || '#111111',
             skinColor: this.player.skinColor || '#f5c6a5',
             level: this.player.level || 1,
-            playerClass: this.player.baseStats?.playerClass || 'Novice',
+            playerClass: pClass,
+            equips: this.player.equips || {},
+            weapon: this.player.equips ? this.player.equips.weapon : null,
             hp: this.player.hp || 100,
             maxHp: this.player.maxHp || 100,
             x: this.player.pos ? this.player.pos.x : 0,
@@ -921,26 +969,16 @@ export class GameApp {
             leggingsRarity: equippedLeggingsRarity
         });
 
+        if (this.player.equips?.weapon) {
+            this.player.char3D.setWeaponFromObject(this.player.equips.weapon);
+        }
+
         this.engine.scene.add(this.player.char3D.group);
         this.saveCharacterToAccountSlot();
 
         // 🌐 Register with Multiplayer World
         if (this.socket && this.socket.connected) {
-            this.socket.emit('enterWorld', {
-                character_name: this.player.name,
-                gender: this.player.gender,
-                hairStyle: this.player.hairStyle,
-                hairColor: this.player.hairColor,
-                skinColor: this.player.skinColor,
-                level: this.player.level,
-                playerClass: this.player.baseStats?.playerClass || 'Novice',
-                hp: this.player.hp,
-                maxHp: this.player.maxHp,
-                x: this.player.pos.x,
-                y: this.player.pos.y,
-                z: this.player.pos.z,
-                rotY: this.player.rotY
-            });
+            this.sendEnterWorld();
         }
 
         // Town of Exonie is ready; if a loading transition was already active (from flow.js), let it complete smoothly
@@ -1305,6 +1343,13 @@ export class GameApp {
         this.audio.playSfx('bump');
         this.ui.showToast(`Equipped ${item.name}!`);
 
+        if (this.socket && this.socket.connected) {
+            this.socket.emit('playerEquipUpdate', {
+                equips: this.player.equips,
+                weapon: this.player.equips?.weapon || null
+            });
+        }
+
         if (this.ui.skillModal && this.ui.skillModal.style.display !== 'none') {
             this.ui.renderSkills();
         }
@@ -1415,6 +1460,13 @@ export class GameApp {
         this.ui.showToast(`Unequipped ${unequipped.name}`);
         this.ui.renderInventory();
 
+        if (this.socket && this.socket.connected) {
+            this.socket.emit('playerEquipUpdate', {
+                equips: this.player.equips,
+                weapon: this.player.equips?.weapon || null
+            });
+        }
+
         if (slot === 'weapon' && this.ui.skillModal && this.ui.skillModal.style.display !== 'none') {
             this.ui.renderSkills();
         }
@@ -1440,6 +1492,62 @@ export class GameApp {
         if (this.socket) {
             this.socket.emit('inspectRequest', { targetId });
         }
+    }
+
+    addFriend(targetName) {
+        if (!targetName || targetName === this.player.name) return;
+        if (this.socket) {
+            this.socket.emit('addFriend', { targetId: targetName });
+        }
+        this.ui.showToast(`🤝 Friend request sent to ${targetName}!`);
+    }
+
+    inviteParty(targetName) {
+        if (!targetName || targetName === this.player.name) return;
+        if (this.socket) {
+            this.socket.emit('partyInvite', { targetId: targetName });
+        }
+        this.ui.showToast(`⚔️ Party invitation sent to ${targetName}!`);
+    }
+
+    inviteRaid(targetName) {
+        if (!targetName || targetName === this.player.name) return;
+        if (this.socket) {
+            this.socket.emit('raidInvite', { targetId: targetName });
+        }
+        this.ui.showToast(`🏰 Raid invitation sent to ${targetName}!`);
+    }
+
+    checkPlayerRaycast(clientX, clientY) {
+        if (!this.remotePlayers || !this.engine || !this.engine.camera || !this.engine.renderer) return null;
+        const rect = this.engine.renderer.domElement.getBoundingClientRect();
+        if (clientX < rect.left || clientX > rect.right || clientY < rect.top || clientY > rect.bottom) return null;
+
+        const mouse = new THREE.Vector2(
+            ((clientX - rect.left) / rect.width) * 2 - 1,
+            -((clientY - rect.top) / rect.height) * 2 + 1
+        );
+        const raycaster = new THREE.Raycaster();
+        raycaster.setFromCamera(mouse, this.engine.camera);
+
+        const remoteMeshes = [];
+        const meshToPlayer = new Map();
+        for (const sid in this.remotePlayers) {
+            const rp = this.remotePlayers[sid];
+            if (rp && rp.char3D && rp.char3D.group) {
+                rp.char3D.group.traverse((child) => {
+                    if (child.isMesh) {
+                        remoteMeshes.push(child);
+                        meshToPlayer.set(child, rp);
+                    }
+                });
+            }
+        }
+        const hits = raycaster.intersectObjects(remoteMeshes, false);
+        if (hits.length > 0) {
+            return meshToPlayer.get(hits[0].object) || null;
+        }
+        return null;
     }
 
     // Player Stun system (Minotaur Bull Rush Charge & status effects)
@@ -1632,46 +1740,32 @@ export class GameApp {
             this.keys[e.code] = false;
         });
 
-        // Desktop mouse left-click primary attack combo (auto-aims nearest monster!)
+        // Desktop mouse left-click primary attack combo or remote player interaction click
         window.addEventListener('mousedown', (e) => {
-            if (e.button === 0 && e.target.id === 'canvas-3d') {
-                this.onAttackTrigger();
+            if (e.target && e.target.id === 'canvas-3d') {
+                const hitPlayer = this.checkPlayerRaycast(e.clientX, e.clientY);
+                if (hitPlayer) {
+                    e.preventDefault();
+                    if (this.ui) this.ui.openPlayerInteractionMenu(hitPlayer, e.clientX, e.clientY);
+                    return;
+                }
+                if (this.ui) this.ui.closePlayerInteractionMenu();
+
+                if (e.button === 0) {
+                    this.onAttackTrigger();
+                }
             }
         });
 
-        // Right-click player inspection raycast on 3D canvas
+        // Right-click player interaction context popup on 3D canvas
         window.addEventListener('contextmenu', (e) => {
             if (e.target && e.target.id === 'canvas-3d') {
                 e.preventDefault();
-                if (this.remotePlayers && this.engine && this.engine.camera) {
-                    const rect = e.target.getBoundingClientRect();
-                    const mouse = new THREE.Vector2(
-                        ((e.clientX - rect.left) / rect.width) * 2 - 1,
-                        -((e.clientY - rect.top) / rect.height) * 2 + 1
-                    );
-                    const raycaster = new THREE.Raycaster();
-                    raycaster.setFromCamera(mouse, this.engine.camera);
-
-                    const remoteMeshes = [];
-                    const meshToPlayer = new Map();
-                    for (const id in this.remotePlayers) {
-                        const rp = this.remotePlayers[id];
-                        if (rp && rp.char3D && rp.char3D.group) {
-                            rp.char3D.group.traverse((child) => {
-                                if (child.isMesh) {
-                                    remoteMeshes.push(child);
-                                    meshToPlayer.set(child, rp);
-                                }
-                            });
-                        }
-                    }
-                    const hits = raycaster.intersectObjects(remoteMeshes, false);
-                    if (hits.length > 0) {
-                        const hitPlayer = meshToPlayer.get(hits[0].object);
-                        if (hitPlayer) {
-                            this.inspectPlayer(hitPlayer.name || hitPlayer.id);
-                        }
-                    }
+                const hitPlayer = this.checkPlayerRaycast(e.clientX, e.clientY);
+                if (hitPlayer) {
+                    if (this.ui) this.ui.openPlayerInteractionMenu(hitPlayer, e.clientX, e.clientY);
+                } else if (this.ui) {
+                    this.ui.closePlayerInteractionMenu();
                 }
             }
         });
@@ -2678,7 +2772,9 @@ export class GameApp {
                     rotY: this.player.rotY,
                     anim: isMoving ? 'walk' : 'idle',
                     hp: this.player.hp,
-                    maxHp: this.player.maxHp
+                    maxHp: this.player.maxHp,
+                    weapon: this.player.equips?.weapon || null,
+                    equips: this.player.equips || {}
                 });
             }
         }

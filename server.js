@@ -551,40 +551,13 @@ function serializeSlotsToRow(slots, existingRow = {}) {
 const DB_FILE = path.join(__dirname, 'local_dev_db.json');
 
 function initDefaultDevAccounts() {
-    const { starterEquips, starterInventory } = getStarterItems();
-    const slot0Stats = {
-        hp: 100, attack: 10, magic: 5, defense: 5, speed: 5, str: 10, int: 10,
-        playerClass: 'Novice', title: null, homeStorage: Array(15).fill(null),
-        tavernEntries: 5, dungeonEntries: 7, gender: 'female',
-        hairStyle: '1', hairColor: '#111111', skinColor: '#f5c6a5'
-    };
-    const slot0 = {
-        slotIndex: 0,
-        character_name: 'Aria',
-        name: 'Aria',
-        email: 'jken.ayag@gmail.com',
-        skin_color: '#f5c6a5',
-        skinColor: '#f5c6a5',
-        hair_color: '#111111',
-        hairColor: '#111111',
-        hair_style: '1',
-        hairStyle: '1',
-        gender: 'female',
-        equips: starterEquips,
-        inventory: starterInventory,
-        base_stats: slot0Stats,
-        baseStats: slot0Stats,
-        gold: 1500,
-        level: 1,
-        exp: 0,
-        map_id: 'town'
-    };
-    const row = serializeSlotsToRow([slot0, null, null], {
+    const row = serializeSlotsToRow([null, null, null], {
         email: 'jken.ayag@gmail.com',
         password: 'password123'
     });
     row.email = 'jken.ayag@gmail.com';
     row.password = 'password123';
+    row.character_name = 'none|none|none';
 
     return {
         users: {
@@ -787,47 +760,19 @@ io.on('connection', (socket) => {
                 );
 
                 if (!mem) {
-                    // 🛡️ Auto-provision user account in fallback mode so local testing is friction-free
-                    const charName = cleanInput.includes('@') ? cleanInput.split('@')[0] : cleanInput;
-                    const { starterEquips, starterInventory } = getStarterItems();
-                    const starterStats = {
-                        hp: 100, attack: 10, magic: 5, defense: 5, speed: 5, str: 10, int: 10,
-                        playerClass: 'Novice', title: null, homeStorage: Array(15).fill(null),
-                        tavernEntries: 5, dungeonEntries: 7, gender: 'female',
-                        hairStyle: '1', hairColor: '#111111', skinColor: '#f5c6a5'
-                    };
-                    const slot0 = {
-                        slotIndex: 0,
-                        character_name: charName,
-                        name: charName,
-                        email: cleanInput.includes('@') ? cleanInput : `${cleanInput}@exonie.com`,
-                        skin_color: '#f5c6a5',
-                        skinColor: '#f5c6a5',
-                        hair_color: '#111111',
-                        hairColor: '#111111',
-                        hair_style: '1',
-                        hairStyle: '1',
-                        gender: 'female',
-                        equips: starterEquips,
-                        inventory: starterInventory,
-                        base_stats: starterStats,
-                        baseStats: starterStats,
-                        gold: 1500,
-                        level: 1,
-                        exp: 0,
-                        map_id: 'town'
-                    };
-                    const serialized = serializeSlotsToRow([slot0, null, null], {
+                    // Auto-provision user account in fallback mode with 3 empty character slots
+                    const serialized = serializeSlotsToRow([null, null, null], {
                         email: cleanInput.includes('@') ? cleanInput : `${cleanInput}@exonie.com`,
                         password: password
                     });
+                    serialized.character_name = 'none|none|none';
                     mem = Object.assign({
                         email: cleanInput.includes('@') ? cleanInput : `${cleanInput}@exonie.com`,
                         password: password
                     }, serialized);
                     memoryDb.users[lower] = mem;
                     saveLocalDb();
-                    console.log(`[LOCAL DEV] Auto-created fallback account for: ${cleanInput}`);
+                    console.log(`[LOCAL DEV] Auto-created empty fallback account for: ${cleanInput}`);
                 } else {
                     // Update password if changed locally so dev is never locked out
                     mem.password = password;
@@ -853,15 +798,11 @@ io.on('connection', (socket) => {
             const existingCount = characterSlots.filter(Boolean).length;
             console.log(`[LOGIN SUCCESS] ${accountIdentifier} authenticated with ${existingCount} characters.`);
 
-            if (existingCount === 0) {
-                socket.emit('needsCharacterCreation', { email: userEmail, slotIndex: 0 });
-            } else {
-                socket.emit('loginSuccess', {
-                    email: userEmail,
-                    username: primaryRow.character_name || userEmail,
-                    characters: characterSlots
-                });
-            }
+            socket.emit('loginSuccess', {
+                email: userEmail,
+                username: primaryRow.character_name || userEmail,
+                characters: characterSlots
+            });
 
         } catch (e) {
             console.error('[LOGIN CRASH]', e);
@@ -895,12 +836,8 @@ io.on('connection', (socket) => {
                     return socket.emit('authError', 'An account with this Email/Username already exists!');
                 }
 
-                const basePart = rawInput.includes('@') ? rawInput.split('@')[0] : rawInput;
-                const cleanBase = basePart.replace(/[^a-zA-Z0-9_]/g, '').slice(0, 10) || 'Hero';
-                const initialName = `${cleanBase}_${Math.floor(1000 + Math.random() * 9000)}`;
-
                 const insertPayload = {
-                    character_name: initialName,
+                    character_name: 'none|none|none',
                     password: password,
                     email_verified: true,
                     ip_address: clientIp,
@@ -923,7 +860,7 @@ io.on('connection', (socket) => {
                 const newRec = {
                     email: rawInput.includes('@') ? rawInput : `${rawInput}@exonie.com`,
                     password: password,
-                    character_name: rawInput
+                    character_name: 'none|none|none'
                 };
                 memoryDb.users[key] = newRec;
                 saveLocalDb();
@@ -1214,22 +1151,44 @@ io.on('connection', (socket) => {
     // 7. ENTER 3D WORLD
     socket.on('enterWorld', async (data) => {
         try {
+            const charName = (data && (data.character_name || data.name)) ? String(data.character_name || data.name).trim() : null;
+            const explicitSlot = (data && data.slotIndex !== undefined && data.slotIndex !== null && !isNaN(data.slotIndex)) ? Number(data.slotIndex) : null;
             const identifier = (data && (data.email || data.username || data.character_name)) || socket.accountIdentifier || socket.email || socket.primaryCharName;
-            const slotIdx = Math.max(0, Math.min(2, Number(data && data.slotIndex) || 0));
-            const charName = (data && (data.character_name || data.name)) ? String(data.character_name || data.name).trim() : 'Hero';
             let slotData = null;
 
             if (identifier) {
                 const dbRows = await findAccountRows(identifier);
                 if (dbRows && dbRows.length > 0) {
                     const slots = parseRowsToSlots(dbRows);
-                    slotData = slots[slotIdx] || slots.find(s => s && s.name === charName) || slots[0];
+                    // Match Priority 1: exact character name match
+                    if (charName && charName !== 'Hero') {
+                        slotData = slots.find(s => s && s.name && s.name.toLowerCase() === charName.toLowerCase());
+                    }
+                    // Match Priority 2: explicit slot index
+                    if (!slotData && explicitSlot !== null && explicitSlot >= 0 && explicitSlot < slots.length) {
+                        slotData = slots[explicitSlot];
+                    }
+                    // Match Priority 3: first non-null slot
+                    if (!slotData) {
+                        slotData = slots.find(s => s !== null) || slots[0];
+                    }
                 }
             }
 
             const pData = slotData || data || {};
-            const finalName = pData.name || charName;
-            const userEmail = socket.email || (data && data.email) || '';
+            const finalName = (charName && charName !== 'Hero') ? charName : (pData.name || pData.character_name || 'Hero');
+            const userEmail = socket.email || (data && data.email) || (slotData && slotData.email) || '';
+            const slotIdx = (slotData && slotData.slotIndex !== undefined) ? slotData.slotIndex : (explicitSlot !== null ? explicitSlot : 0);
+
+            const equips = (data && data.equips && Object.keys(data.equips).length > 0) ? data.equips : (pData.equips || {});
+            const weapon = (data && data.weapon) || (equips && equips.weapon) || pData.weapon || null;
+            const className = (data && data.playerClass) || (pData.base_stats && pData.base_stats.playerClass) || pData.playerClass || pData.className || 'Novice';
+            const level = (data && data.level) || pData.level || 1;
+            const hp = (data && data.hp) || pData.hp || 500;
+            const maxHp = (data && data.maxHp) || (pData.base_stats && pData.base_stats.hp) || 500;
+
+            socket.accountIdentifier = userEmail || finalName;
+            socket.characterName = finalName;
 
             onlinePlayers[socket.id] = {
                 socketId: socket.id,
@@ -1237,27 +1196,30 @@ io.on('connection', (socket) => {
                 slotIndex: slotIdx,
                 id: finalName,
                 name: finalName,
-                gender: pData.gender || 'female',
-                hairStyle: pData.hair_style || pData.hairStyle || '1',
-                hairColor: pData.hair_color || pData.hairColor || '#111111',
-                skinColor: pData.skin_color || pData.skinColor || '#f5c6a5',
-                className: (pData.base_stats && pData.base_stats.playerClass) || pData.playerClass || 'Novice',
-                level: pData.level || 1,
+                character_name: finalName,
+                gender: (data && data.gender) || pData.gender || 'female',
+                hairStyle: (data && data.hairStyle) || pData.hair_style || pData.hairStyle || '1',
+                hairColor: (data && data.hairColor) || pData.hair_color || pData.hairColor || '#111111',
+                skinColor: (data && data.skinColor) || pData.skin_color || pData.skinColor || '#f5c6a5',
+                className: className,
+                playerClass: className,
+                level: level,
                 exp: pData.exp || 0,
                 gold: pData.gold !== undefined ? pData.gold : 500,
-                equips: pData.equips || {},
+                equips: equips,
+                weapon: weapon,
                 inventory: pData.inventory || [],
                 baseStats: pData.base_stats || pData.baseStats || {},
-                hp: 500,
-                maxHp: 500,
+                hp: hp,
+                maxHp: maxHp,
                 mp: 200,
                 maxMp: 200,
                 atk: 50,
                 def: 10,
-                x: data.x || 0,
-                y: data.y || 0,
-                z: data.z || 0,
-                rotY: data.rotY || 0,
+                x: (data && data.pos && data.pos.x) || data.x || 0,
+                y: (data && data.pos && data.pos.y) || data.y || 0,
+                z: (data && data.pos && data.pos.z) || data.z || 0,
+                rotY: (data && data.pos && data.pos.rotY) || data.rotY || 0,
                 anim: 'idle'
             };
 
@@ -1310,7 +1272,23 @@ io.on('connection', (socket) => {
         onlinePlayers[socket.id].z = data.z;
         onlinePlayers[socket.id].rotY = data.rotY;
         onlinePlayers[socket.id].anim = data.anim;
+        if (data.hp !== undefined) onlinePlayers[socket.id].hp = data.hp;
+        if (data.maxHp !== undefined) onlinePlayers[socket.id].maxHp = data.maxHp;
+        if (data.weapon !== undefined) onlinePlayers[socket.id].weapon = data.weapon;
+        if (data.equips !== undefined) onlinePlayers[socket.id].equips = data.equips;
         socket.broadcast.emit('playerMoved', onlinePlayers[socket.id]);
+    });
+
+    socket.on('playerEquipUpdate', (data) => {
+        if (!onlinePlayers[socket.id] || !data) return;
+        if (data.equips) onlinePlayers[socket.id].equips = data.equips;
+        if (data.weapon !== undefined) onlinePlayers[socket.id].weapon = data.weapon;
+        socket.broadcast.emit('playerEquipsChanged', {
+            socketId: socket.id,
+            name: onlinePlayers[socket.id].name,
+            equips: onlinePlayers[socket.id].equips,
+            weapon: onlinePlayers[socket.id].weapon
+        });
     });
 
     socket.on('monsterKill', (data) => {
@@ -1324,7 +1302,12 @@ io.on('connection', (socket) => {
     });
 
     socket.on('chatMessage', (data) => {
-        socket.broadcast.emit('chatMessage', data);
+        if (!data) return;
+        const author = (onlinePlayers[socket.id] && onlinePlayers[socket.id].name) || socket.characterName || data.id || 'Hero';
+        socket.broadcast.emit('chatMessage', {
+            id: author,
+            text: data.text
+        });
     });
 
     // 2D Exonie World Chat with Anti-Spam Limitation & Zero Double-Send
@@ -1349,7 +1332,7 @@ io.on('connection', (socket) => {
         }
 
         const safeText = String(data.text).slice(0, 120);
-        const name = (onlinePlayers[socket.id] && onlinePlayers[socket.id].name) || data.id || 'Hero';
+        const name = (onlinePlayers[socket.id] && onlinePlayers[socket.id].name) || socket.characterName || data.id || 'Hero';
 
         // Broadcast to all other sockets without double-sending to sender
         socket.broadcast.emit('worldChatMessage', { id: name, text: safeText });
@@ -1425,14 +1408,14 @@ io.on('connection', (socket) => {
     // 🔍 INSPECT PLAYER SYSTEM (2D Exonie port)
     // ==========================================
     socket.on('inspectRequest', async (data) => {
-        if (!data || !data.targetId) return;
-        const targetQuery = String(data.targetId).trim().toLowerCase();
+        if (!data || (!data.targetId && !data.targetName)) return;
+        const targetQuery = String(data.targetId || data.targetName || '').trim().toLowerCase();
 
         // 1. Search online players first
         let target = null;
         for (const sid in onlinePlayers) {
             const p = onlinePlayers[sid];
-            if (p && ((p.name && p.name.toLowerCase() === targetQuery) || (p.id && p.id.toLowerCase() === targetQuery) || sid === targetQuery)) {
+            if (p && ((p.name && p.name.toLowerCase() === targetQuery) || (p.id && p.id.toLowerCase() === targetQuery) || (p.character_name && p.character_name.toLowerCase() === targetQuery) || sid === targetQuery)) {
                 target = p;
                 break;
             }
@@ -1446,35 +1429,85 @@ io.on('connection', (socket) => {
                 playerClass: target.className || target.playerClass || target.baseStats?.playerClass || 'Novice',
                 currentHp: target.hp || target.currentHp || 100,
                 maxHp: target.maxHp || 100,
+                weapon: target.weapon || (target.equips && target.equips.weapon) || null,
                 equips: target.equips || { weapon: null, armor: null, leggings: null, necklace: null, ring: null, earrings: null }
             });
         }
 
-        // 2. Fallback to Supabase if player is offline
-        if (supabase) {
-            try {
-                const { data: dbRow } = await supabase.from('Exonians')
-                    .select('character_name, level, equips, base_stats, hp')
-                    .ilike('character_name', targetQuery)
-                    .maybeSingle();
-
-                if (dbRow) {
-                    const parsedEquips = safeParseJson(dbRow.equips, {});
-                    const parsedStats = safeParseJson(dbRow.base_stats, {});
+        // 2. Search offline accounts in database
+        try {
+            const dbRows = await findAccountRows(targetQuery);
+            if (dbRows && dbRows.length > 0) {
+                const slots = parseRowsToSlots(dbRows);
+                // Look specifically for the character slot matching targetQuery
+                const matchedSlot = slots.find(s => s && s.name && s.name.toLowerCase() === targetQuery) || slots.find(s => s !== null);
+                if (matchedSlot) {
                     return socket.emit('inspectData', {
-                        id: dbRow.character_name,
-                        name: dbRow.character_name,
-                        level: dbRow.level || 1,
-                        playerClass: (parsedStats && parsedStats.playerClass) || 'Novice',
-                        currentHp: dbRow.hp || 100,
-                        maxHp: (parsedStats && parsedStats.hp) || 100,
-                        equips: parsedEquips
+                        id: matchedSlot.name,
+                        name: matchedSlot.name,
+                        level: matchedSlot.level || 1,
+                        playerClass: (matchedSlot.base_stats && matchedSlot.base_stats.playerClass) || matchedSlot.playerClass || 'Novice',
+                        currentHp: matchedSlot.hp || 100,
+                        maxHp: (matchedSlot.base_stats && matchedSlot.base_stats.hp) || 100,
+                        weapon: matchedSlot.weapon || (matchedSlot.equips && matchedSlot.equips.weapon) || null,
+                        equips: matchedSlot.equips || { weapon: null, armor: null, leggings: null, necklace: null, ring: null, earrings: null }
                     });
                 }
-            } catch (err) {
-                console.error('[Inspect Error]:', err.message);
+            }
+        } catch (err) {
+            console.error('[Inspect Error]:', err.message);
+        }
+    });
+
+    // ==========================================
+    // 🤝 SOCIAL INTERACTIONS (Party, Raid, Friend)
+    // ==========================================
+    socket.on('addFriend', (data) => {
+        if (!data || (!data.targetId && !data.targetName)) return;
+        const targetQuery = String(data.targetId || data.targetName || '').trim().toLowerCase();
+        const me = onlinePlayers[socket.id];
+        const myName = me ? me.name : (socket.characterName || 'A player');
+        for (const sid in onlinePlayers) {
+            const p = onlinePlayers[sid];
+            if (p && p.name && p.name.toLowerCase() === targetQuery && sid !== socket.id) {
+                io.to(sid).emit('friendRequest', { from: myName, fromId: socket.id });
+                socket.emit('chatMessage', { id: 'System', text: `🤝 Friend request sent to ${p.name}.` });
+                return;
             }
         }
+        socket.emit('chatMessage', { id: 'System', text: `Player ${data.targetId || data.targetName} is not online.` });
+    });
+
+    socket.on('partyInvite', (data) => {
+        if (!data || (!data.targetId && !data.targetName)) return;
+        const targetQuery = String(data.targetId || data.targetName || '').trim().toLowerCase();
+        const me = onlinePlayers[socket.id];
+        const myName = me ? me.name : (socket.characterName || 'A player');
+        for (const sid in onlinePlayers) {
+            const p = onlinePlayers[sid];
+            if (p && p.name && p.name.toLowerCase() === targetQuery && sid !== socket.id) {
+                io.to(sid).emit('partyInvite', { from: myName, fromId: socket.id });
+                socket.emit('chatMessage', { id: 'System', text: `⚔️ Party invite sent to ${p.name}.` });
+                return;
+            }
+        }
+        socket.emit('chatMessage', { id: 'System', text: `Player ${data.targetId || data.targetName} is not online.` });
+    });
+
+    socket.on('raidInvite', (data) => {
+        if (!data || (!data.targetId && !data.targetName)) return;
+        const targetQuery = String(data.targetId || data.targetName || '').trim().toLowerCase();
+        const me = onlinePlayers[socket.id];
+        const myName = me ? me.name : (socket.characterName || 'A player');
+        for (const sid in onlinePlayers) {
+            const p = onlinePlayers[sid];
+            if (p && p.name && p.name.toLowerCase() === targetQuery && sid !== socket.id) {
+                io.to(sid).emit('raidInvite', { from: myName, fromId: socket.id });
+                socket.emit('chatMessage', { id: 'System', text: `🏰 Raid invite sent to ${p.name}.` });
+                return;
+            }
+        }
+        socket.emit('chatMessage', { id: 'System', text: `Player ${data.targetId || data.targetName} is not online.` });
     });
 
     // ==========================================
