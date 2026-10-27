@@ -225,9 +225,9 @@ export class GameApp {
             previewScene = new THREE.Scene();
             previewScene.background = new THREE.Color(0x0a101d);
 
-            previewCamera = new THREE.PerspectiveCamera(42, w / h, 0.1, 100);
-            previewCamera.position.set(0, 1.05, 5.2);
-            previewCamera.lookAt(0, 0.95, 0);
+            previewCamera = new THREE.PerspectiveCamera(38, w / h, 0.1, 100);
+            previewCamera.position.set(0, 1.15, 6.2);
+            previewCamera.lookAt(0, 1.05, 0);
 
             previewRenderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
             previewRenderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
@@ -239,10 +239,6 @@ export class GameApp {
             previewRenderer.domElement.style.width = '100%';
             previewRenderer.domElement.style.height = '100%';
             previewCol.appendChild(previewRenderer.domElement);
-
-            if (this.engine && this.engine.envMap) {
-                previewScene.environment = this.engine.envMap;
-            }
 
             const ambLight = new THREE.AmbientLight(0xffffff, 1.8);
             previewScene.add(ambLight);
@@ -268,6 +264,9 @@ export class GameApp {
                 weaponType: null
             });
             previewChar.group.rotation.y = 0;
+            if (previewChar.overheadGroup) {
+                previewChar.overheadGroup.visible = false;
+            }
             previewScene.add(previewChar.group);
 
             // Allow manual drag rotation on the preview canvas (mouse & touch)
@@ -304,7 +303,11 @@ export class GameApp {
                     previewChar.update(0.016, false);
                 }
                 if (previewRenderer && previewScene && previewCamera) {
-                    previewRenderer.render(previewScene, previewCamera);
+                    try {
+                        previewRenderer.render(previewScene, previewCamera);
+                    } catch (e) {
+                        console.error('Preview render error:', e);
+                    }
                 }
             };
             animPreview();
@@ -741,17 +744,16 @@ export class GameApp {
             });
         }
 
-        // Load Town of Exonie with authentic 2D Loading Screen
-        if (window.showLoadingTransition) {
-            window.showLoadingTransition('ENTERING EXONIE...', 'Town of Exonie (Safe Haven)', 1600, () => {
-                this.loadMap('town');
-                this.audio.playBgm('town');
-                this.ui.updatePlayerHUD(this.player);
-            });
-        } else {
-            this.loadMap('town');
-            this.audio.playBgm('town');
-            this.ui.updatePlayerHUD(this.player);
+        // Town of Exonie is ready; if a loading transition was already active (from flow.js), let it complete smoothly
+        const loadingScreen = document.getElementById('loading-screen');
+        const isTransitionActive = loadingScreen && (loadingScreen.classList.contains('active') || loadingScreen.style.display === 'flex');
+
+        this.loadMap('town');
+        this.audio.playBgm('town');
+        this.ui.updatePlayerHUD(this.player);
+
+        if (!isTransitionActive && window.showLoadingTransition) {
+            window.showLoadingTransition('ENTERING EXONIE...', 'Town of Exonie (Safe Haven)', 1250);
         }
 
         this.ui.showToast(`Welcome to Exonie, ${this.player.name}! Press [P] for Stats or [B] for Bag.`);

@@ -366,7 +366,7 @@ html, body {
 #creation-screen {
     position: fixed;
     inset: 0;
-    z-index: 8000;
+    z-index: 9300;
     background: radial-gradient(circle at 50% 30%, #151b32 0%, #060913 70%, #000 100%);
     display: flex;
     align-items: center;
@@ -2160,7 +2160,7 @@ html, body {
     position: fixed;
     inset: 0;
     z-index: 25000;
-    background: url('../backgrounds/loadingscreen.png') center/cover no-repeat #000;
+    background: url('../loadingscreen.png') center/cover no-repeat #000;
     display: none;
     flex-direction: column;
     align-items: center;
@@ -2277,8 +2277,8 @@ html, body {
 #char-select-screen {
     position: fixed;
     inset: 0;
-    z-index: 950;
-    background: url('../backgrounds/town_map.png') center/cover no-repeat #060913;
+    z-index: 9200;
+    background: url('../town_map.png') center/cover no-repeat #060913;
     display: flex;
     align-items: center;
     justify-content: center;

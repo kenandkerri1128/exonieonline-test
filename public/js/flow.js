@@ -35,6 +35,15 @@ window.ExonieFlow = {
             this.showLoadingTransition(title, subtitle, durationMs, onMidpoint);
         };
         this.startSplash();
+
+        // Fail-safe watchdog: Never let splash or loading screen trap the player on a black screen
+        setTimeout(() => {
+            const splash = document.getElementById('scr-splash');
+            if (splash && splash.style.display !== 'none' && (this.step === 'splash_studio' || this.step === 'splash_credits')) {
+                console.warn('⚠️ Splash watchdog: forcing auth screen display');
+                this.skipSplash();
+            }
+        }, 4000);
     },
 
     // ============================================================
@@ -99,6 +108,7 @@ window.ExonieFlow = {
 
         clearTimeout(this._loadingMidTimer);
         clearTimeout(this._loadingEndTimer);
+        clearTimeout(this._loadingSafetyTimer);
 
         this._loadingMidTimer = setTimeout(() => {
             if (onMidpoint) onMidpoint();
@@ -112,6 +122,12 @@ window.ExonieFlow = {
                 }
             }, 340);
         }, effectiveDuration);
+
+        // Ultimate fail-safe watchdog timer: Force-hide after effectiveDuration + 1000ms
+        this._loadingSafetyTimer = setTimeout(() => {
+            screen.classList.remove('active');
+            screen.style.display = 'none';
+        }, effectiveDuration + 1000);
     },
 
     // Synthesized RPG Dialogue Typing Sound Effect (Web Audio API)
@@ -258,14 +274,14 @@ window.ExonieFlow = {
         if (this.splashCredits) this.splashCredits.classList.remove('show');
         if (this.scrSplash) {
             this.scrSplash.classList.add('hidden');
-            setTimeout(() => {
-                if (this.scrSplash) this.scrSplash.style.display = 'none';
-            }, 800);
+            this.scrSplash.style.display = 'none';
         }
-        // Seamless 2D Picture Loading Screen transition into Auth
-        this.showLoadingTransition('Exonie Online', 'Connecting to 3D Realm...', 1350, () => {
-            this.showAuth();
-        });
+        const loadingScreen = document.getElementById('loading-screen');
+        if (loadingScreen) {
+            loadingScreen.classList.remove('active');
+            loadingScreen.style.display = 'none';
+        }
+        this.showAuth();
     },
 
     // ============================================================
@@ -275,6 +291,15 @@ window.ExonieFlow = {
         this.hidePreGameChat();
         this.step = 'auth';
         if (!this.scrAuth) this.cacheDOM();
+        if (this.scrSplash) {
+            this.scrSplash.classList.add('hidden');
+            this.scrSplash.style.display = 'none';
+        }
+        const loadingScreen = document.getElementById('loading-screen');
+        if (loadingScreen) {
+            loadingScreen.classList.remove('active');
+            loadingScreen.style.display = 'none';
+        }
         if (this.scrAuth) {
             this.scrAuth.style.display = 'flex';
             this.scrAuth.classList.remove('hidden');
@@ -549,6 +574,19 @@ window.ExonieFlow = {
         this.hidePreGameChat();
         this.step = 'char_select';
         if (!this.scrCharSelect) this.cacheDOM();
+        if (this.scrSplash) {
+            this.scrSplash.classList.add('hidden');
+            this.scrSplash.style.display = 'none';
+        }
+        if (this.scrAuth) {
+            this.scrAuth.classList.add('hidden');
+            this.scrAuth.style.display = 'none';
+        }
+        const loadingScreen = document.getElementById('loading-screen');
+        if (loadingScreen) {
+            loadingScreen.classList.remove('active');
+            loadingScreen.style.display = 'none';
+        }
         if (this.charSelectAccountName) this.charSelectAccountName.textContent = this.accountEmail || this.accountName;
         this.renderCharSlots();
         if (this.scrCharSelect) {
@@ -718,6 +756,23 @@ window.ExonieFlow = {
         this.hidePreGameChat();
         this.step = 'creation';
         if (!this.scrCreation) this.cacheDOM();
+        if (this.scrSplash) {
+            this.scrSplash.classList.add('hidden');
+            this.scrSplash.style.display = 'none';
+        }
+        if (this.scrAuth) {
+            this.scrAuth.classList.add('hidden');
+            this.scrAuth.style.display = 'none';
+        }
+        if (this.scrCharSelect) {
+            this.scrCharSelect.classList.add('hidden');
+            this.scrCharSelect.style.display = 'none';
+        }
+        const loadingScreen = document.getElementById('loading-screen');
+        if (loadingScreen) {
+            loadingScreen.classList.remove('active');
+            loadingScreen.style.display = 'none';
+        }
         if (this.scrCreation) {
             this.scrCreation.style.display = 'flex';
             this.scrCreation.classList.remove('hidden');
