@@ -1007,6 +1007,158 @@ async function updateAndBroadcastTopTavern() {
 updateAndBroadcastTopTavern();
 setInterval(updateAndBroadcastTopTavern, 60000);
 
+// ==========================================
+// 🏆 MONTHLY TAVERN RANKINGS RESET & TOP 3 REWARDS (2D EXONIE REPLICATED)
+// Resets on the 1st of every month at midnight UTC. Top 3 are sent Huge Nuggets / Gold Bars via Mail!
+// ==========================================
+const memoryMails = [];
+
+async function processMonthlyTavernRewards() {
+    try {
+        const currentMonthYear = new Date().toLocaleString('en-US', { month: 'long', year: 'numeric' });
+        const validationMessage = 'in the Training Tavern for ' + currentMonthYear;
+
+        // Prevent duplicate sending by checking if we already sent the reward for the CURRENT month
+        let alreadySent = false;
+        if (supabase) {
+            try {
+                const { data: recentMail } = await supabase.from('System_Mail')
+                    .select('message_text')
+                    .ilike('message_text', '%' + validationMessage + '%')
+                    .limit(1);
+                if (recentMail && recentMail.length > 0) alreadySent = true;
+            } catch (err) {
+                console.warn('[System_Mail Check Warning]:', err.message);
+            }
+        }
+        if (!alreadySent && memoryMails.some(m => m.message_text && m.message_text.includes(validationMessage))) {
+            alreadySent = true;
+        }
+
+        if (alreadySent) {
+            console.log('[MONTHLY TAVERN] Rewards for ' + currentMonthYear + ' already sent. Skipping.');
+            return;
+        }
+
+        console.log('[MONTHLY TAVERN] Processing rewards for ' + currentMonthYear + '...');
+
+        let sorted = [];
+        if (supabase) {
+            try {
+                const { data } = await supabase.from('Tavern_Leaderboard').select('*').limit(1000);
+                if (data && data.length > 0) sorted = data;
+                else sorted = [...memoryTavernLeaderboard];
+            } catch (err) {
+                sorted = [...memoryTavernLeaderboard];
+            }
+        } else {
+            sorted = [...memoryTavernLeaderboard];
+        }
+
+        const w = { 'floor_boss': 3, 'mini_boss': 2, 'common_mobs': 1 };
+        sorted.sort((a, b) => {
+            let aW = w[a.mob_type] || 0; let bW = w[b.mob_type] || 0;
+            if (aW !== bW) return bW - aW;
+            if (Number(a.mob_level || 0) !== Number(b.mob_level || 0)) {
+                return Number(b.mob_level || 0) - Number(a.mob_level || 0);
+            }
+            return Number(a.time_taken || 0) - Number(b.time_taken || 0);
+        });
+
+        let uniqueTop3 = [];
+        for (let row of sorted) {
+            const name = row.character_name || row.name;
+            if (name && !uniqueTop3.includes(name)) uniqueTop3.push(name);
+            if (uniqueTop3.length === 3) break;
+        }
+
+        if (uniqueTop3.length === 0) {
+            console.log("[MONTHLY TAVERN] No records to reward this month.");
+            if (supabase) {
+                try {
+                    await supabase.from('Tavern_Leaderboard').delete().neq('character_name', '00000000000000000000');
+                } catch (e) {}
+            }
+            memoryTavernLeaderboard = [];
+            global.topTavernPlayers = [];
+            io.emit('topTavernPlayers', []);
+            return;
+        }
+
+        // Send rewards to Top 3 (2D Exonie authentic prizes)
+        for (let i = 0; i < uniqueTop3.length; i++) {
+            const playerName = uniqueTop3[i];
+            const rank = i + 1;
+            let rewardItem = null;
+
+            if (rank === 1) {
+                // Rank 1: 5x Huge Nugget (500,000 Gold each = 2,500,000 Gold total)
+                rewardItem = { id: 'reward_' + Date.now() + '_1', name: "Huge Nugget", type: "material", rarity: "Divine", color: "#ffea00", sellPrice: 500000, desc: "A massive chunk of pure gold. Sell for 500,000 Gold.", quantity: 5 };
+            } else if (rank === 2) {
+                // Rank 2: 1x Huge Nugget (500,000 Gold)
+                rewardItem = { id: 'reward_' + Date.now() + '_2', name: "Huge Nugget", type: "material", rarity: "Divine", color: "#ffea00", sellPrice: 500000, desc: "A massive chunk of pure gold. Sell for 500,000 Gold.", quantity: 1 };
+            } else if (rank === 3) {
+                // Rank 3: 2x Big Gold Bar (250,000 Gold each = 500,000 Gold total)
+                rewardItem = { id: 'reward_' + Date.now() + '_3', name: "Big Gold Bar", type: "material", rarity: "Godly", color: "#e0ffff", sellPrice: 250000, desc: "A heavy bar of pure gold. Sell for 250,000 Gold.", quantity: 2 };
+            }
+
+            if (rewardItem) {
+                const mailRecord = {
+                    id: Date.now() + Math.floor(Math.random() * 10000) + i,
+                    recipient_name: playerName,
+                    message_text: 'Congratulations! You ranked ' + rank + ' ' + validationMessage + '! Here is your reward.',
+                    attached_item: JSON.stringify(rewardItem),
+                    is_claimed: false,
+                    created_at: new Date().toISOString()
+                };
+                memoryMails.push(mailRecord);
+
+                if (supabase) {
+                    try {
+                        await supabase.from('System_Mail').insert([mailRecord]);
+                    } catch (dbErr) {
+                        console.warn('[System_Mail DB Insert Warning]:', dbErr.message);
+                    }
+                }
+
+                const tsid = findSocketIdByPlayerName(playerName);
+                if (tsid) {
+                    io.to(tsid).emit('getMail');
+                    io.to(tsid).emit('systemMessage', '🏆 Your Rank ' + rank + ' Training Tavern monthly reward has arrived! Check your Mailbox [M].');
+                }
+            }
+        }
+
+        // Reset Tavern Leaderboard for the new month
+        console.log("[MONTHLY TAVERN] Resetting leaderboard for new month...");
+        if (supabase) {
+            try {
+                await supabase.from('Tavern_Leaderboard').delete().neq('character_name', '00000000000000000000');
+            } catch (e) {}
+        }
+        memoryTavernLeaderboard = [];
+        global.topTavernPlayers = [];
+        io.emit('topTavernPlayers', []);
+
+        io.emit('systemMessage', '🏆 [TAVERN] The Monthly Training Tavern has reset! Congratulations to Rank 1: ' + uniqueTop3[0] + ', Rank 2: ' + (uniqueTop3[1] || 'None') + ', Rank 3: ' + (uniqueTop3[2] || 'None') + '! Rewards sent via Mail!');
+        console.log("[MONTHLY TAVERN] Rewards sent and leaderboard reset.");
+    } catch (err) {
+        console.error("Monthly Tavern Reward Error:", err);
+    }
+}
+
+// Check every hour (only processes on the 1st of the month)
+setInterval(() => {
+    const now = new Date();
+    if (now.getDate() === 1) {
+        processMonthlyTavernRewards();
+    }
+}, 60 * 60 * 1000);
+
+if (new Date().getDate() === 1) {
+    setTimeout(processMonthlyTavernRewards, 5000);
+}
+
 function findSocketIdByPlayerName(name) {
     if (!name) return null;
     const clean = String(name).trim().toLowerCase();

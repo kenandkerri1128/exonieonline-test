@@ -2423,6 +2423,92 @@ export class UIManager {
         ctx.restore();
     }
 
+    // ==========================================
+    // 📬 SYSTEM MAILBOX UI (2D EXONIE REPLICATED)
+    // ==========================================
+    toggleMailbox() {
+        const modal = document.getElementById('mailbox-modal');
+        if (!modal) return;
+        const isHidden = modal.style.display === 'none' || !modal.style.display;
+        if (isHidden) {
+            document.exitPointerLock?.();
+            modal.style.display = 'flex';
+            if (this.game?.socket && this.game.socket.connected) {
+                this.game.socket.emit('getMail');
+            }
+        } else {
+            modal.style.display = 'none';
+        }
+    }
+
+    renderMailList(mails) {
+        const container = document.getElementById('mail-list-container');
+        if (!container) return;
+        container.innerHTML = '';
+
+        const badge = document.getElementById('hud-mail-badge');
+        const count = Array.isArray(mails) ? mails.length : 0;
+        if (badge) {
+            badge.innerText = count;
+            badge.style.display = count > 0 ? 'block' : 'none';
+        }
+
+        if (count === 0) {
+            container.innerHTML = '<p style="text-align:center; color:#64748b; font-size:0.9rem; padding:20px;">No messages in your mailbox.</p>';
+            return;
+        }
+
+        mails.forEach(mail => {
+            const card = document.createElement('div');
+            card.className = 'mail-card';
+            card.id = 'mail-item-' + mail.id;
+            card.style.cssText = 'background:rgba(30,41,59,0.7); border:1px solid #334155; border-radius:8px; padding:12px; display:flex; flex-direction:column; gap:8px; text-align:left;';
+
+            let lootHtml = '';
+            if (mail.attached_item) {
+                const item = mail.attached_item;
+                const qty = item.quantity && item.quantity > 1 ? ('x' + item.quantity + ' ') : '';
+                const rColor = item.color || '#ffd700';
+                lootHtml = `
+                    <div style="background:rgba(15,23,42,0.8); border:1px dashed ${rColor}; border-radius:6px; padding:8px 12px; display:flex; justify-content:space-between; align-items:center;">
+                        <div>
+                            <span style="color:#94a3b8; font-size:0.75rem;">Attached Reward:</span><br>
+                            <strong style="color:${rColor}; font-size:0.95rem;">${qty}${item.name}</strong>
+                        </div>
+                        <button class="btn" style="background:#0284c7; color:#fff; border:none; padding:6px 14px; border-radius:6px; font-weight:bold; cursor:pointer;" onclick="window.claimMail('${mail.id}')">Claim</button>
+                    </div>
+                `;
+            }
+
+            card.innerHTML = `
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <span style="color:#ffd700; font-weight:bold; font-size:0.95rem;">👑 System Mail</span>
+                    <span style="color:#64748b; font-size:0.75rem;">${mail.created_at ? new Date(mail.created_at).toLocaleDateString() : 'Recent'}</span>
+                </div>
+                <div style="color:#e2e8f0; font-size:0.85rem; line-height:1.5;">${mail.message_text || 'System Notification'}</div>
+                ${lootHtml}
+            `;
+            container.appendChild(card);
+        });
+    }
+
+    onMailClaimed(mailId) {
+        const itemEl = document.getElementById('mail-item-' + mailId);
+        if (itemEl) itemEl.remove();
+        const container = document.getElementById('mail-list-container');
+        if (container && container.children.length === 0) {
+            container.innerHTML = '<p style="text-align:center; color:#64748b; font-size:0.9rem; padding:20px;">No messages in your mailbox.</p>';
+        }
+        const badge = document.getElementById('hud-mail-badge');
+        if (badge) {
+            const cur = parseInt(badge.innerText, 10) || 1;
+            const next = Math.max(0, cur - 1);
+            badge.innerText = next;
+            badge.style.display = next > 0 ? 'block' : 'none';
+        }
+        this.showToast('🎁 Reward claimed successfully to your inventory!');
+    }
+
         // ==========================================
     // 💎 CASH SHOP (EXO EMPORIUM) UI METHODS (STEAM IAP REPLICATED)
     // ==========================================

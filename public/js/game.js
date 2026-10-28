@@ -1299,6 +1299,15 @@ export class GameApp {
                         this.ui.showToast(`💎 [EXO GEMS] Balance updated: ${data.newGems} Exo Gems!`);
                     }
                 });
+
+                // 📬 System Mailbox Listeners
+                this.socket.on('mailList', (mails) => {
+                    if (this.ui) this.ui.renderMailList(mails);
+                });
+
+                this.socket.on('mailClaimSuccess', (mailId) => {
+                    if (this.ui) this.ui.onMailClaimed(mailId);
+                });
             }
         } catch (e) {
             console.log('Running in standalone local simulation mode', e);
@@ -2707,6 +2716,8 @@ export class GameApp {
                 this.ui.toggleCashShop();
             } else if (e.code === 'KeyG') {
                 this.ui.toggleGuildModal();
+            } else if (e.code === 'KeyM') {
+                this.ui.toggleMailbox();
             } else if (e.code === 'Space') {
                 e.preventDefault();
                 this.onJumpTrigger();

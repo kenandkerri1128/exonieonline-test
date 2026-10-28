@@ -541,6 +541,9 @@ export class CombatSystem {
         // Auto-aim toward nearest monster within 12 units so left-clicking always faces the enemy!
         this.autoAimNearestMonster(player, monsters, 12.0);
 
+        const hitRadius = this.currentComboStep === 3 ? 4.2 : 3.6;
+        const playerForward = new THREE.Vector3(Math.sin(player.rotY), 0, Math.cos(player.rotY));
+
         player.char3D.triggerAttack(this.currentComboStep, isDagger ? 'dagger' : 'sword');
         this.broadcastAttackAnim(player, this.currentComboStep, isDagger ? 'dagger' : 'sword');
         this.checkPvPHit(player, Math.floor((player.atk || 13) * cloneMult), hitRadius);
@@ -551,18 +554,16 @@ export class CombatSystem {
         const slashTilts = [0.12, -0.22, 0.0];
         this.engine.spawnSlashArc(player.pos, player.rotY, slashColor, isDagger ? 2.5 : 3.1, slashTilts[this.currentComboStep - 1]);
 
-        const hitRadius = this.currentComboStep === 3 ? 3.8 : 3.2;
-        const playerForward = new THREE.Vector3(Math.sin(player.rotY), 0, Math.cos(player.rotY));
-
         let hitCount = 0;
 
         for (const m of monsters) {
             if (!m.isAlive) continue;
             const dist = player.pos.distanceTo(m.group.position);
-            if (dist > hitRadius) continue;
+            const mobRadius = m.scaleFactor ? (m.scaleFactor * 0.7) : 0.8;
+            if (dist > (hitRadius + mobRadius)) continue;
 
             const dirToMob = m.group.position.clone().sub(player.pos).normalize();
-            if (this.currentComboStep !== 3 && playerForward.dot(dirToMob) < 0.05) continue;
+            if (this.currentComboStep !== 3 && playerForward.dot(dirToMob) < -0.2) continue;
 
             // Exact 2D Exonie Basic Swing Damage Formula (server.js line 3893):
             // trueDmg = Math.floor(atkPwr * (0.9 + Math.random() * 0.2)), mitigated by monster.def

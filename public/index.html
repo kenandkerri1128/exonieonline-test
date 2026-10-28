@@ -322,6 +322,10 @@
                 <button class="hud-btn" id="btn-inventory" title="Inventory [B]">🎒</button>
                 <button class="hud-btn" id="btn-skills" title="Skills & Class [K]">📜</button>
                 <button class="hud-btn" id="btn-guild" title="Guild [G]" onclick="window.game?.ui?.toggleGuildModal()">🏰</button>
+                <button class="hud-btn" id="btn-mailbox" title="System Mail [M]" onclick="window.game?.ui?.toggleMailbox()" style="position:relative;">
+                    ✉️
+                    <span id="hud-mail-badge" style="display:none; position:absolute; top:-4px; right:-4px; background:#ef4444; color:#fff; font-size:10px; font-weight:bold; width:16px; height:16px; border-radius:50%; line-height:16px; text-align:center; box-shadow:0 0 6px #ef4444;">1</span>
+                </button>
                 <button class="hud-btn" id="btn-cash-shop" title="Cash Shop [C]" style="color:#e040fb; text-shadow:0 0 8px #e040fb;">💎</button>
                 <button class="hud-btn" id="btn-settings" title="Settings [ESC]">⚙️</button>
             </div>
@@ -1164,6 +1168,29 @@
                 <div id="loading-bar-fill" class="loader-bar-fill"></div>
             </div>
             <div class="loader-tip" id="loading-screen-tip">💡 Tip: Equip high-rarity weapons to unlock glowing auras and higher stats!</div>
+        </div>
+    </div>
+
+    <!-- ============================================================
+         SYSTEM MAILBOX MODAL (KEYBIND 'M' - 2D EXONIE REPLICATED)
+         ============================================================ -->
+    <div class="game-modal" id="mailbox-modal" style="display:none; z-index:99997;">
+        <div class="modal-dialog" style="max-width:540px; width:94vw; background:linear-gradient(180deg, #131722 0%, #0d1117 100%); border:2px solid #ffd700; box-shadow:0 0 35px rgba(255, 215, 0, 0.35); border-radius:10px;">
+            <div class="modal-header" style="border-bottom:1px solid rgba(255,215,0,0.3); padding:12px 18px; display:flex; justify-content:space-between; align-items:center;">
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <span style="font-size:1.5rem;">✉️</span>
+                    <h3 style="color:#ffd700; margin:0; text-shadow:0 0 10px rgba(255,215,0,0.5); font-size:1.25rem;">System Mailbox [M]</h3>
+                </div>
+                <button class="btn-close-modal" id="btn-close-mailbox" onclick="window.game?.ui?.toggleMailbox()" style="background:none; border:none; color:#aaa; font-size:1.3rem; cursor:pointer;">✖</button>
+            </div>
+            <div class="confirm-modal-body" style="padding:16px; display:flex; flex-direction:column; gap:12px;">
+                <p style="color:#94a3b8; font-size:0.85rem; margin:0;">
+                    Tavern Monthly Rewards, Admin Gifts, and System Announcements are delivered here.
+                </p>
+                <div id="mail-list-container" style="display:flex; flex-direction:column; gap:10px; max-height:55vh; overflow-y:auto; padding-right:4px;">
+                    <p style="text-align:center; color:#64748b; font-size:0.9rem; padding:20px;">No messages in your mailbox.</p>
+                </div>
+            </div>
         </div>
     </div>
 
