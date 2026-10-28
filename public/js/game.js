@@ -1023,6 +1023,9 @@ export class GameApp {
 
                 this.socket.on('forceTeleport', (data) => {
                     if (data && data.mapId) {
+                        if (data.isMazeTrial !== undefined) {
+                            this.isMazeTrial = !!data.isMazeTrial;
+                        }
                         this.loadMap(data.mapId, data.x, data.z);
                     }
                 });
@@ -2984,7 +2987,7 @@ export class GameApp {
         if (Array.isArray(data.monsterSpawns)) {
             for (const sp of data.monsterSpawns) {
                 // If this is a floor boss and its Supabase cooldown is active, skip spawning it
-                if (sp.category === 'floor_boss' && mapId.startsWith('floor') && bossRemaining > 0) {
+                if (sp.category === 'floor_boss' && mapId.startsWith('floor') && bossRemaining > 0 && !this.isMazeTrial) {
                     const hrs = Math.ceil(bossRemaining / 3600000);
                     this.ui.showToast(`⏳ [FLOOR BOSS COOLDOWN] ${sp.name} respawns in ~${hrs} hours.`);
                     continue;
@@ -3265,15 +3268,19 @@ export class GameApp {
         this.engine.addScreenshake(1.2);
         this.ui.showFloorCleared(this.currentMapId);
 
-        this.ui.showWorldAnnouncement(
-            `⚔️ <strong style="color:#00e5ff;">[WORLD ANNOUNCEMENT] ${this.player.name}</strong> has defeated <strong>[BOSS] ${mob.name} (Lv.${mob.level})</strong> on <strong>${this.currentMapId.toUpperCase()}</strong>!`,
-            '#00e5ff'
-        );
-        // 24-hour Floor Boss Cooldown matching 2D Exonie (persisted to Supabase boss_timers)
-        const respawnAt = Date.now() + (24 * 60 * 60 * 1000);
-        this.bossCooldowns[this.currentMapId] = respawnAt;
-        if (this.socket) {
-            this.socket.emit('floorBossKilled', { floorId: this.currentMapId, bossName: mob.name });
+        if (!this.isMazeTrial) {
+            this.ui.showWorldAnnouncement(
+                `⚔️ <strong style="color:#00e5ff;">[WORLD ANNOUNCEMENT] ${this.player.name}</strong> has defeated <strong>[BOSS] ${mob.name} (Lv.${mob.level})</strong> on <strong>${this.currentMapId.toUpperCase()}</strong>!`,
+                '#00e5ff'
+            );
+            // 24-hour Floor Boss Cooldown matching 2D Exonie (persisted to Supabase boss_timers)
+            const respawnAt = Date.now() + (24 * 60 * 60 * 1000);
+            this.bossCooldowns[this.currentMapId] = respawnAt;
+            if (this.socket) {
+                this.socket.emit('floorBossKilled', { floorId: this.currentMapId, bossName: mob.name });
+            }
+        } else {
+            this.ui.showToast(`🏆 Maze Trial Defeated: ${mob.name}! Return to Town via portal.`);
         }
 
         if (this.currentMapId === 'floor10') {
@@ -3503,11 +3510,11 @@ export class GameApp {
                 this.ui.openLeaderboardModal('floor');
                 return;
             }
-            // 🛡️ Spire Tower Entrance in Town: Opens Maze Guide Modal
-            if (this.currentMapId === 'town' && (tid === 'floor1' || tid === 'maze_guide')) {
-                this.portalCooldown = 3.5;
+            // 🛡️ Maze Guide Station in Town: Opens Maze Guide
+            if (tid === 'maze_guide') {
+                this.portalCooldown = 3.0;
                 this.audio.playSfx('bump');
-                this.ui.openMazeGuideModal();
+                window.openMazeGuide();
                 return;
             }
 
@@ -3521,13 +3528,6 @@ export class GameApp {
 
             if (this.isMazeTrial && tid === 'town') {
                 this.isMazeTrial = false;
-            }
-
-            if (tid === 'maze_guide') {
-                this.portalCooldown = 4.0;
-                this.audio.playSfx('bump');
-                this.ui.openMazeGuideModal();
-                return;
             }
             if (tid === 'event_cave' && !EVENT_CAVE_ACTIVE) {
                 this.portalCooldown = 3.0;
@@ -3795,6 +3795,7 @@ export class GameApp {
     // Respawn in Town from Death Screen (or Settings Unstuck) with 100% FULL HP!
     respawnInTown() {
         this.ui.hideDeathScreen();
+        this.isMazeTrial = false;
         if (window.showLoadingTransition) {
             window.showLoadingTransition(
                 'Town of Exonie',
@@ -3802,6 +3803,7 @@ export class GameApp {
                 950,
                 () => {
                     this.isGhost = false;
+                    this.isMazeTrial = false;
                     this.recalculateStats();
                     this.player.hp = this.player.maxHp;
                     this.player.mp = this.player.maxMp;
@@ -3813,6 +3815,7 @@ export class GameApp {
             );
         } else {
             this.isGhost = false;
+            this.isMazeTrial = false;
             this.recalculateStats();
             this.player.hp = this.player.maxHp;
             this.player.mp = this.player.maxMp;

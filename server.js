@@ -953,11 +953,6 @@ async function sendFriendsUpdateTo(username) {
 // Private maps: home (personal solo or party), dungeons, guildbase.
 // ==========================================
 function getInstanceId(socketId, mapId) {
-    // 🛡️ Route to a private Maze Trial instance if the flag is active
-    if (p && p.isMazeTrial) {
-        return raidId ? `mazetrial_${rawMap}_raid_${raidId}` : (partyId ? `mazetrial_${rawMap}_${partyId}` : `mazetrial_${rawMap}_solo_${pName}`);
-    }
-
     const rawMap = String(mapId || 'town').toLowerCase();
     if (rawMap === 'town' || rawMap === 'neutralzone' || rawMap === 'battlefield') {
         return rawMap;
@@ -966,6 +961,11 @@ function getInstanceId(socketId, mapId) {
     const pName = (p && p.name) || socketId;
     const partyId = playerParty[pName];
     const raidId = partyId ? partyRaid[partyId] : null;
+
+    // 🛡️ Route to a private Maze Trial instance if the flag is active
+    if (p && p.isMazeTrial) {
+        return raidId ? `mazetrial_${rawMap}_raid_${raidId}` : (partyId ? `mazetrial_${rawMap}_${partyId}` : `mazetrial_${rawMap}_solo_${pName}`);
+    }
 
     if (rawMap === 'guildbase') {
         const gName = (p && (p.guild || (p.guild_details && p.guild_details.name)));
@@ -1756,6 +1756,9 @@ io.on('connection', (socket) => {
             socket.to(oldInst).emit('playerLeft', socket.id);
         }
         const newMapId = data.mapId || 'town';
+        if (newMapId === 'town') {
+            onlinePlayers[socket.id].isMazeTrial = false;
+        }
         const newInst = getInstanceId(socket.id, newMapId);
         socket.join(newInst);
         onlinePlayers[socket.id].mapId = newMapId;
@@ -2981,13 +2984,13 @@ io.on('connection', (socket) => {
                 if (getMaxFloor(mp) < targetFloor) return socket.emit('systemMessage', `Cannot teleport: ${mp.name} has not conquered Floor ${targetFloor} yet.`);
             }
             for (const memberSid of party.members) {
-                io.to(memberSid).emit('forceTeleport', { mapId: `floor${targetFloor}`, x: 0, z: 98 });
+                io.to(memberSid).emit('forceTeleport', { mapId: `floor${targetFloor}`, x: 0, z: 98, isMazeTrial: false });
             }
         } else {
             if (getMaxFloor(p) < targetFloor) {
                 return socket.emit('systemMessage', `You have not conquered Floor ${targetFloor} yet.`);
             }
-            socket.emit('forceTeleport', { mapId: `floor${targetFloor}`, x: 0, z: 98 });
+            socket.emit('forceTeleport', { mapId: `floor${targetFloor}`, x: 0, z: 98, isMazeTrial: false });
         }
     });
 
@@ -3049,7 +3052,7 @@ io.on('connection', (socket) => {
                     await supabase.from('Exonians').update({ base_stats: mp.baseStats }).eq('character_name', mp.name);
                 }
                 io.to(sid).emit('systemMessage', '🛡️ Maze Trial Entry used (1/1). Resets at 00:00 UTC.');
-                io.to(sid).emit('forceTeleport', { mapId: targetMapId, x: 0, z: 98 });
+                io.to(sid).emit('forceTeleport', { mapId: targetMapId, x: 0, z: 98, isMazeTrial: true });
             }
         }
     });

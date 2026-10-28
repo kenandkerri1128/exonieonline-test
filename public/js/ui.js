@@ -744,80 +744,25 @@ export class UIManager {
     }
 
 
-    // ==========================================
+        // ==========================================
     // 🗺️ MAZE GUIDE & FAST TRAVEL (2D REPLICATED)
     // ==========================================
     openMazeGuideModal() {
-        const game = window.game;
-        if (game && game.party && game.party.members && game.party.members.length > 1) {
-            if (game.party.leader !== game.player?.name && game.party.leaderId !== game.socket?.id) {
-                this.showToast("⚠️ Only the Party Leader can use the Maze Guide.");
-                return;
-            }
+        if (typeof window.openMazeGuide === 'function') {
+            window.openMazeGuide();
         }
-
-        let modal = document.getElementById('maze-guide-modal');
-        if (!modal) {
-            modal = document.createElement('div');
-            modal.id = 'maze-guide-modal';
-            modal.className = 'game-modal-dialog';
-            modal.style.cssText = 'display:none; position:fixed; top:50%; left:50%; transform:translate(-50%, -50%); background:rgba(15,23,42,0.95); border:2px solid #00e5ff; padding:22px; z-index:99999; width:340px; border-radius:12px; box-shadow:0 0 25px rgba(0,229,255,0.4); color:white; text-align:center; backdrop-filter:blur(8px);';
-            document.body.appendChild(modal);
-        }
-
-        let html = '<h2 style="margin-top:0; color:#00e5ff; font-size:1.3rem;">🏰 Maze Guide</h2>';
-        html += '<p style="font-size:12px; color:#94a3b8; margin-bottom:18px;">Select your journey into the Spire Tower.</p>';
-        html += '<button class="btn" style="width:100%; margin-bottom:10px; padding:12px; font-weight:800; font-size:14px; background:#22c55e; color:#fff; border:none; border-radius:6px; cursor:pointer;" onclick="window.enterNormalFloor(1)">Enter Floor 1 (Slime Sanctum)</button>';
-        html += '<button class="btn" style="width:100%; margin-bottom:10px; padding:12px; font-weight:800; font-size:14px; background:#3b82f6; color:#fff; border:none; border-radius:6px; cursor:pointer;" onclick="window.openFastTravelUI()">🚀 Fast Travel (Conquered Floors)</button>';
-        html += '<button class="btn" style="width:100%; margin-bottom:16px; padding:12px; font-weight:800; font-size:14px; background:#9c27b0; color:#fff; border:none; border-radius:6px; cursor:pointer; box-shadow:0 0 12px rgba(156,39,176,0.5);" onclick="window.openMazeTrialsUI()">⚔️ Maze Trials (Floors 1 - 7)</button>';
-        html += '<button class="btn" style="background:#ef4444; width:100%; padding:9px; font-weight:bold; color:#fff; border:none; border-radius:6px; cursor:pointer;" onclick="document.getElementById(\'maze-guide-modal\').style.display=\'none\'">Close</button>';
-
-        modal.innerHTML = html;
-        modal.style.display = 'block';
     }
 
     openFastTravelUI() {
-        const game = window.game;
-        let maxFloor = 0;
-        let titleString = String(game?.player?.title || "").toUpperCase();
-        const match = titleString.match(/(?:FLOOR CONQUEROR|FLOOR DOMINATOR|FLOOR MASTER)\s+(\d+)/);
-        if (match) maxFloor = parseInt(match[1], 10);
-
-        let modal = document.getElementById('maze-guide-modal');
-        if (!modal) return;
-
-        let html = '<h2 style="margin-top:0; color:#22c55e; font-size:1.3rem;">🚀 Fast Travel</h2>';
-        html += '<p style="font-size:12px; color:#94a3b8; margin-bottom:12px;">Select a conquered floor to fast-travel.</p>';
-
-        if (maxFloor < 1) {
-            html += '<p style="color:#ef4444; font-size:13px; margin:20px 0;">You have not conquered any floors yet!<br><span style="color:#94a3b8; font-size:11px;">Defeat a Floor Boss to unlock Fast Travel.</span></p>';
-        } else {
-            html += '<div style="max-height:240px; overflow-y:auto; margin-bottom:15px; padding-right:5px;">';
-            for (let i = 1; i <= maxFloor; i++) {
-                html += `<button class="btn" style="width:100%; margin-bottom:6px; padding:10px; background:#1e293b; border:1px solid #334155; color:#fff; border-radius:6px; font-weight:bold; cursor:pointer; text-align:left;" onclick="window.requestMazeTeleport(${i})">🏛️ Floor ${i}</button>`;
-            }
-            html += '</div>';
+        if (typeof window.openFastTravelUI === 'function') {
+            window.openFastTravelUI();
         }
-
-        html += '<button class="btn" style="background:#ef4444; width:100%; padding:9px; font-weight:bold; color:#fff; border:none; border-radius:6px; cursor:pointer;" onclick="window.game?.ui?.openMazeGuideModal()">Back</button>';
-        modal.innerHTML = html;
-        modal.style.display = 'block';
     }
 
     openMazeTrialsUI() {
-        let modal = document.getElementById('maze-guide-modal');
-        if (!modal) return;
-
-        let html = '<h2 style="margin-top:0; color:#e040fb; font-size:1.3rem;">⚔️ Maze Trials</h2>';
-        html += '<p style="font-size:12px; color:#94a3b8; margin-bottom:12px;">Private Boss Instance • 1 Entry per day (00:00 UTC)</p>';
-        html += '<div style="max-height:240px; overflow-y:auto; margin-bottom:15px; padding-right:5px;">';
-        for (let i = 1; i <= 7; i++) {
-            html += `<button class="btn" style="width:100%; margin-bottom:6px; padding:10px; background:linear-gradient(90deg, #6a1b9a, #4a148c); border:1px solid #ba68c8; color:#fff; border-radius:6px; font-weight:bold; cursor:pointer; text-align:left; display:flex; justify-content:space-between;" onclick="window.requestMazeTrial(${i})"><span>⚔️ Trial: Floor ${i}</span><span style="color:#ffd700; font-size:11px;">1/1 Today</span></button>`;
+        if (typeof window.openMazeTrialsUI === 'function') {
+            window.openMazeTrialsUI();
         }
-        html += '</div>';
-        html += '<button class="btn" style="background:#ef4444; width:100%; padding:9px; font-weight:bold; color:#fff; border:none; border-radius:6px; cursor:pointer;" onclick="window.game?.ui?.openMazeGuideModal()">Back</button>';
-        modal.innerHTML = html;
-        modal.style.display = 'block';
     }
 
     // ==========================================
@@ -2211,67 +2156,7 @@ export class UIManager {
         }, 4000);
     }
 
-    openMazeGuideModal() {
-        if (!this.mazeGuideModal) return;
-        document.exitPointerLock?.();
-
-        const titleStr = String((this.game && this.game.player && this.game.player.title) || '').toUpperCase();
-        const match = titleStr.match(/(?:FLOOR CONQUEROR|FLOOR DOMINATOR|FLOOR MASTER)\s+(\d+)/);
-        const maxConqueredFloor = match ? parseInt(match[1], 10) : 0;
-
-        const grid = document.getElementById('maze-guide-floors-grid');
-        if (grid) {
-            grid.innerHTML = '';
-            const floorNames = [
-                'Floor 1: Verdant Labyrinth',
-                'Floor 2: Mossy Ruins',
-                'Floor 3: Shadow Cavern',
-                'Floor 4: Abyssal Grotto',
-                'Floor 5: Infernal Core',
-                'Floor 6: Magma Sanctum',
-                'Floor 7: Monolith Depths',
-                'Floor 8: Obsidian Vault',
-                'Floor 9: Astral Nexus',
-                'Floor 10: The Void Throne'
-            ];
-            for (let f = 1; f <= 10; f++) {
-                const isUnlocked = (f === 1) || (f <= maxConqueredFloor);
-                const btn = document.createElement('button');
-                btn.className = 'btn-item-action';
-
-                if (isUnlocked) {
-                    btn.style.background = '#1e293b';
-                    btn.style.border = '1px solid #38bdf8';
-                    btn.style.padding = '10px';
-                    btn.style.textAlign = 'left';
-                    btn.style.cursor = 'pointer';
-                    btn.innerHTML = `<strong style="color:#00e5ff;">🌀 ${floorNames[f - 1]}</strong> <span style="font-size:11px; color:#4ade80; float:right;">[CONQUERED]</span>`;
-                    btn.onclick = () => {
-                        // Party Leader verification
-                        if (this.game && this.game.partyMembers && this.game.partyMembers.length > 0 && !this.game.isPartyLeader()) {
-                            this.showToast('⚠️ Only the Party Leader can use the Maze Guide for the team!');
-                            return;
-                        }
-                        this.mazeGuideModal.style.display = 'none';
-                        this.game.teleportToFloor(`floor${f}`, floorNames[f - 1]);
-                    };
-                } else {
-                    btn.style.background = '#0f172a';
-                    btn.style.border = '1px dashed #475569';
-                    btn.style.opacity = '0.55';
-                    btn.style.padding = '10px';
-                    btn.style.textAlign = 'left';
-                    btn.style.cursor = 'not-allowed';
-                    btn.innerHTML = `<strong style="color:#94a3b8;">🔒 ${floorNames[f - 1]}</strong> <span style="font-size:11px; color:#f87171; float:right;">Requires Floor ${f} Conqueror</span>`;
-                    btn.onclick = () => {
-                        this.showToast(`🔒 You must conquer Floor ${f} first to fast-travel here!`);
-                    };
-                }
-                grid.appendChild(btn);
-            }
-        }
-        this.mazeGuideModal.style.display = 'flex';
-    }
+    // (Old duplicate removed in favor of authentic 2D openMazeGuide)
 
     updateFloorBossTimer(remainingMs, customLabel = null) {
         const el = document.getElementById('floor-boss-timer-ui');
@@ -3307,26 +3192,83 @@ setTimeout(() => {
 
 
 // ==========================================
-// 🗺️ MAZE GUIDE & GUILD WINDOW GLOBALS
+// 🗺️ MAZE GUIDE & GUILD WINDOW GLOBALS (100% 2D EXONIE REPLICATED)
 // ==========================================
-window.enterNormalFloor = function(floorNum) {
-    document.getElementById('maze-guide-modal').style.display = 'none';
-    window.game?.loadMap(`floor${floorNum}`, 0, 98);
+window.openMazeGuide = function() {
+    const game = window.game;
+    if (game && game.party && game.party.members && game.party.members.length > 1) {
+        if (game.party.leader !== game.player?.name && game.party.leaderId !== game.socket?.id) {
+            game.ui?.showToast("Only the Party Leader can use the Maze Guide.");
+            return;
+        }
+    }
+
+    const modal = document.getElementById('maze-guide-modal');
+    const dialog = document.getElementById('maze-guide-dialog') || modal;
+    if (!modal || !dialog) return;
+
+    let html = '<h2 style="margin-top:0; color:#2196F3;">🗺️ Maze Guide</h2>';
+    html += '<p style="font-size:12px; color:#aaa; margin-bottom:20px;">Choose your destination.</p>';
+    html += '<button class="btn" style="width:100%; margin-bottom:10px; padding:12px; font-weight:bold; font-size:16px; background:#4CAF50; color:#fff; border:none; border-radius:6px; cursor:pointer;" onclick="window.openFastTravelUI()"> Fast Travel</button>';
+    html += '<button class="btn" style="width:100%; margin-bottom:15px; padding:12px; font-weight:bold; font-size:16px; background:#9c27b0; color:#fff; border:none; border-radius:6px; cursor:pointer; box-shadow:0 0 10px #9c27b0;" onclick="window.openMazeTrialsUI()">Maze Trials</button>';
+    html += '<button class="btn" style="background:#f44336; width:100%; padding:10px; font-weight:bold; color:#fff; border:none; border-radius:6px; cursor:pointer;" onclick="document.getElementById(\'maze-guide-modal\').style.display=\'none\'">Close</button>';
+
+    dialog.innerHTML = html;
+    modal.style.display = 'flex';
 };
 
 window.openFastTravelUI = function() {
-    window.game?.ui?.openFastTravelUI();
+    const game = window.game;
+    let maxFloor = 0;
+    const titleString = String(game?.player?.title || "").toUpperCase();
+    const match = titleString.match(/(?:FLOOR CONQUEROR|FLOOR DOMINATOR|FLOOR MASTER)\s+(\d+)/);
+    if (match) {
+        maxFloor = parseInt(match[1], 10);
+    }
+
+    const modal = document.getElementById('maze-guide-modal');
+    const dialog = document.getElementById('maze-guide-dialog') || modal;
+    if (!dialog) return;
+
+    if (maxFloor === 0) {
+        game?.ui?.showToast("You haven't conquered any floors yet!");
+        let html = '<h2 style="margin-top:0; color:#4CAF50;">🚀 Fast Travel</h2>';
+        html += '<p style="font-size:13px; color:#f87171; margin:20px 0;">You haven\'t conquered any floors yet!</p>';
+        html += '<button class="btn" style="background:#f44336; width:100%; padding:10px; font-weight:bold; color:#fff; border:none; border-radius:6px; cursor:pointer;" onclick="window.openMazeGuide()">Back</button>';
+        dialog.innerHTML = html;
+        modal.style.display = 'flex';
+        return;
+    }
+
+    let html = '<h2 style="margin-top:0; color:#4CAF50;">🚀 Fast Travel</h2>';
+    html += '<p style="font-size:12px; color:#aaa; margin-bottom:15px;">Select a conquered floor to fast-travel.</p>';
+    html += '<div style="max-height:300px; overflow-y:auto; margin-bottom:15px; padding-right:5px;">';
+    for (let i = 1; i <= maxFloor; i++) {
+        html += `<button class="btn" style="width:100%; margin-bottom:6px; padding:10px; background:#4CAF50; color:#fff; border:none; border-radius:6px; font-weight:bold; cursor:pointer;" onclick="window.requestMazeTeleport(${i})">Teleport to Floor ${i}</button>`;
+    }
+    html += '</div>';
+    html += '<button class="btn" style="background:#f44336; width:100%; padding:10px; font-weight:bold; color:#fff; border:none; border-radius:6px; cursor:pointer;" onclick="window.openMazeGuide()">Back</button>';
+
+    dialog.innerHTML = html;
+    modal.style.display = 'flex';
 };
 
 window.openMazeTrialsUI = function() {
-    window.game?.ui?.openMazeTrialsUI();
-};
+    const modal = document.getElementById('maze-guide-modal');
+    const dialog = document.getElementById('maze-guide-dialog') || modal;
+    if (!dialog) return;
 
-window.requestMazeTeleport = function(floorNum) {
-    document.getElementById('maze-guide-modal').style.display = 'none';
-    if (window.game?.socket) {
-        window.game.socket.emit('requestMazeTeleport', { targetFloor: floorNum });
+    let html = '<h2 style="margin-top:0; color:#E040FB;">🛡️ Maze Trials</h2>';
+    html += '<p style="font-size:12px; color:#aaa; margin-bottom:15px;">Challenge a Floor Boss in a private instance. 1 Entry per day.</p>';
+    html += '<div style="max-height:300px; overflow-y:auto; margin-bottom:15px; padding-right:5px;">';
+    for (let i = 1; i <= 7; i++) {
+        html += `<button class="btn" style="width:100%; margin-bottom:6px; padding:10px; background:#9c27b0; color:#fff; border:none; border-radius:6px; font-weight:bold; cursor:pointer;" onclick="window.requestMazeTrial(${i})">Trial: Floor ${i}</button>`;
     }
+    html += '</div>';
+    html += '<button class="btn" style="background:#f44336; width:100%; padding:10px; font-weight:bold; color:#fff; border:none; border-radius:6px; cursor:pointer;" onclick="window.openMazeGuide()">Back</button>';
+
+    dialog.innerHTML = html;
+    modal.style.display = 'flex';
 };
 
 window.requestMazeTrial = function(floorNum) {
@@ -3336,30 +3278,39 @@ window.requestMazeTrial = function(floorNum) {
 
     if (isSolo && isLowLevel) {
         const modal = document.getElementById('maze-guide-modal');
-        if (modal) {
-            let html = '<h2 style="margin-top:0; color:#f59e0b; font-size:1.3rem;">⚠️ Warning</h2>';
-            html += '<div style="background:rgba(245,158,11,0.1); border:1px solid #f59e0b; border-radius:8px; padding:14px; margin-bottom:16px;">';
-            html += `<p style="font-size:13px; color:#fde68a; line-height:1.5; margin:0;">The Maze Trial is <b style="color:#ef4444;">extremely difficult</b> for solo players at your current level (<b style="color:#ffd700;">Lv.${game.player.level}</b>).</p>`;
-            html += '<p style="font-size:13px; color:#fde68a; line-height:1.5; margin:8px 0 0 0;">You will most likely <b style="color:#ef4444;">not be able to finish it</b>, wasting your <b style="color:#e040fb;">daily entry</b>.</p>';
-            html += '</div>';
-            html += '<p style="font-size:12px; color:#94a3b8; margin-bottom:15px;">Consider forming a party or leveling up first.</p>';
-            html += '<div style="display:flex; gap:10px;">';
-            html += '<button style="flex:1; background:#ef4444; border:none; border-radius:6px; color:#fff; padding:10px; font-weight:bold; cursor:pointer;" onclick="window.game?.ui?.openMazeTrialsUI()">Go Back</button>';
-            html += `<button style="flex:1; background:#f59e0b; border:none; border-radius:6px; color:#000; padding:10px; font-weight:bold; cursor:pointer;" onclick="window.confirmMazeTrial(${floorNum})">Enter Anyway</button>`;
-            html += '</div>';
-            modal.innerHTML = html;
-            return;
-        }
+        const dialog = document.getElementById('maze-guide-dialog') || modal;
+        let html = '<h2 style="margin-top:0; color:#ff9800; text-shadow: 0 0 10px rgba(255,152,0,0.5);">Warning</h2>';
+        html += '<div style="background:rgba(255,152,0,0.1); border:1px solid #ff9800; border-radius:6px; padding:15px; margin-bottom:20px; text-align:left;">';
+        html += `<p style="font-size:14px; color:#ffcc80; line-height:1.6; margin:0;">The Maze Trial is <b style="color:#f44336;">extremely difficult</b> for solo players at your current level (<b style="color:#ffeb3b;">Lv.${game?.player?.level || 1}</b>).</p>`;
+        html += '<p style="font-size:14px; color:#ffcc80; line-height:1.6; margin:10px 0 0 0;">You will most likely <b style="color:#f44336;">not be able to finish it</b>, wasting your <b style="color:#E040FB;">daily entry</b>.</p>';
+        html += '</div>';
+        html += '<p style="font-size:13px; color:#aaa; margin-bottom:15px;">Consider forming a party or leveling up first.</p>';
+        html += '<div style="display:flex; gap:10px;">';
+        html += '<button class="btn" style="flex:1; background:#f44336; color:#fff; border:none; border-radius:6px; padding:12px; font-weight:bold; cursor:pointer;" onclick="window.openMazeTrialsUI()">Go Back</button>';
+        html += `<button class="btn" style="flex:1; background:#ff9800; color:#000; border:none; border-radius:6px; padding:12px; font-weight:bold; cursor:pointer;" onclick="window.confirmMazeTrial(${floorNum})">Enter Anyway</button>`;
+        html += '</div>';
+        dialog.innerHTML = html;
+        modal.style.display = 'flex';
+        return;
     }
 
-    window.confirmMazeTrial(floorNum);
+    document.getElementById('maze-guide-modal').style.display = 'none';
+    if (window.game?.socket) {
+        window.game.socket.emit('requestMazeTrial', { targetFloor: floorNum });
+    }
 };
 
 window.confirmMazeTrial = function(floorNum) {
-    const modal = document.getElementById('maze-guide-modal');
-    if (modal) modal.style.display = 'none';
+    document.getElementById('maze-guide-modal').style.display = 'none';
     if (window.game?.socket) {
         window.game.socket.emit('requestMazeTrial', { targetFloor: floorNum });
+    }
+};
+
+window.requestMazeTeleport = function(floorNum) {
+    document.getElementById('maze-guide-modal').style.display = 'none';
+    if (window.game?.socket) {
+        window.game.socket.emit('requestMazeTeleport', { targetFloor: floorNum });
     }
 };
 
