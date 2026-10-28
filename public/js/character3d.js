@@ -2205,47 +2205,52 @@ export class Character3D {
             }
 
         } else if (activeKey === 'liquid') {
-            // 💧 LIQUID AURA: Vibrant Blue Water Droplets & Bubbles
+            // 💧 LIQUID AURA: Vibrant Blue Water Droplets & Bubbles (360° Omnidirectional Sprites)
             ag.liquidDrops = [];
-            const dropTex = Character3D.getRadialGlowTexture('#ffffff', '#0066ff');
-            const dropMat = new THREE.MeshBasicMaterial({
+            const dropTex = Character3D.getRadialGlowTexture('#e0f2fe', '#0066ff');
+            const dropMat = new THREE.SpriteMaterial({
                 map: dropTex,
-                transparent: true,
-                blending: THREE.AdditiveBlending,
-                depthWrite: false,
-                opacity: 0.85
-            });
-            for (let d = 0; d < 8; d++) {
-                const drop = new THREE.Mesh(new THREE.PlaneGeometry(0.18, 0.18), dropMat);
-                ag.add(drop);
-                ag.liquidDrops.push({
-                    mesh: drop,
-                    phase: d * 0.45,
-                    speed: 0.65 + Math.random() * 0.35,
-                    rad: 0.42 + Math.random() * 0.18,
-                    ang: (d / 8) * Math.PI * 2
-                });
-            }
-
-        } else if (activeKey === 'void') {
-            // 🌌 VOID AURA: Deep Violet Cosmic Stardust Particles
-            ag.voidWisps = [];
-            const vTex = Character3D.getRadialGlowTexture('#f3e8ff', '#8a2be2');
-            const vMat = new THREE.MeshBasicMaterial({
-                map: vTex,
                 transparent: true,
                 blending: THREE.AdditiveBlending,
                 depthWrite: false,
                 opacity: 0.90
             });
-            for (let w = 0; w < 8; w++) {
-                const wisp = new THREE.Mesh(new THREE.PlaneGeometry(0.22, 0.22), vMat);
+            for (let d = 0; d < 12; d++) {
+                const drop = new THREE.Sprite(dropMat);
+                drop.scale.set(0.22, 0.22, 1);
+                ag.add(drop);
+                ag.liquidDrops.push({
+                    sprite: drop,
+                    mesh: drop,
+                    phase: d * 0.45,
+                    speed: 0.85 + (d % 3) * 0.35,
+                    rad: 0.48 + (d % 2) * 0.14,
+                    ang: (d / 12) * Math.PI * 2
+                });
+            }
+
+        } else if (activeKey === 'void') {
+            // 🌌 VOID AURA: Deep Violet Cosmic Stardust Particles (360° Omnidirectional Sprites)
+            ag.voidWisps = [];
+            const vTex = Character3D.getRadialGlowTexture('#f3e8ff', '#8a2be2');
+            const vMat = new THREE.SpriteMaterial({
+                map: vTex,
+                transparent: true,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false,
+                opacity: 0.92
+            });
+            for (let w = 0; w < 12; w++) {
+                const wisp = new THREE.Sprite(vMat);
+                wisp.scale.set(0.26, 0.26, 1);
                 ag.add(wisp);
                 ag.voidWisps.push({
+                    sprite: wisp,
                     mesh: wisp,
-                    ang: (w / 8) * Math.PI * 2,
-                    speed: 1.4 + (w % 3) * 0.3,
-                    rad: 0.48 + (w % 2) * 0.15
+                    ang: (w / 12) * Math.PI * 2,
+                    speed: 1.4 + (w % 3) * 0.35,
+                    rad: 0.50 + (w % 2) * 0.15,
+                    yOffset: (w / 12) * 0.7
                 });
             }
 
@@ -2267,26 +2272,27 @@ export class Character3D {
             ag.add(ringPlane);
             ag.easterRing = ringPlane;
 
-            // Bubbling pastel orbs (matching 2D bunnyBubble)
+            // Bubbling pastel orbs (matching 2D bunnyBubble) - 360° Omnidirectional Sprites
             ag.bunnyBubbles = [];
             const pastelCols = [0xff80ab, 0x80d8ff, 0xb9f6ca, 0xffd180, 0xe040fb];
-            for (let b = 0; b < 6; b++) {
+            for (let b = 0; b < 8; b++) {
                 const col = pastelCols[b % pastelCols.length];
-                const bub = new THREE.Mesh(
-                    new THREE.PlaneGeometry(0.14, 0.14),
-                    new THREE.MeshBasicMaterial({
+                const bub = new THREE.Sprite(
+                    new THREE.SpriteMaterial({
                         map: Character3D.getRadialGlowTexture('#ffffff', '#' + col.toString(16).padStart(6, '0')),
                         transparent: true,
                         blending: THREE.AdditiveBlending,
                         depthWrite: false,
-                        opacity: 0.80
+                        opacity: 0.85
                     })
                 );
+                bub.scale.set(0.16, 0.16, 1);
                 ag.add(bub);
                 ag.bunnyBubbles.push({
+                    sprite: bub,
                     mesh: bub,
-                    phase: b * 0.55,
-                    speed: 0.65 + Math.random() * 0.35,
+                    phase: b * 0.45,
+                    speed: 0.70 + (b % 3) * 0.25,
                     x: (Math.random() - 0.5) * 0.6,
                     z: (Math.random() - 0.5) * 0.6
                 });
@@ -2353,46 +2359,51 @@ export class Character3D {
             ag.add(haloRing);
             ag.divineHalo = haloRing;
 
-            // Rising Holy Golden Stardust Sparkles
+            // Rising Holy Golden Stardust Sparkles (360° Omnidirectional Sprites)
             ag.sparkles = [];
             const spkTex = Character3D.getRadialGlowTexture('#ffffff', '#ffea00');
-            const spkMat = new THREE.MeshBasicMaterial({
+            const spkMat = new THREE.SpriteMaterial({
                 map: spkTex,
                 transparent: true,
                 blending: THREE.AdditiveBlending,
-                depthWrite: false
+                depthWrite: false,
+                opacity: 0.90
             });
-            for (let s = 0; s < 6; s++) {
-                const spk = new THREE.Mesh(new THREE.PlaneGeometry(0.14, 0.14), spkMat);
+            for (let s = 0; s < 8; s++) {
+                const spk = new THREE.Sprite(spkMat);
+                spk.scale.set(0.16, 0.16, 1);
                 ag.add(spk);
                 ag.sparkles.push({
+                    sprite: spk,
                     mesh: spk,
-                    ang: (s / 6) * Math.PI * 2,
-                    speed: 0.8 + Math.random() * 0.4,
-                    rad: 0.45 + Math.random() * 0.15
+                    ang: (s / 8) * Math.PI * 2,
+                    speed: 0.9 + (s % 3) * 0.3,
+                    rad: 0.46 + (s % 2) * 0.14
                 });
             }
 
         } else if (activeKey === 'blaze') {
-            // 🔥 BLAZE AURA: Swirling Luminous Dancing Flame Wisps around Torso
+            // 🔥 BLAZE AURA: Swirling Luminous Dancing Flame Wisps around Torso (360° Omnidirectional Sprites)
             ag.blazeFlames = [];
             const fTex = Character3D.getRadialGlowTexture('#fff3e0', '#ff3d00');
-            const fMat = new THREE.MeshBasicMaterial({
+            const fMat = new THREE.SpriteMaterial({
                 map: fTex,
                 transparent: true,
                 blending: THREE.AdditiveBlending,
                 depthWrite: false,
                 opacity: 0.90
             });
-            for (let f = 0; f < 6; f++) {
-                const flame = new THREE.Mesh(new THREE.PlaneGeometry(0.24, 0.32), fMat);
+            for (let f = 0; f < 8; f++) {
+                const flame = new THREE.Sprite(fMat);
+                flame.scale.set(0.24, 0.32, 1);
                 ag.add(flame);
                 ag.blazeFlames.push({
+                    sprite: flame,
                     mesh: flame,
-                    ang: (f / 6) * Math.PI * 2,
+                    ang: (f / 8) * Math.PI * 2,
                     speed: 2.2 + (f % 3) * 0.4,
-                    rad: 0.45 + (f % 2) * 0.12,
-                    yOffset: f * 0.25
+                    rad: 0.46 + (f % 2) * 0.12,
+                    yOffset: f * 0.22
                 });
             }
 
@@ -2439,20 +2450,25 @@ export class Character3D {
             });
         }
 
-        // 3. Liquid Aura: Floating Blue Water Droplets
+        // 3. Liquid Aura: Floating & Orbiting Blue Water Droplets (Visible 360° from front & back!)
         if (ag.liquidDrops) {
             ag.liquidDrops.forEach(d => {
-                const y = 0.55 + ((t * d.speed + d.phase) % 1.4);
-                d.mesh.position.set(Math.cos(d.ang) * d.rad, y, Math.sin(d.ang) * d.rad);
+                const ang = d.ang + t * d.speed;
+                const y = 0.45 + ((t * 0.7 + d.phase) % 1.45);
+                d.sprite.position.set(Math.cos(ang) * d.rad, y, Math.sin(ang) * d.rad);
+                const pulse = 0.85 + Math.sin(t * 3.0 + d.phase) * 0.25;
+                d.sprite.scale.set(0.22 * pulse, 0.22 * pulse, 1);
             });
         }
 
-        // 4. Void Aura: Orbiting Violet Cosmic Wisps
+        // 4. Void Aura: Orbiting Violet Cosmic Wisps (Visible 360° from front & back!)
         if (ag.voidWisps) {
             ag.voidWisps.forEach(w => {
                 const ang = w.ang + t * w.speed;
-                const y = 0.85 + Math.sin(t * 2.2 + w.ang) * 0.42;
-                w.mesh.position.set(Math.cos(ang) * w.rad, y, Math.sin(ang) * w.rad);
+                const y = 0.65 + Math.sin(t * 2.2 + w.ang) * 0.45 + (w.yOffset || 0) * 0.4;
+                w.sprite.position.set(Math.cos(ang) * w.rad, y, Math.sin(ang) * w.rad);
+                const wPulse = 0.90 + Math.sin(t * 3.5 + w.ang) * 0.22;
+                w.sprite.scale.set(0.26 * wPulse, 0.26 * wPulse, 1);
             });
         }
 
@@ -2464,9 +2480,10 @@ export class Character3D {
         if (ag.bunnyBubbles) {
             ag.bunnyBubbles.forEach(b => {
                 const prog = ((t * b.speed + b.phase) % 2.2);
-                b.mesh.position.set(b.x + Math.sin(t * 3.0 + b.phase) * 0.08, 0.5 + prog, b.z + Math.cos(t * 3.0 + b.phase) * 0.08);
+                b.sprite.position.set(b.x + Math.sin(t * 3.0 + b.phase) * 0.08, 0.5 + prog, b.z + Math.cos(t * 3.0 + b.phase) * 0.08);
                 const fade = Math.sin((prog / 2.2) * Math.PI);
-                b.mesh.scale.setScalar(0.6 + fade * 0.6);
+                const s = 0.16 * (0.6 + fade * 0.6);
+                b.sprite.scale.set(s, s, 1);
             });
         }
 
@@ -2491,19 +2508,19 @@ export class Character3D {
                 ag.sparkles.forEach(s => {
                     const ang = s.ang + t * s.speed;
                     const y = 0.8 + Math.sin(t * 2.5 + s.ang) * 0.5;
-                    s.mesh.position.set(Math.cos(ang) * s.rad, y, Math.sin(ang) * s.rad);
+                    s.sprite.position.set(Math.cos(ang) * s.rad, y, Math.sin(ang) * s.rad);
                 });
             }
         }
 
-        // 7. Blaze Aura: Swirling Dancing Flames
+        // 7. Blaze Aura: Swirling Dancing Flames (Visible 360° from front & back!)
         if (ag.blazeFlames) {
             ag.blazeFlames.forEach(f => {
                 const ang = f.ang + t * f.speed;
                 const y = 0.55 + ((t * 1.4 + f.yOffset) % 1.3);
-                f.mesh.position.set(Math.cos(ang) * f.rad, y, Math.sin(ang) * f.rad);
-                f.mesh.rotation.y = -ang;
-                f.mesh.scale.setScalar(0.7 + Math.sin(y * 2.0) * 0.5);
+                f.sprite.position.set(Math.cos(ang) * f.rad, y, Math.sin(ang) * f.rad);
+                const s = 0.7 + Math.sin(y * 2.0) * 0.4;
+                f.sprite.scale.set(0.24 * s, 0.32 * s, 1);
             });
         }
 
@@ -2661,8 +2678,8 @@ export class Character3D {
 
 
         } else if (id.includes('owl')) {
-            // 🦉 NIGHT OWL PET: Elevated Hover ABOVE HEAD (y = 2.25)
-            pg.position.set(-0.85, 2.25, -0.55);
+            // 🦉 NIGHT OWL PET: Elevated Hover on LEFT SHOULDER (x = -0.85, y = 2.25)
+            pg.position.set(-0.85, 2.25, -0.25);
 
             const owlMat = new THREE.MeshStandardMaterial({ color: 0x3d3028, roughness: 0.6 });
             const chestMat = new THREE.MeshStandardMaterial({ color: 0xc4b8aa, roughness: 0.7 });
@@ -2709,19 +2726,20 @@ export class Character3D {
             rWingPivot.add(rWing);
 
         } else if (id.includes('wisp')) {
-            // 🌀 WILL-O'-WISP PET: Luminous Spirit Orb Elevated ABOVE HEAD (y = 2.35)
-            pg.position.set(0.78, 2.35, -0.50);
+            // 🌀 WILL-O'-WISP PET: Luminous Spirit Orb on LEFT SHOULDER (x = -0.80)
+            // (Opposite side of Tech Genius drone at x = +0.88 to prevent collision!)
+            pg.position.set(-0.80, 2.35, -0.25);
 
             const wispTex = Character3D.getRadialGlowTexture('#ffffff', '#00e5ff');
-            const wispCore = new THREE.Mesh(
-                new THREE.PlaneGeometry(0.55, 0.55),
-                new THREE.MeshBasicMaterial({
+            const wispCore = new THREE.Sprite(
+                new THREE.SpriteMaterial({
                     map: wispTex,
                     transparent: true,
                     blending: THREE.AdditiveBlending,
                     depthWrite: false
                 })
             );
+            wispCore.scale.set(0.55, 0.55, 1);
             pg.add(wispCore);
             pg.wispCore = wispCore;
 
@@ -2734,25 +2752,44 @@ export class Character3D {
             pg.gRing2.rotation.x = Math.PI / 2;
             pg.add(pg.gRing2);
 
+            const wispLight = new THREE.PointLight(0x00e5ff, 1.2, 3.2);
+            pg.add(wispLight);
+
         } else if (id.includes('void')) {
             // 👻 MINI GASTLY VOID PET (MATCHING 2D EXONIE .mini-wraith):
-            // Floating spherical shadow orb + billowing purple smoke puffs + glowing white slanted eyes + tiny fanged grin + trailing wisps!
-            pg.position.set(-0.75, 2.20, -0.60);
+            // Floating spherical shadow orb on LEFT SHOULDER (x = -0.78)
+            // (Opposite side of Tech Genius drone at x = +0.88 to prevent collision!)
+            // Luminous Billowing Purple Gas Cloud + Piercing White Slanted Eyes + Wicked Smile visible from ALL angles (front & back)!
+            pg.position.set(-0.78, 2.25, -0.25);
 
             // 1. Core Dark Shadow Orb (Mini Gastly Body)
             const orbGeo = new THREE.SphereGeometry(0.24, 18, 16);
             const orbMat = new THREE.MeshStandardMaterial({
-                color: 0x140026,
+                color: 0x16002c,
                 roughness: 0.35,
                 metalness: 0.15,
-                emissive: 0x4a148c,
-                emissiveIntensity: 0.75
+                emissive: 0x6a1b9a,
+                emissiveIntensity: 0.85
             });
             const miniOrb = new THREE.Mesh(orbGeo, orbMat);
             pg.add(miniOrb);
             pg.miniOrb = miniOrb;
 
-            // 2. Swirling Purple Gas Smoke Puffs
+            // 2. Luminous Gastly Purple Gas Cloud (Omnidirectional Billboard Sprite)
+            const gasGlowTex = Character3D.getRadialGlowTexture('#f3e8ff', '#9c27b0');
+            const gasGlowMat = new THREE.SpriteMaterial({
+                map: gasGlowTex,
+                transparent: true,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false,
+                opacity: 0.85
+            });
+            const gasAura = new THREE.Sprite(gasGlowMat);
+            gasAura.scale.set(0.95, 0.95, 1);
+            pg.add(gasAura);
+            pg.gasAura = gasAura;
+
+            // 3. Swirling Purple Gas Smoke Puffs (Surrounding Body from all sides)
             const smokeGroup = new THREE.Group();
             pg.add(smokeGroup);
             pg.smokeGroup = smokeGroup;
@@ -2762,24 +2799,28 @@ export class Character3D {
                 transparent: true,
                 blending: THREE.AdditiveBlending,
                 depthWrite: false,
-                opacity: 0.55
+                side: THREE.DoubleSide,
+                opacity: 0.65
             });
             const darkSmokeMat = new THREE.MeshBasicMaterial({
                 color: 0x7b1fa2,
                 transparent: true,
                 blending: THREE.AdditiveBlending,
                 depthWrite: false,
-                opacity: 0.65
+                side: THREE.DoubleSide,
+                opacity: 0.75
             });
 
             pg.smokePuffs = [];
             const smokeConfigs = [
-                { r: 0.14, x:  0.22, y:  0.10, z:  0.08, mat: smokeMat },
+                { r: 0.15, x:  0.22, y:  0.10, z:  0.08, mat: smokeMat },
                 { r: 0.16, x: -0.24, y:  0.08, z: -0.06, mat: darkSmokeMat },
-                { r: 0.12, x:  0.18, y: -0.12, z:  0.12, mat: darkSmokeMat },
+                { r: 0.14, x:  0.18, y: -0.12, z:  0.12, mat: darkSmokeMat },
                 { r: 0.15, x: -0.20, y: -0.10, z: -0.10, mat: smokeMat },
                 { r: 0.16, x:  0.00, y:  0.25, z: -0.08, mat: smokeMat },
-                { r: 0.13, x:  0.00, y: -0.22, z:  0.08, mat: darkSmokeMat }
+                { r: 0.14, x:  0.00, y: -0.22, z:  0.08, mat: darkSmokeMat },
+                { r: 0.15, x:  0.12, y:  0.15, z: -0.18, mat: smokeMat },
+                { r: 0.15, x: -0.12, y:  0.15, z:  0.18, mat: darkSmokeMat }
             ];
 
             smokeConfigs.forEach(cfg => {
@@ -2789,51 +2830,62 @@ export class Character3D {
                 pg.smokePuffs.push(puff);
             });
 
-            // 3. Piercing White Slanted Eyes (2D w-eye style)
-            const eyeGroup = new THREE.Group();
-            eyeGroup.position.set(0, 0.04, 0.20);
-            pg.add(eyeGroup);
-
+            // 4. Piercing White Slanted Eyes & Wicked Smile (Rendered on both FRONT (+Z) and BACK (-Z) so pet is NEVER lifeless from behind!)
             const eyeMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
-            const pupilMat = new THREE.MeshBasicMaterial({ color: 0x00e5ff }); // Glowing cyan-blue pupil
-
-            [-1, 1].forEach(s => {
-                const eyeRoot = new THREE.Group();
-                eyeRoot.position.set(s * 0.09, 0, 0);
-                eyeRoot.rotation.z = s * -0.35; // Slanted menacing gaze!
-                eyeGroup.add(eyeRoot);
-
-                const sclera = new THREE.Mesh(new THREE.SphereGeometry(0.052, 10, 10), eyeMat);
-                sclera.scale.set(1.15, 0.70, 0.35);
-                eyeRoot.add(sclera);
-
-                const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.024, 8, 8), pupilMat);
-                pupil.position.set(0, 0, 0.025);
-                eyeRoot.add(pupil);
-            });
-
-            // 4. Wicked Little Fanged Smile
-            const mouthGroup = new THREE.Group();
-            mouthGroup.position.set(0, -0.07, 0.21);
-            pg.add(mouthGroup);
-            pg.mouth = mouthGroup;
-
+            const pupilMat = new THREE.MeshBasicMaterial({ color: 0x00e5ff });
             const mawMat = new THREE.MeshBasicMaterial({ color: 0x050010 });
-            const mawGeo = new THREE.CylinderGeometry(0.09, 0.07, 0.04, 12);
-            mawGeo.rotateX(Math.PI / 2);
-            mawGeo.scale(1.2, 0.65, 0.4);
-            const maw = new THREE.Mesh(mawGeo, mawMat);
-            mouthGroup.add(maw);
-
             const fangMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
-            const fangGeo = new THREE.ConeGeometry(0.018, 0.045, 4);
-            fangGeo.rotateX(Math.PI);
 
-            [-0.045, 0.045].forEach(fx => {
-                const fang = new THREE.Mesh(fangGeo, fangMat);
-                fang.position.set(fx, 0.02, 0.015);
-                mouthGroup.add(fang);
-            });
+            // Helper to build Gastly face (eyes + fanged grin) facing either +Z (front) or -Z (back)
+            const buildFace = (zDir) => {
+                const faceGroup = new THREE.Group();
+                faceGroup.position.set(0, 0, 0);
+                if (zDir < 0) faceGroup.rotation.y = Math.PI; // Perfectly oriented for the rear view
+
+                const eyeGroup = new THREE.Group();
+                eyeGroup.position.set(0, 0.04, 0.20);
+                faceGroup.add(eyeGroup);
+
+                [-1, 1].forEach(s => {
+                    const eyeRoot = new THREE.Group();
+                    eyeRoot.position.set(s * 0.09, 0, 0);
+                    eyeRoot.rotation.z = s * -0.35; // Slanted menacing gaze!
+                    eyeGroup.add(eyeRoot);
+
+                    const sclera = new THREE.Mesh(new THREE.SphereGeometry(0.052, 10, 10), eyeMat);
+                    sclera.scale.set(1.15, 0.70, 0.35);
+                    eyeRoot.add(sclera);
+
+                    const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.024, 8, 8), pupilMat);
+                    pupil.position.set(0, 0, 0.025);
+                    eyeRoot.add(pupil);
+                });
+
+                const mouthGroup = new THREE.Group();
+                mouthGroup.position.set(0, -0.07, 0.21);
+                faceGroup.add(mouthGroup);
+
+                const mawGeo = new THREE.CylinderGeometry(0.09, 0.07, 0.04, 12);
+                mawGeo.rotateX(Math.PI / 2);
+                mawGeo.scale(1.2, 0.65, 0.4);
+                const maw = new THREE.Mesh(mawGeo, mawMat);
+                mouthGroup.add(maw);
+
+                const fangGeo = new THREE.ConeGeometry(0.018, 0.045, 4);
+                fangGeo.rotateX(Math.PI);
+                [-0.045, 0.045].forEach(fx => {
+                    const fang = new THREE.Mesh(fangGeo, fangMat);
+                    fang.position.set(fx, 0.02, 0.015);
+                    mouthGroup.add(fang);
+                });
+
+                return faceGroup;
+            };
+
+            // Front face (+Z)
+            pg.add(buildFace(1));
+            // Rear face (-Z) so when viewing player's back in 3rd person, Mini Wraith is clearly visible with its iconic face!
+            pg.add(buildFace(-1));
 
             // 5. Undulating Ghostly Smoke Tendrils (matching 2D w-particles)
             const tendrilGroup = new THREE.Group();
@@ -2842,18 +2894,23 @@ export class Character3D {
             pg.tendrilGroup = tendrilGroup;
             pg.tendrils = [];
 
-            for (let i = 0; i < 4; i++) {
-                const tGeo = new THREE.ConeGeometry(0.038, 0.18, 5);
+            for (let i = 0; i < 6; i++) {
+                const tGeo = new THREE.ConeGeometry(0.04, 0.22, 6);
                 tGeo.rotateX(Math.PI);
                 const tMesh = new THREE.Mesh(tGeo, darkSmokeMat);
-                const ang = (i / 4) * Math.PI * 2;
-                tMesh.position.set(Math.cos(ang) * 0.12, -0.12, Math.sin(ang) * 0.12);
+                const ang = (i / 6) * Math.PI * 2;
+                tMesh.position.set(Math.cos(ang) * 0.12, -0.14, Math.sin(ang) * 0.12);
                 tendrilGroup.add(tMesh);
                 pg.tendrils.push(tMesh);
             }
+
+            const wraithLight = new THREE.PointLight(0xba68c8, 1.2, 3.2);
+            pg.add(wraithLight);
+
         } else if (id.includes('egg')) {
-            // 🥚 EASTER EGG PET: Playful Elevated Companion ABOVE HEAD (y = 2.15)
-            pg.position.set(0.75, 2.15, -0.55);
+            // 🥚 EASTER EGG PET: Playful Elevated Companion on LEFT SHOULDER (x = -0.76)
+            // (Opposite side of Tech Genius drone at x = +0.88 to prevent collision!)
+            pg.position.set(-0.76, 2.20, -0.25);
 
             const eggGeo = new THREE.SphereGeometry(0.19, 14, 14);
             eggGeo.scale(1.0, 1.35, 1.0);
@@ -2926,29 +2983,33 @@ export class Character3D {
             }
 
         } else if (this.currentPetId.includes('owl')) {
-            // Hover bob ABOVE HEAD (y = 2.25)
+            // Hover bob ABOVE HEAD on LEFT SHOULDER (y = 2.25)
             const flap = Math.sin(t * 8.5) * 0.55;
             if (pg.lWingPivot) pg.lWingPivot.rotation.z = flap;
             if (pg.rWingPivot) pg.rWingPivot.rotation.z = -flap;
             pg.position.y = 2.25 + Math.sin(t * 3.5) * 0.09;
             pg.position.x = -0.85 + Math.sin(t * 1.5) * 0.05;
-            pg.position.z = -0.55 + Math.cos(t * 1.5) * 0.05;
+            pg.position.z = -0.25 + Math.cos(t * 1.5) * 0.05;
         } else if (this.currentPetId.includes('wisp')) {
-            // Gyro rotation & spirit bob ABOVE HEAD (y = 2.35)
+            // Gyro rotation & spirit bob on LEFT SHOULDER (opposite Tech Genius drone!)
             if (pg.gRing1) pg.gRing1.rotation.x += dt * 2.2;
             if (pg.gRing2) pg.gRing2.rotation.y += dt * 3.0;
             pg.position.y = 2.35 + Math.sin(t * 2.8) * 0.12;
-            if (pg.wispCore) pg.wispCore.scale.setScalar(0.95 + Math.sin(t * 4.5) * 0.08);
-            pg.position.x = 0.78 + Math.cos(t * 1.8) * 0.06;
-            pg.position.z = -0.50 + Math.sin(t * 1.8) * 0.06;
+            if (pg.wispCore) pg.wispCore.scale.setScalar(0.55 * (0.95 + Math.sin(t * 4.5) * 0.08));
+            pg.position.x = -0.80 + Math.cos(t * 1.8) * 0.06;
+            pg.position.z = -0.25 + Math.sin(t * 1.8) * 0.06;
         } else if (this.currentPetId.includes('void')) {
-            // Mini Gastly Float & Animation (matching 2D voidFadeFloat)
-            pg.position.y = 2.20 + Math.sin(t * 2.5) * 0.09;
-            pg.position.x = -0.75 + Math.cos(t * 1.2) * 0.06;
-            pg.position.z = -0.60 + Math.sin(t * 1.2) * 0.06;
+            // Mini Gastly Float & Animation (matching 2D voidFadeFloat) on LEFT SHOULDER (opposite Tech Genius drone!)
+            pg.position.y = 2.25 + Math.sin(t * 2.5) * 0.09;
+            pg.position.x = -0.78 + Math.cos(t * 1.2) * 0.06;
+            pg.position.z = -0.25 + Math.sin(t * 1.2) * 0.06;
             pg.rotation.z = Math.sin(t * 2.0) * 0.05;
 
-            // Swirl purple gas smoke puffs
+            // Swirl purple gas aura and smoke puffs
+            if (pg.gasAura) {
+                const gasPulse = 0.90 + Math.sin(t * 3.0) * 0.12;
+                pg.gasAura.scale.set(0.95 * gasPulse, 0.95 * gasPulse, 1);
+            }
             if (pg.smokeGroup) {
                 pg.smokeGroup.rotation.y += dt * 1.8;
                 pg.smokeGroup.rotation.z = Math.sin(t * 2.2) * 0.15;
@@ -2962,7 +3023,7 @@ export class Character3D {
             // Undulate smoke tendrils
             if (pg.tendrilGroup && pg.tendrils) {
                 pg.tendrils.forEach((td, idx) => {
-                    td.position.y = -0.12 - Math.abs(Math.sin(t * 4.0 + idx * 0.7)) * 0.06;
+                    td.position.y = -0.14 - Math.abs(Math.sin(t * 4.0 + idx * 0.7)) * 0.06;
                     td.rotation.z = Math.sin(t * 3.2 + idx) * 0.20;
                 });
             }
@@ -2972,11 +3033,11 @@ export class Character3D {
                 pg.miniOrb.scale.setScalar(orbPulse);
             }
         } else if (this.currentPetId.includes('egg')) {
-            // Bouncy joyful hop & tilt ABOVE HEAD (y = 2.15)
-            pg.position.y = 2.15 + Math.abs(Math.sin(t * 4.2)) * 0.14;
+            // Bouncy joyful hop & tilt on LEFT SHOULDER (opposite Tech Genius drone!)
+            pg.position.y = 2.20 + Math.abs(Math.sin(t * 4.2)) * 0.14;
             pg.rotation.z = Math.sin(t * 4.2) * 0.15;
-            pg.position.x = 0.75 + Math.sin(t * 1.4) * 0.05;
-            pg.position.z = -0.55 + Math.cos(t * 1.4) * 0.05;
+            pg.position.x = -0.76 + Math.sin(t * 1.4) * 0.05;
+            pg.position.z = -0.25 + Math.cos(t * 1.4) * 0.05;
         }
     }
 
