@@ -778,7 +778,6 @@ export class GameApp {
                     if (sid === this.socket.id || (this.player.name && pData.name === this.player.name)) return;
                     console.log(`👋 [Multiplayer] Remote player joined/updated: ${pData.name} (Socket: ${sid})`);
                     this.addRemotePlayer(sid, pData);
-                    this.appendChatLine('system', `👋 Player ${pData.name} joined the realm.`);
                 });
 
                 this.socket.on('playerMoved', (pData) => {

@@ -1874,8 +1874,128 @@ export class Character3D {
         }
     }
 
+        // ==========================================
+    // ✨ PROCEDURAL AURA & WING TEXTURE ENGINE
+    // Creates soft, glowing, additive-blended textures (NO solid polygons!)
     // ==========================================
-    // ✨ 3D COSMETIC AURA ENGINE (2D EXONIE REMASTERED)
+    static getRadialGlowTexture(innerCol = '#ffffff', outerCol = '#ffea00') {
+        Character3D.auraTexCache = Character3D.auraTexCache || {};
+        const key = `radial_${innerCol}_${outerCol}`;
+        if (Character3D.auraTexCache[key]) return Character3D.auraTexCache[key];
+        const canvas = document.createElement('canvas');
+        canvas.width = 128;
+        canvas.height = 128;
+        const ctx = canvas.getContext('2d');
+        const grad = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
+        grad.addColorStop(0, innerCol);
+        grad.addColorStop(0.25, innerCol);
+        grad.addColorStop(0.65, outerCol);
+        grad.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, 128, 128);
+        const tex = new THREE.CanvasTexture(canvas);
+        Character3D.auraTexCache[key] = tex;
+        return tex;
+    }
+
+    static getAuraShroudTexture(coreCol = '#ffffff', glowCol = '#ffea00') {
+        Character3D.auraTexCache = Character3D.auraTexCache || {};
+        const key = `shroud_${coreCol}_${glowCol}`;
+        if (Character3D.auraTexCache[key]) return Character3D.auraTexCache[key];
+        const canvas = document.createElement('canvas');
+        canvas.width = 128;
+        canvas.height = 256;
+        const ctx = canvas.getContext('2d');
+        const grad = ctx.createLinearGradient(0, 0, 0, 256);
+        grad.addColorStop(0, 'rgba(0,0,0,0)');
+        grad.addColorStop(0.18, glowCol + '44');
+        grad.addColorStop(0.45, glowCol + 'bb');
+        grad.addColorStop(0.55, coreCol);
+        grad.addColorStop(0.65, glowCol + 'bb');
+        grad.addColorStop(0.85, glowCol + '44');
+        grad.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, 128, 256);
+        const tex = new THREE.CanvasTexture(canvas);
+        Character3D.auraTexCache[key] = tex;
+        return tex;
+    }
+
+    static getCelestialWingTexture(isLeft = true) {
+        Character3D.auraTexCache = Character3D.auraTexCache || {};
+        const key = `divine_wing_${isLeft ? 'L' : 'R'}`;
+        if (Character3D.auraTexCache[key]) return Character3D.auraTexCache[key];
+        const canvas = document.createElement('canvas');
+        canvas.width = 256;
+        canvas.height = 384;
+        const ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, 256, 384);
+        ctx.save();
+
+        if (!isLeft) {
+            ctx.translate(256, 0);
+            ctx.scale(-1, 1);
+        }
+
+        // Soft Outer Celestial Bloom
+        const bloomGrad = ctx.createRadialGradient(160, 140, 20, 128, 180, 160);
+        bloomGrad.addColorStop(0, 'rgba(255, 234, 0, 0.7)');
+        bloomGrad.addColorStop(0.5, 'rgba(255, 180, 0, 0.35)');
+        bloomGrad.addColorStop(1, 'rgba(255, 150, 0, 0)');
+        ctx.fillStyle = bloomGrad;
+        ctx.beginPath();
+        ctx.ellipse(140, 180, 100, 160, -0.2, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Layered curved feathers of holy light matching 2D Exonie's radial gradient wings
+        const feathers = [
+            { sx: 220, sy: 90,  c1x: 140, c1y: 20,  c2x: 70, c2y: 25,  ex: 25, ey: 55,  w: 28 },
+            { sx: 210, sy: 110, c1x: 130, c1y: 45,  c2x: 60, c2y: 70,  ex: 20, ey: 110, w: 26 },
+            { sx: 200, sy: 130, c1x: 120, c1y: 80,  c2x: 55, c2y: 120, ex: 25, ey: 165, w: 24 },
+            { sx: 190, sy: 155, c1x: 115, c1y: 125, c2x: 55, c2y: 175, ex: 35, ey: 220, w: 22 },
+            { sx: 180, sy: 180, c1x: 110, c1y: 165, c2x: 60, c2y: 225, ex: 50, ey: 275, w: 20 },
+            { sx: 175, sy: 205, c1x: 110, c1y: 205, c2x: 70, c2y: 270, ex: 70, ey: 330, w: 18 },
+            { sx: 170, sy: 230, c1x: 115, c1y: 245, c2x: 85, c2y: 310, ex: 95, ey: 365, w: 16 }
+        ];
+
+        feathers.forEach(f => {
+            const fGrad = ctx.createLinearGradient(f.sx, f.sy, f.ex, f.ey);
+            fGrad.addColorStop(0, 'rgba(255, 255, 255, 0.98)');
+            fGrad.addColorStop(0.3, 'rgba(255, 248, 175, 0.92)');
+            fGrad.addColorStop(0.7, 'rgba(255, 215, 0, 0.70)');
+            fGrad.addColorStop(1, 'rgba(255, 170, 0, 0)');
+
+            ctx.strokeStyle = fGrad;
+            ctx.lineWidth = f.w;
+            ctx.lineCap = 'round';
+            ctx.beginPath();
+            ctx.moveTo(f.sx, f.sy);
+            ctx.bezierCurveTo(f.c1x, f.c1y, f.c2x, f.c2y, f.ex, f.ey);
+            ctx.stroke();
+        });
+
+        // Incandescent Radiant Wing Spine
+        const spineGrad = ctx.createLinearGradient(230, 80, 40, 50);
+        spineGrad.addColorStop(0, 'rgba(255, 255, 255, 1.0)');
+        spineGrad.addColorStop(0.6, 'rgba(255, 255, 240, 0.95)');
+        spineGrad.addColorStop(1, 'rgba(255, 235, 120, 0.6)');
+        ctx.strokeStyle = spineGrad;
+        ctx.lineWidth = 14;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(230, 80);
+        ctx.bezierCurveTo(160, 40, 90, 35, 30, 60);
+        ctx.stroke();
+
+        ctx.restore();
+        const tex = new THREE.CanvasTexture(canvas);
+        Character3D.auraTexCache[key] = tex;
+        return tex;
+    }
+
+    // ==========================================
+    // ✨ 3D COSMETIC AURA ENGINE (AUTHENTIC 2D EXONIE REMASTERED)
+    // Pure glowing energy shroud connected to its color + additional special effects!
     // ==========================================
     setCosmeticAura(auraId) {
         if (this.cosmeticAuraGroup) {
@@ -1902,286 +2022,341 @@ export class Character3D {
         this.cosmeticAuraGroup = ag;
         this.group.add(ag);
 
-        if (id.includes('divine')) {
-            // 🕊️ AURA OF THE DIVINE (PATTERND FROM 2D EXONIE):
-            // Flapping Angelic Wings Attached to Upper Back + Celestial Sun Halo + Holy Light Shafts + Sacred Golden Ground Seal
+        const configs = {
+            divine:    { hex: '#ffea00', coreHex: '#ffffff', glowHex: '#ff9800', groundR: 2.2 },
+            blaze:     { hex: '#ff3d00', coreHex: '#fff3e0', glowHex: '#ff6d00', groundR: 1.8 },
+            liquid:    { hex: '#00e5ff', coreHex: '#e0f7fa', glowHex: '#0091ea', groundR: 1.8 },
+            nature:    { hex: '#4caf50', coreHex: '#f1f8e9', glowHex: '#2e7d32', groundR: 1.8 },
+            lightning: { hex: '#00f0ff', coreHex: '#ffffff', glowHex: '#2979ff', groundR: 1.9 },
+            easter:    { hex: '#ff80ab', coreHex: '#fff9c4', glowHex: '#80d8ff', groundR: 1.8 },
+            void:      { hex: '#7c4dff', coreHex: '#ede7f6', glowHex: '#311b92', groundR: 1.8 }
+        };
 
-            // 1. Angelic Wings Root attached to upper back between shoulder blades
+        let activeKey = 'divine';
+        for (const k in configs) {
+            if (id.includes(k)) { activeKey = k; break; }
+        }
+        const cfg = configs[activeKey];
+        ag.cfg = cfg;
+        ag.auraKey = activeKey;
+
+        // 1. 🌟 PRIMARY BODY AURA SHROUD (Envelops character in its radiant color)
+        const shroudGeo = new THREE.CylinderGeometry(0.56, 0.46, 1.88, 24, 1, true);
+        const shroudMat = new THREE.MeshBasicMaterial({
+            map: Character3D.getAuraShroudTexture(cfg.coreHex, cfg.hex),
+            transparent: true,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+            side: THREE.DoubleSide,
+            opacity: 0.65
+        });
+        const shroud = new THREE.Mesh(shroudGeo, shroudMat);
+        shroud.position.y = 0.95;
+        ag.add(shroud);
+        ag.bodyShroud = shroud;
+        ag.shroudMat = shroudMat;
+
+        // 2. 🌟 INNER COUNTER-ROTATING CORE SHROUD (Volumetric depth)
+        const innerGeo = new THREE.CylinderGeometry(0.46, 0.38, 1.72, 20, 1, true);
+        const innerMat = new THREE.MeshBasicMaterial({
+            map: Character3D.getAuraShroudTexture('#ffffff', cfg.glowHex),
+            transparent: true,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+            side: THREE.DoubleSide,
+            opacity: 0.45
+        });
+        const innerShroud = new THREE.Mesh(innerGeo, innerMat);
+        innerShroud.position.y = 0.95;
+        ag.add(innerShroud);
+        ag.innerShroud = innerShroud;
+        ag.innerMat = innerMat;
+
+        // 3. 🌟 LUMINOUS GROUND AURA POOL (Soft blurred radial disc, zero hard lines)
+        const gGeo = new THREE.PlaneGeometry(cfg.groundR * 2, cfg.groundR * 2);
+        gGeo.rotateX(-Math.PI / 2);
+        const gMat = new THREE.MeshBasicMaterial({
+            map: Character3D.getRadialGlowTexture('#ffffff', cfg.hex),
+            transparent: true,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+            opacity: 0.60
+        });
+        const groundDisc = new THREE.Mesh(gGeo, gMat);
+        groundDisc.position.y = 0.03;
+        ag.add(groundDisc);
+        ag.groundDisc = groundDisc;
+        ag.groundMat = gMat;
+
+        // 4. 🌟 AMBIENT RISING ENERGY MOTES
+        ag.ambientMotes = [];
+        const moteTex = Character3D.getRadialGlowTexture('#ffffff', cfg.hex);
+        const moteMat = new THREE.MeshBasicMaterial({
+            map: moteTex,
+            transparent: true,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+            opacity: 0.85
+        });
+        for (let m = 0; m < 8; m++) {
+            const mPlane = new THREE.Mesh(new THREE.PlaneGeometry(0.12, 0.12), moteMat);
+            ag.add(mPlane);
+            ag.ambientMotes.push({
+                mesh: mPlane,
+                seed: Math.random() * Math.PI * 2,
+                speed: 0.8 + Math.random() * 0.6,
+                radius: 0.35 + Math.random() * 0.25
+            });
+        }
+
+        // ==========================================
+        // 5. 👑 ADDITIONAL SPECIAL EFFECTS (PER AURA TYPE)
+        // ==========================================
+        if (activeKey === 'divine') {
+            // 🕊️ DIVINE AURA: Ethereal Flapping Angel Wings of Light + Holy Halo
             const wingsGroup = new THREE.Group();
-            wingsGroup.position.set(0, 1.42, -0.20);
+            wingsGroup.position.set(0, 1.38, -0.15); // Attached cleanly to upper back
             ag.add(wingsGroup);
             ag.wingsGroup = wingsGroup;
 
-            const lWing = new THREE.Group();
-            lWing.position.set(-0.10, 0, 0);
-            wingsGroup.add(lWing);
-            ag.lWing = lWing;
+            // Left Wing Pivot
+            const lWingPivot = new THREE.Group();
+            lWingPivot.position.set(-0.12, 0, 0);
+            wingsGroup.add(lWingPivot);
+            ag.lWingPivot = lWingPivot;
 
-            const rWing = new THREE.Group();
-            rWing.position.set(0.10, 0, 0);
-            wingsGroup.add(rWing);
-            ag.rWing = rWing;
+            const lWingPlane = new THREE.Mesh(
+                new THREE.PlaneGeometry(1.4, 1.7),
+                new THREE.MeshBasicMaterial({
+                    map: Character3D.getCelestialWingTexture(true),
+                    transparent: true,
+                    blending: THREE.AdditiveBlending,
+                    depthWrite: false,
+                    side: THREE.DoubleSide
+                })
+            );
+            lWingPlane.position.set(-0.55, 0.25, 0);
+            lWingPivot.add(lWingPlane);
 
-            // Celestial Wing Feather Material (Pure white core with golden incandescent glow)
-            const wingCoreMat = new THREE.MeshStandardMaterial({
-                color: 0xffffff,
-                emissive: 0xffea00,
-                emissiveIntensity: 1.15,
-                roughness: 0.15,
-                metalness: 0.25,
-                transparent: true,
-                opacity: 0.95,
-                side: THREE.DoubleSide
-            });
-            const wingGlowMat = new THREE.MeshBasicMaterial({
-                color: 0xffd700,
-                transparent: true,
-                opacity: 0.75,
-                blending: THREE.AdditiveBlending,
-                side: THREE.DoubleSide
-            });
+            // Right Wing Pivot
+            const rWingPivot = new THREE.Group();
+            rWingPivot.position.set(0.12, 0, 0);
+            wingsGroup.add(rWingPivot);
+            ag.rWingPivot = rWingPivot;
 
-            // 5 Layered Curved Feather Blades per wing for a full majestic angel wing span
-            const featherConfigs = [
-                { length: 1.10, width: 0.18, rx: 0.08, ry: -0.22, rz: 0.45, x: -0.15, y: 0.35, z: 0.00 },
-                { length: 0.95, width: 0.16, rx: 0.10, ry: -0.25, rz: 0.70, x: -0.28, y: 0.25, z: -0.02 },
-                { length: 0.80, width: 0.15, rx: 0.12, ry: -0.28, rz: 0.95, x: -0.38, y: 0.12, z: -0.04 },
-                { length: 0.65, width: 0.14, rx: 0.14, ry: -0.30, rz: 1.20, x: -0.44, y: -0.02, z: -0.06 },
-                { length: 0.50, width: 0.12, rx: 0.16, ry: -0.32, rz: 1.45, x: -0.46, y: -0.16, z: -0.08 }
-            ];
+            const rWingPlane = new THREE.Mesh(
+                new THREE.PlaneGeometry(1.4, 1.7),
+                new THREE.MeshBasicMaterial({
+                    map: Character3D.getCelestialWingTexture(false),
+                    transparent: true,
+                    blending: THREE.AdditiveBlending,
+                    depthWrite: false,
+                    side: THREE.DoubleSide
+                })
+            );
+            rWingPlane.position.set(0.55, 0.25, 0);
+            rWingPivot.add(rWingPlane);
 
-            featherConfigs.forEach(cfg => {
-                // Left Wing Feather
-                const lGeo = new THREE.ConeGeometry(cfg.width, cfg.length, 6);
-                lGeo.rotateZ(Math.PI / 2);
-                lGeo.scale(1.0, 0.25, 1.0);
-                const lMesh = new THREE.Mesh(lGeo, wingCoreMat);
-                lMesh.position.set(cfg.x, cfg.y, cfg.z);
-                lMesh.rotation.set(cfg.rx, cfg.ry, cfg.rz);
-                lWing.add(lMesh);
+            // Floating Holy Halo of Golden Light above head
+            const haloRing = new THREE.Mesh(
+                new THREE.TorusGeometry(0.36, 0.022, 8, 32),
+                new THREE.MeshBasicMaterial({
+                    color: 0xffea00,
+                    transparent: true,
+                    blending: THREE.AdditiveBlending,
+                    depthWrite: false,
+                    opacity: 0.90
+                })
+            );
+            haloRing.position.set(0, 2.06, 0);
+            haloRing.rotation.x = Math.PI / 2.2;
+            ag.add(haloRing);
+            ag.divineHalo = haloRing;
 
-                const lGlow = new THREE.Mesh(lGeo, wingGlowMat);
-                lGlow.scale.set(1.08, 1.2, 1.08);
-                lGlow.position.copy(lMesh.position);
-                lGlow.rotation.copy(lMesh.rotation);
-                lWing.add(lGlow);
+        } else if (activeKey === 'easter') {
+            // 🐰 EASTER AURA: Elevated Tilted Spinning Ring at Waist + Bubbling Pastel Orbs
+            const ringGroup = new THREE.Group();
+            ringGroup.position.set(0, 1.10, 0); // Elevated to waist/chest!
+            ringGroup.rotation.x = 0.24;
+            ringGroup.rotation.z = 0.12;
+            ag.add(ringGroup);
+            ag.easterRingGroup = ringGroup;
 
-                // Right Wing Feather (Symmetrical mirror)
-                const rMesh = new THREE.Mesh(lGeo, wingCoreMat);
-                rMesh.position.set(-cfg.x, cfg.y, cfg.z);
-                rMesh.rotation.set(cfg.rx, -cfg.ry, -cfg.rz);
-                rWing.add(rMesh);
+            const ringMesh = new THREE.Mesh(
+                new THREE.TorusGeometry(0.72, 0.024, 8, 36),
+                new THREE.MeshBasicMaterial({
+                    color: 0xff80ab,
+                    transparent: true,
+                    blending: THREE.AdditiveBlending,
+                    depthWrite: false,
+                    opacity: 0.85
+                })
+            );
+            ringGroup.add(ringMesh);
+            ag.easterRing = ringMesh;
 
-                const rGlow = new THREE.Mesh(lGeo, wingGlowMat);
-                rGlow.scale.set(1.08, 1.2, 1.08);
-                rGlow.position.copy(rMesh.position);
-                rGlow.rotation.copy(rMesh.rotation);
-                rWing.add(rGlow);
-            });
-
-            // 2. Celestial Sunburst Halo with radiant spikes floating above head
-            const haloGroup = new THREE.Group();
-            haloGroup.position.set(0, 2.08, 0);
-            ag.add(haloGroup);
-            ag.haloGroup = haloGroup;
-
-            const haloRingMat = new THREE.MeshBasicMaterial({ color: 0xffea00, transparent: true, opacity: 0.95 });
-            const haloRing = new THREE.Mesh(new THREE.TorusGeometry(0.38, 0.035, 8, 32), haloRingMat);
-            haloRing.rotation.x = Math.PI / 2.3;
-            haloGroup.add(haloRing);
-
-            // 8 Celestial Sun Rays on the halo
-            const spikeGeo = new THREE.ConeGeometry(0.025, 0.18, 4);
-            spikeGeo.rotateX(Math.PI / 2);
-            for (let i = 0; i < 8; i++) {
-                const ray = new THREE.Mesh(spikeGeo, haloRingMat);
-                const rayAng = (i / 8) * Math.PI * 2;
-                ray.position.set(Math.cos(rayAng) * 0.44, 0, Math.sin(rayAng) * 0.44);
-                ray.rotation.y = -rayAng;
-                haloGroup.add(ray);
+            // Orbiting pastel stardust motes around the ring
+            ag.easterMotes = [];
+            const pastelCols = [0xff80ab, 0x80d8ff, 0xb9f6ca, 0xffd180, 0xe040fb];
+            for (let s = 0; s < 6; s++) {
+                const col = pastelCols[s % pastelCols.length];
+                const sPlane = new THREE.Mesh(
+                    new THREE.PlaneGeometry(0.12, 0.12),
+                    new THREE.MeshBasicMaterial({
+                        map: Character3D.getRadialGlowTexture('#ffffff', '#' + col.toString(16).padStart(6, '0')),
+                        transparent: true,
+                        blending: THREE.AdditiveBlending,
+                        depthWrite: false
+                    })
+                );
+                ringGroup.add(sPlane);
+                ag.easterMotes.push({ mesh: sPlane, ang: (s / 6) * Math.PI * 2, rad: 0.72 });
             }
 
-            // 3. Multi-layer Sacred Golden Ground Glyphs
-            const floorGroup = new THREE.Group();
-            floorGroup.position.set(0, 0.05, 0);
-            ag.add(floorGroup);
-            ag.floorGroup = floorGroup;
-
-            const fMat1 = new THREE.MeshBasicMaterial({ color: 0xffd700, transparent: true, opacity: 0.8, side: THREE.DoubleSide });
-            const fMat2 = new THREE.MeshBasicMaterial({ color: 0xffea00, transparent: true, opacity: 0.6, side: THREE.DoubleSide });
-
-            const outerGlyph = new THREE.Mesh(new THREE.RingGeometry(0.85, 0.92, 32), fMat1);
-            outerGlyph.rotation.x = -Math.PI / 2;
-            floorGroup.add(outerGlyph);
-            ag.outerGlyph = outerGlyph;
-
-            const innerGlyph = new THREE.Mesh(new THREE.RingGeometry(0.55, 0.60, 24), fMat2);
-            innerGlyph.rotation.x = -Math.PI / 2;
-            floorGroup.add(innerGlyph);
-            ag.innerGlyph = innerGlyph;
-
-            // 4. Holy Ascending Light Columns (3 soft luminous vertical shafts)
-            ag.lightShafts = [];
-            const shaftMat = new THREE.MeshBasicMaterial({
-                color: 0xfff59d,
-                transparent: true,
-                opacity: 0.35,
-                blending: THREE.AdditiveBlending,
-                side: THREE.DoubleSide
-            });
-            for (let s = 0; s < 3; s++) {
-                const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.16, 2.4, 8, 1, true), shaftMat);
-                const sAng = (s / 3) * Math.PI * 2;
-                shaft.position.set(Math.cos(sAng) * 0.55, 1.2, Math.sin(sAng) * 0.55);
-                ag.add(shaft);
-                ag.lightShafts.push(shaft);
-            }
-
-            // 5. Rising Holy Golden Stardust Sparkles
-            ag.sparkles = [];
-            const sparkGeo = new THREE.OctahedronGeometry(0.055, 0);
-            const sparkMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
-            for (let s = 0; s < 8; s++) {
-                const spk = new THREE.Mesh(sparkGeo, sparkMat);
-                ag.add(spk);
-                ag.sparkles.push(spk);
-            }
-        } else if (id.includes('blaze')) {
-            // 🔥 BLAZE AURA: Swirling Vortex of 6 Fire Tongues + Burning Floor Magma Ring
-            const fireMat1 = new THREE.MeshBasicMaterial({ color: 0xff3d00, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending });
-            const fireMat2 = new THREE.MeshBasicMaterial({ color: 0xffab00, transparent: true, opacity: 0.90, blending: THREE.AdditiveBlending });
-
-            ag.flames = [];
-            for (let i = 0; i < 6; i++) {
-                const fGroup = new THREE.Group();
-                const fMesh1 = new THREE.Mesh(new THREE.ConeGeometry(0.14, 0.45, 5), fireMat1);
-                const fMesh2 = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.30, 5), fireMat2);
-                fMesh2.position.set(0, 0.05, 0);
-                fGroup.add(fMesh1);
-                fGroup.add(fMesh2);
-                ag.add(fGroup);
-                ag.flames.push(fGroup);
-            }
-
-            // Dual Fire Orbit Rings
-            const ringGeo = new THREE.TorusGeometry(0.85, 0.025, 8, 32);
-            ag.ring1 = new THREE.Mesh(ringGeo, fireMat1);
-            ag.ring1.rotation.x = Math.PI / 2.2;
-            ag.add(ag.ring1);
-
-            ag.ring2 = new THREE.Mesh(ringGeo, fireMat2);
-            ag.ring2.rotation.x = -Math.PI / 2.2;
-            ag.add(ag.ring2);
-        } else if (id.includes('liquid')) {
-            // 💧 LIQUID AURA: Floating Ascending Water Bubbles + Shimmering Pool Ripple
-            const waterMat = new THREE.MeshStandardMaterial({
-                color: 0x00e5ff,
-                emissive: 0x0091ea,
-                emissiveIntensity: 0.8,
-                roughness: 0.1,
-                metalness: 0.3,
-                transparent: true,
-                opacity: 0.75
-            });
-
-            ag.drops = [];
-            for (let d = 0; d < 8; d++) {
-                const drop = new THREE.Mesh(new THREE.SphereGeometry(0.075 + (d % 3) * 0.03, 10, 10), waterMat);
-                ag.add(drop);
-                ag.drops.push(drop);
-            }
-
-            const wRingGeo = new THREE.TorusGeometry(0.82, 0.025, 8, 32);
-            ag.wRing1 = new THREE.Mesh(wRingGeo, waterMat);
-            ag.wRing1.rotation.x = Math.PI / 2;
-            ag.wRing1.position.y = 0.05;
-            ag.add(ag.wRing1);
-
-            ag.wRing2 = new THREE.Mesh(new THREE.TorusGeometry(0.55, 0.02, 8, 24), waterMat);
-            ag.wRing2.rotation.x = Math.PI / 2;
-            ag.wRing2.position.y = 0.06;
-            ag.add(ag.wRing2);
-        } else if (id.includes('nature')) {
-            // 🌿 NATURE AURA: Double Helix of Swirling Emerald Leaf Petals
-            const leafMat = new THREE.MeshStandardMaterial({
-                color: 0x4caf50,
-                emissive: 0x2e7d32,
-                emissiveIntensity: 0.7,
-                roughness: 0.4,
-                side: THREE.DoubleSide
-            });
-
-            ag.leaves = [];
-            for (let l = 0; l < 8; l++) {
-                const leaf = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.28, 4), leafMat);
-                leaf.scale.set(1.0, 0.2, 1.0);
-                ag.add(leaf);
-                ag.leaves.push(leaf);
-            }
-
-            ag.vineNodes = [];
-            for (let v = 0; v < 12; v++) {
-                const vn = new THREE.Mesh(new THREE.SphereGeometry(0.04, 6, 6), leafMat);
-                ag.add(vn);
-                ag.vineNodes.push(vn);
-            }
-        } else if (id.includes('easter')) {
-            // 🌸 EASTER AURA: Pastel Rainbow Stardust Sparkles & Golden Stars
-            const colors = [0xff80ab, 0x80d8ff, 0xb9f6ca, 0xffd180, 0xe040fb];
-            ag.stars = [];
-            for (let s = 0; s < 8; s++) {
-                const col = colors[s % colors.length];
-                const star = new THREE.Mesh(new THREE.OctahedronGeometry(0.07, 0), new THREE.MeshBasicMaterial({ color: col }));
-                ag.add(star);
-                ag.stars.push(star);
-            }
-
-            ag.easterRings = [];
-            colors.slice(0, 3).forEach((col, idx) => {
-                const ring = new THREE.Mesh(new THREE.TorusGeometry(0.75 + idx * 0.1, 0.015, 6, 24), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.65 }));
-                ring.rotation.x = Math.PI / (2 + idx * 0.4);
-                ag.add(ring);
-                ag.easterRings.push(ring);
-            });
-        } else if (id.includes('void')) {
-            // 🌌 VOID AURA: Dark Stardust Orb & Cosmic Purple Shadow Tendrils
-            const voidMat = new THREE.MeshBasicMaterial({ color: 0x7c4dff, transparent: true, opacity: 0.85 });
-            const voidDarkMat = new THREE.MeshBasicMaterial({ color: 0x1a0033 });
-
-            const orb = new THREE.Mesh(new THREE.SphereGeometry(0.24, 12, 12), voidDarkMat);
-            orb.position.set(0, 1.1, 0);
-            ag.add(orb);
-            ag.voidOrb = orb;
-
-            ag.tendrils = [];
-            for (let t = 0; t < 5; t++) {
-                const tendril = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.08, 0.75, 6), voidMat);
-                ag.add(tendril);
-                ag.tendrils.push(tendril);
-            }
-        } else if (id.includes('lightning')) {
-            // ⚡ LIGHTNING AURA: High-Voltage Electric Cyan & White Crackling Lightning Bolts
-            const boltMat = new THREE.MeshBasicMaterial({ color: 0x00e5ff, transparent: true, opacity: 0.95 });
-            const whiteZapMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
-
-            ag.bolts = [];
+            // Bubbling pastel orbs (matching 2D bunnyBubble)
+            ag.bunnyBubbles = [];
             for (let b = 0; b < 6; b++) {
-                const boltGroup = new THREE.Group();
-                const bMesh1 = new THREE.Mesh(new THREE.BoxGeometry(0.025, 0.28, 0.025), boltMat);
-                const bMesh2 = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.14, 0.02), whiteZapMat);
-                bMesh2.position.set(0.04, 0.10, 0);
-                bMesh2.rotation.z = 0.5;
-                boltGroup.add(bMesh1);
-                boltGroup.add(bMesh2);
-                ag.add(boltGroup);
-                ag.bolts.push(boltGroup);
+                const col = pastelCols[b % pastelCols.length];
+                const bub = new THREE.Mesh(
+                    new THREE.PlaneGeometry(0.14, 0.14),
+                    new THREE.MeshBasicMaterial({
+                        map: Character3D.getRadialGlowTexture('#ffffff', '#' + col.toString(16).padStart(6, '0')),
+                        transparent: true,
+                        blending: THREE.AdditiveBlending,
+                        depthWrite: false,
+                        opacity: 0.80
+                    })
+                );
+                ag.add(bub);
+                ag.bunnyBubbles.push({
+                    mesh: bub,
+                    phase: b * 0.55,
+                    speed: 0.65 + Math.random() * 0.35,
+                    x: (Math.random() - 0.5) * 0.7,
+                    z: (Math.random() - 0.5) * 0.7
+                });
             }
 
-            const lRingGeo = new THREE.TorusGeometry(0.85, 0.02, 6, 28);
-            ag.lRing = new THREE.Mesh(lRingGeo, boltMat);
-            ag.lRing.rotation.x = Math.PI / 2;
-            ag.lRing.position.y = 0.06;
-            ag.add(ag.lRing);
+        } else if (activeKey === 'blaze') {
+            // 🔥 BLAZE AURA: Swirling Luminous Dancing Flame Wisps
+            ag.blazeFlames = [];
+            const fTex = Character3D.getRadialGlowTexture('#fff3e0', '#ff3d00');
+            const fMat = new THREE.MeshBasicMaterial({
+                map: fTex,
+                transparent: true,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false,
+                opacity: 0.90
+            });
+            for (let f = 0; f < 6; f++) {
+                const flame = new THREE.Mesh(new THREE.PlaneGeometry(0.24, 0.32), fMat);
+                ag.add(flame);
+                ag.blazeFlames.push({
+                    mesh: flame,
+                    ang: (f / 6) * Math.PI * 2,
+                    speed: 2.2 + (f % 3) * 0.4,
+                    rad: 0.52 + (f % 2) * 0.12,
+                    yOffset: f * 0.25
+                });
+            }
+
+        } else if (activeKey === 'liquid') {
+            // 💧 LIQUID AURA: Floating Water Droplets & Concentric Ripple Ring
+            ag.liquidDrops = [];
+            const dTex = Character3D.getRadialGlowTexture('#ffffff', '#00e5ff');
+            const dMat = new THREE.MeshBasicMaterial({
+                map: dTex,
+                transparent: true,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false,
+                opacity: 0.85
+            });
+            for (let d = 0; d < 8; d++) {
+                const drop = new THREE.Mesh(new THREE.PlaneGeometry(0.16, 0.16), dMat);
+                ag.add(drop);
+                ag.liquidDrops.push({
+                    mesh: drop,
+                    phase: d * 0.45,
+                    speed: 0.6 + Math.random() * 0.4,
+                    rad: 0.45 + Math.random() * 0.25,
+                    ang: (d / 8) * Math.PI * 2
+                });
+            }
+            const rippleGeo = new THREE.RingGeometry(0.65, 0.72, 32);
+            rippleGeo.rotateX(-Math.PI / 2);
+            ag.liquidRipple = new THREE.Mesh(rippleGeo, new THREE.MeshBasicMaterial({
+                color: 0x00e5ff,
+                transparent: true,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false,
+                opacity: 0.65
+            }));
+            ag.liquidRipple.position.y = 0.04;
+            ag.add(ag.liquidRipple);
+
+        } else if (activeKey === 'nature') {
+            // 🌿 NATURE AURA: Double-Helix Swirling Leaf Petals
+            ag.natureLeaves = [];
+            const leafTex = Character3D.getRadialGlowTexture('#f1f8e9', '#4caf50');
+            const leafMat = new THREE.MeshBasicMaterial({
+                map: leafTex,
+                transparent: true,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false,
+                opacity: 0.85
+            });
+            for (let l = 0; l < 8; l++) {
+                const leaf = new THREE.Mesh(new THREE.PlaneGeometry(0.18, 0.18), leafMat);
+                ag.add(leaf);
+                ag.natureLeaves.push({
+                    mesh: leaf,
+                    ang: (l / 8) * Math.PI * 2,
+                    speed: 1.8 + (l % 2) * 0.5,
+                    helix: l % 2 === 0 ? 1 : -1
+                });
+            }
+
+        } else if (activeKey === 'lightning') {
+            // ⚡ LIGHTNING AURA: Dynamic Crackling Electric Discharge Arcs
+            ag.lightningArcs = [];
+            const arcMat = new THREE.MeshBasicMaterial({
+                color: 0x00f0ff,
+                transparent: true,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false,
+                opacity: 0.95
+            });
+            for (let a = 0; a < 4; a++) {
+                const arcGeo = new THREE.BufferGeometry();
+                const pts = [];
+                for (let p = 0; p < 5; p++) pts.push(new THREE.Vector3());
+                arcGeo.setFromPoints(pts);
+                const arcLine = new THREE.Line(arcGeo, arcMat);
+                ag.add(arcLine);
+                ag.lightningArcs.push({ line: arcLine, pts, timer: Math.random() * 0.2 });
+            }
+
+        } else if (activeKey === 'void') {
+            // 🌌 VOID AURA: Orbiting Cosmic Dark Matter Wisps
+            ag.voidWisps = [];
+            const vTex = Character3D.getRadialGlowTexture('#ede7f6', '#7c4dff');
+            const vMat = new THREE.MeshBasicMaterial({
+                map: vTex,
+                transparent: true,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false,
+                opacity: 0.90
+            });
+            for (let w = 0; w < 6; w++) {
+                const wisp = new THREE.Mesh(new THREE.PlaneGeometry(0.20, 0.20), vMat);
+                ag.add(wisp);
+                ag.voidWisps.push({
+                    mesh: wisp,
+                    ang: (w / 6) * Math.PI * 2,
+                    speed: 1.4 + (w % 3) * 0.3,
+                    rad: 0.58 + (w % 2) * 0.15
+                });
+            }
         }
     }
 
@@ -2190,128 +2365,154 @@ export class Character3D {
         if (!ag || !this.currentAuraId) return;
         const t = this.animTime;
 
-        if (this.currentAuraId.includes('divine')) {
-            // Flapping Angelic Wings (Smooth undulating sweep matching 2D Exonie)
-            const flap = Math.sin(t * 2.8);
-            if (ag.lWing) {
-                ag.lWing.rotation.y = -0.32 + flap * 0.38;
-                ag.lWing.rotation.z = flap * 0.22;
-                ag.lWing.rotation.x = Math.sin(t * 2.8 + 0.4) * 0.12;
+        // 1. Shroud Pulsation, Breathing, and Rotation
+        if (ag.bodyShroud) {
+            ag.bodyShroud.rotation.y += dt * 0.85;
+            const pulse = 1.0 + Math.sin(t * 3.2) * 0.05;
+            ag.bodyShroud.scale.set(pulse, 1.0 + Math.sin(t * 2.5) * 0.02, pulse);
+            if (ag.shroudMat) ag.shroudMat.opacity = 0.55 + Math.sin(t * 3.2) * 0.18;
+        }
+        if (ag.innerShroud) {
+            ag.innerShroud.rotation.y -= dt * 1.15;
+            const iPulse = 1.0 + Math.cos(t * 3.5) * 0.04;
+            ag.innerShroud.scale.set(iPulse, 1.0 + Math.cos(t * 2.8) * 0.02, iPulse);
+            if (ag.innerMat) ag.innerMat.opacity = 0.40 + Math.cos(t * 3.5) * 0.15;
+        }
+
+        // 2. Ground Energy Pool Breathing
+        if (ag.groundDisc) {
+            const gScale = 1.0 + Math.sin(t * 2.8) * 0.06;
+            ag.groundDisc.scale.set(gScale, gScale, gScale);
+            if (ag.groundMat) ag.groundMat.opacity = 0.55 + Math.sin(t * 2.8) * 0.18;
+        }
+
+        // 3. Ambient Rising Energy Motes
+        if (ag.ambientMotes) {
+            ag.ambientMotes.forEach(m => {
+                const yPos = ((t * m.speed + m.seed) % 2.0);
+                const curAng = t * m.speed * 0.8 + m.seed;
+                m.mesh.position.set(Math.cos(curAng) * m.radius, yPos, Math.sin(curAng) * m.radius);
+                const alpha = Math.sin((yPos / 2.0) * Math.PI);
+                m.mesh.scale.setScalar(0.7 + alpha * 0.5);
+            });
+        }
+
+        // 4. Aura-Specific Animation Logic
+        if (ag.auraKey === 'divine') {
+            // Ethereal Angel Wing Flapping (Natural sinusoidal motion matching 2D Exonie)
+            const flap = Math.sin(t * 2.6);
+            if (ag.lWingPivot) {
+                ag.lWingPivot.rotation.y = 0.35 + flap * 0.42;
+                ag.lWingPivot.rotation.z = 0.12 + flap * 0.20;
+                ag.lWingPivot.rotation.x = Math.sin(t * 2.6 + 0.3) * 0.10;
             }
-            if (ag.rWing) {
-                ag.rWing.rotation.y = 0.32 - flap * 0.38;
-                ag.rWing.rotation.z = -flap * 0.22;
-                ag.rWing.rotation.x = Math.sin(t * 2.8 + 0.4) * 0.12;
+            if (ag.rWingPivot) {
+                ag.rWingPivot.rotation.y = -0.35 - flap * 0.42;
+                ag.rWingPivot.rotation.z = -0.12 - flap * 0.20;
+                ag.rWingPivot.rotation.x = Math.sin(t * 2.6 + 0.3) * 0.10;
+            }
+            if (ag.divineHalo) {
+                ag.divineHalo.rotation.z = t * 0.55;
+                ag.divineHalo.position.y = 2.06 + Math.sin(t * 2.2) * 0.035;
             }
 
-            // Halo gentle rotation and hovering float
-            if (ag.haloGroup) {
-                ag.haloGroup.rotation.y = t * 0.55;
-                ag.haloGroup.position.y = 2.08 + Math.sin(t * 2.2) * 0.04;
+        } else if (ag.auraKey === 'easter') {
+            // Elevated Waist Spinning Ring Rotation & Tilt
+            if (ag.easterRingGroup) {
+                ag.easterRingGroup.rotation.y += dt * 1.4;
             }
-
-            // Concentric sacred ground seal counter-rotation
-            if (ag.outerGlyph) ag.outerGlyph.rotation.z = -t * 0.35;
-            if (ag.innerGlyph) ag.innerGlyph.rotation.z = t * 0.50;
-
-            // Holy light shafts pulsation
-            if (ag.lightShafts) {
-                ag.lightShafts.forEach((shaft, idx) => {
-                    shaft.scale.y = 0.9 + Math.sin(t * 3.0 + idx) * 0.15;
-                    shaft.rotation.y = t * 0.8 + idx;
+            // Orbiting Stardust Motes
+            if (ag.easterMotes) {
+                ag.easterMotes.forEach(m => {
+                    const ang = m.ang + t * 2.0;
+                    m.mesh.position.set(Math.cos(ang) * m.rad, 0, Math.sin(ang) * m.rad);
+                });
+            }
+            // Bubbling pastel orbs ascending (matching 2D bunnyBubble)
+            if (ag.bunnyBubbles) {
+                ag.bunnyBubbles.forEach(b => {
+                    const prog = ((t * b.speed + b.phase) % 2.2);
+                    b.mesh.position.set(b.x + Math.sin(t * 3.0 + b.phase) * 0.08, 0.3 + prog, b.z + Math.cos(t * 3.0 + b.phase) * 0.08);
+                    const fade = Math.sin((prog / 2.2) * Math.PI);
+                    b.mesh.scale.setScalar(0.6 + fade * 0.6);
                 });
             }
 
-            // Rising celestial sparkles
-            if (ag.sparkles) {
-                ag.sparkles.forEach((spk, idx) => {
-                    const ang = t * 1.5 + (idx * Math.PI / 4);
-                    const yOffset = ((t * 0.6 + idx * 0.25) % 2.2);
-                    spk.position.set(Math.cos(ang) * 0.75, 0.2 + yOffset, Math.sin(ang) * 0.75);
-                    spk.rotation.y += dt * 3.0;
+        } else if (ag.auraKey === 'blaze') {
+            // Swirling dancing flame tongues
+            if (ag.blazeFlames) {
+                ag.blazeFlames.forEach(f => {
+                    const ang = f.ang + t * f.speed;
+                    const y = 0.35 + ((t * 1.4 + f.yOffset) % 1.5);
+                    f.mesh.position.set(Math.cos(ang) * f.rad, y, Math.sin(ang) * f.rad);
+                    f.mesh.rotation.y = -ang;
+                    f.mesh.scale.setScalar(0.7 + Math.sin(y * 2.0) * 0.5);
                 });
             }
-        } else if (this.currentAuraId.includes('blaze')) {
-            if (ag.ring1) ag.ring1.rotation.z = t * 1.8;
-            if (ag.ring2) ag.ring2.rotation.z = -t * 2.2;
-            if (ag.flames) {
-                ag.flames.forEach((flame, idx) => {
-                    const ang = t * 1.2 + (idx * (Math.PI * 2 / 6));
-                    const r = 0.68 + Math.sin(t * 4.0 + idx) * 0.06;
-                    flame.position.set(Math.cos(ang) * r, 0.35 + Math.sin(t * 5.0 + idx) * 0.12, Math.sin(ang) * r);
-                    flame.scale.set(1, 0.85 + Math.sin(t * 6.0 + idx) * 0.35, 1);
+
+        } else if (ag.auraKey === 'liquid') {
+            // Ascending water bubbles & expanding concentric ripple
+            if (ag.liquidDrops) {
+                ag.liquidDrops.forEach(d => {
+                    const y = 0.2 + ((t * d.speed + d.phase) % 1.7);
+                    d.mesh.position.set(Math.cos(d.ang) * d.rad, y, Math.sin(d.ang) * d.rad);
                 });
             }
-        } else if (this.currentAuraId.includes('liquid')) {
-            if (ag.wRing1) ag.wRing1.rotation.y = t * 1.4;
-            if (ag.wRing2) ag.wRing2.rotation.y = -t * 1.6;
-            if (ag.drops) {
-                ag.drops.forEach((drop, idx) => {
-                    const ang = t * 1.8 + (idx * Math.PI / 4);
-                    const yCycle = ((t * 0.5 + idx * 0.25) % 1.8);
-                    drop.position.set(Math.cos(ang) * 0.75, 0.3 + yCycle, Math.sin(ang) * 0.75);
+            if (ag.liquidRipple) {
+                const rProg = (t * 0.8) % 1.0;
+                ag.liquidRipple.scale.setScalar(1.0 + rProg * 1.2);
+                ag.liquidRipple.material.opacity = (1.0 - rProg) * 0.65;
+            }
+
+        } else if (ag.auraKey === 'nature') {
+            // Double-helix ascending leaf petals
+            if (ag.natureLeaves) {
+                ag.natureLeaves.forEach(l => {
+                    const ang = l.ang + t * l.speed * l.helix;
+                    const y = 0.2 + ((t * 0.9 + l.ang) % 1.8);
+                    l.mesh.position.set(Math.cos(ang) * 0.52, y, Math.sin(ang) * 0.52);
+                    l.mesh.rotation.z = t * 2.0;
                 });
             }
-        } else if (this.currentAuraId.includes('nature')) {
-            if (ag.vineNodes) {
-                ag.vineNodes.forEach((node, idx) => {
-                    const progress = idx / ag.vineNodes.length;
-                    const ang = progress * Math.PI * 4 + t * 0.8;
-                    const rad = 0.6 - progress * 0.15;
-                    node.position.set(Math.cos(ang) * rad, 0.1 + progress * 1.4, Math.sin(ang) * rad);
-                });
-            }
-            if (ag.leaves) {
-                ag.leaves.forEach((leaf, idx) => {
-                    const ang = t * 1.2 + (idx * (Math.PI * 2 / 8));
-                    const yCycle = ((t * 0.4 + idx * 0.2) % 1.8);
-                    leaf.position.set(Math.cos(ang) * 0.75, 0.2 + yCycle, Math.sin(ang) * 0.75);
-                    leaf.rotation.set(t + idx, t * 1.5, idx);
-                });
-            }
-        } else if (this.currentAuraId.includes('easter')) {
-            if (ag.easterRings) {
-                ag.easterRings.forEach((ring, idx) => {
-                    ring.rotation.x += dt * (0.8 + idx * 0.3);
-                    ring.rotation.y += dt * (0.5 + idx * 0.2);
-                });
-            }
-            if (ag.stars) {
-                ag.stars.forEach((st, idx) => {
-                    const ang = t * 1.6 + (idx * (Math.PI * 2 / 8));
-                    st.position.set(Math.cos(ang) * 0.82, 1.1 + Math.sin(t * 3.0 + idx) * 0.22, Math.sin(ang) * 0.82);
-                    st.rotation.y += dt * 3.0;
-                });
-            }
-        } else if (this.currentAuraId.includes('void')) {
-            if (ag.voidOrb) {
-                ag.voidOrb.rotation.y += dt * 1.5;
-                ag.voidOrb.scale.setScalar(0.9 + Math.sin(t * 3.0) * 0.15);
-            }
-            if (ag.tendrils) {
-                ag.tendrils.forEach((ten, idx) => {
-                    const ang = (idx * Math.PI * 2 / 5) + t * 0.5;
-                    ten.position.set(Math.cos(ang) * 0.65, 0.7 + Math.sin(t * 2.5 + idx) * 0.1, Math.sin(ang) * 0.65);
-                    ten.rotation.z = Math.sin(t * 3.0 + idx) * 0.15;
-                });
-            }
-        } else if (this.currentAuraId.includes('lightning')) {
-            if (ag.lRing) ag.lRing.rotation.z += dt * 2.5;
-            if (ag.bolts) {
-                ag.bolts.forEach((bolt) => {
-                    if (Math.random() < 0.25) {
-                        const ang = Math.random() * Math.PI * 2;
-                        const r = 0.5 + Math.random() * 0.35;
-                        bolt.position.set(Math.cos(ang) * r, 0.6 + Math.random() * 0.9, Math.sin(ang) * r);
-                        bolt.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
+
+        } else if (ag.auraKey === 'lightning') {
+            // Dynamic crackling discharge arcs
+            if (ag.lightningArcs) {
+                ag.lightningArcs.forEach(arc => {
+                    arc.timer -= dt;
+                    if (arc.timer <= 0) {
+                        arc.timer = 0.06 + Math.random() * 0.08;
+                        const startY = 0.7 + Math.random() * 0.8;
+                        const startAng = Math.random() * Math.PI * 2;
+                        let cx = Math.cos(startAng) * 0.45;
+                        let cy = startY;
+                        let cz = Math.sin(startAng) * 0.45;
+                        for (let p = 0; p < arc.pts.length; p++) {
+                            arc.pts[p].set(cx, cy, cz);
+                            cx += (Math.random() - 0.5) * 0.25;
+                            cy += (Math.random() - 0.4) * 0.22;
+                            cz += (Math.random() - 0.5) * 0.25;
+                        }
+                        arc.line.geometry.setFromPoints(arc.pts);
                     }
+                });
+            }
+
+        } else if (ag.auraKey === 'void') {
+            // Orbiting cosmic wisps
+            if (ag.voidWisps) {
+                ag.voidWisps.forEach(w => {
+                    const ang = w.ang + t * w.speed;
+                    const y = 0.75 + Math.sin(t * 2.2 + w.ang) * 0.45;
+                    w.mesh.position.set(Math.cos(ang) * w.rad, y, Math.sin(ang) * w.rad);
                 });
             }
         }
     }
 
     // ==========================================
-    // 🐾 3D COMPANION PET ENGINE (2D EXONIE REMASTERED)
+    // 🐾 3D COSMETIC PET COMPANION ENGINE
+    // Prominent elevated companion with natural follow & walking physics
     // ==========================================
     setCosmeticPet(petId) {
         if (this.petCompanionGroup) {
@@ -2339,17 +2540,17 @@ export class Character3D {
         this.group.add(pg);
 
         if (id.includes('fox')) {
-            // 🦊 SPIRIT FOX PET: Dynamic Articulated 4-Legged Follow Companion with Bushy Fiery Tail
-            pg.position.set(1.0, 0, -0.9);
+            // 🦊 SPIRIT FOX COMPANION: Prominent Majestic Companion Elevated at Hip/Waist (y = 0.72)
+            pg.position.set(0.95, 0.72, -0.85);
+            pg.scale.setScalar(1.55); // Majestic companion scale
 
-            const foxOrangeMat = new THREE.MeshStandardMaterial({ color: 0xff6d00, roughness: 0.5 });
-            const foxWhiteMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.6 });
-            const foxDarkMat = new THREE.MeshStandardMaterial({ color: 0x2e1c11, roughness: 0.7 });
-            const flameMat = new THREE.MeshBasicMaterial({ color: 0xffab00, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending });
+            const foxOrangeMat = new THREE.MeshStandardMaterial({ color: 0xff6d00, roughness: 0.45 });
+            const foxWhiteMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.55 });
+            const foxDarkMat = new THREE.MeshStandardMaterial({ color: 0x221108, roughness: 0.65 });
 
-            // Body Group (bobs naturally with trot)
+            // Body Group (bobs naturally with trot and breathing)
             const bodyGroup = new THREE.Group();
-            bodyGroup.position.set(0, 0.24, 0);
+            bodyGroup.position.set(0, 0, 0);
             pg.add(bodyGroup);
             pg.bodyGroup = bodyGroup;
 
@@ -2397,12 +2598,12 @@ export class Character3D {
             rEar.rotation.z = -0.22;
             bodyGroup.add(rEar);
 
-            // 4 Articulated Leg Pivots (Front-Left, Front-Right, Back-Left, Back-Right)
+            // 4 Articulated Leg Pivots
             const legConfigs = [
-                { key: 'flLeg', x: -0.11, y: 0.19, z: 0.15 },
-                { key: 'frLeg', x: 0.11, y: 0.19, z: 0.15 },
-                { key: 'blLeg', x: -0.11, y: 0.19, z: -0.15 },
-                { key: 'brLeg', x: 0.11, y: 0.19, z: -0.15 }
+                { key: 'flLeg', x: -0.11, y: -0.05, z: 0.15 },
+                { key: 'frLeg', x: 0.11,  y: -0.05, z: 0.15 },
+                { key: 'blLeg', x: -0.11, y: -0.05, z: -0.15 },
+                { key: 'brLeg', x: 0.11,  y: -0.05, z: -0.15 }
             ];
 
             pg.legs = {};
@@ -2421,148 +2622,152 @@ export class Character3D {
                 pivot.add(paw);
             });
 
-            // Fiery Bushy Tail with Wiggle Pivot
+            // Bushy Fiery Spirit Tail
             const tailPivot = new THREE.Group();
-            tailPivot.position.set(0, 0.04, -0.22);
-            bodyGroup.add(tailPivot);
+            tailPivot.position.set(0, 0.06, -0.24);
+            pg.add(tailPivot);
             pg.tailPivot = tailPivot;
 
-            const tailBase = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.13, 0.36, 6), foxOrangeMat);
-            tailBase.position.set(0, 0.14, -0.14);
+            const tailBase = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.38, 6), foxOrangeMat);
             tailBase.rotation.x = -Math.PI / 3;
+            tailBase.position.set(0, 0.14, -0.16);
             tailPivot.add(tailBase);
 
-            const tailTip = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.28, 6), flameMat);
-            tailTip.position.set(0, 0.32, -0.24);
+            const tailTip = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.22, 6), foxWhiteMat);
             tailTip.rotation.x = -Math.PI / 3;
+            tailTip.position.set(0, 0.30, -0.26);
             tailPivot.add(tailTip);
+
+            // Ethereal Fox Fire Spirit Glow surrounding the spirit fox
+            const foxAuraTex = Character3D.getRadialGlowTexture('#fff3e0', '#ff6d00');
+            const foxAuraMat = new THREE.MeshBasicMaterial({
+                map: foxAuraTex,
+                transparent: true,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false,
+                opacity: 0.70
+            });
+            const foxAuraMesh = new THREE.Mesh(new THREE.PlaneGeometry(0.85, 0.85), foxAuraMat);
+            foxAuraMesh.position.set(0, 0.05, 0);
+            pg.add(foxAuraMesh);
+            pg.foxAuraMesh = foxAuraMesh;
+
         } else if (id.includes('owl')) {
-            // 🦉 NIGHT OWL PET: Flying Mysterious Owl Hovering ABOVE HEAD (y = 2.25)
+            // 🦉 NIGHT OWL PET: Elevated Hover ABOVE HEAD (y = 2.25)
             pg.position.set(-0.85, 2.25, -0.55);
 
-            const owlBrownMat = new THREE.MeshStandardMaterial({ color: 0x4e342e, roughness: 0.7 });
-            const owlChestMat = new THREE.MeshStandardMaterial({ color: 0xd7ccc8, roughness: 0.7 });
-            const owlEyeMat = new THREE.MeshBasicMaterial({ color: 0xffab00 });
+            const owlMat = new THREE.MeshStandardMaterial({ color: 0x3d3028, roughness: 0.6 });
+            const chestMat = new THREE.MeshStandardMaterial({ color: 0xc4b8aa, roughness: 0.7 });
+            const eyeMat = new THREE.MeshBasicMaterial({ color: 0xffea00 });
             const beakMat = new THREE.MeshStandardMaterial({ color: 0xff9800 });
 
-            // Body
-            const body = new THREE.Mesh(new THREE.SphereGeometry(0.19, 12, 12), owlBrownMat);
-            body.scale.set(0.9, 1.2, 0.85);
-            pg.add(body);
+            const owlBody = new THREE.Mesh(new THREE.SphereGeometry(0.18, 12, 12), owlMat);
+            pg.add(owlBody);
 
-            // Light Chest
-            const chest = new THREE.Mesh(new THREE.SphereGeometry(0.13, 10, 10), owlChestMat);
-            chest.position.set(0, 0.02, 0.09);
-            chest.scale.set(0.9, 1.1, 0.6);
-            pg.add(chest);
+            const owlChest = new THREE.Mesh(new THREE.SphereGeometry(0.13, 10, 10), chestMat);
+            owlChest.position.set(0, -0.02, 0.08);
+            pg.add(owlChest);
 
-            // Amber Eyes
-            const lEye = new THREE.Mesh(new THREE.SphereGeometry(0.045, 8, 8), owlEyeMat);
-            lEye.position.set(-0.07, 0.10, 0.15);
+            const lEye = new THREE.Mesh(new THREE.SphereGeometry(0.038, 8, 8), eyeMat);
+            lEye.position.set(-0.065, 0.06, 0.14);
             pg.add(lEye);
 
-            const rEye = new THREE.Mesh(new THREE.SphereGeometry(0.045, 8, 8), owlEyeMat);
-            rEye.position.set(0.07, 0.10, 0.15);
+            const rEye = new THREE.Mesh(new THREE.SphereGeometry(0.038, 8, 8), eyeMat);
+            rEye.position.set(0.065, 0.06, 0.14);
             pg.add(rEye);
 
-            // Beak
-            const beak = new THREE.Mesh(new THREE.ConeGeometry(0.035, 0.08, 4), beakMat);
-            beak.position.set(0, 0.06, 0.19);
+            const beak = new THREE.Mesh(new THREE.ConeGeometry(0.035, 0.09, 4), beakMat);
             beak.rotation.x = Math.PI / 2;
+            beak.position.set(0, 0.02, 0.18);
             pg.add(beak);
 
-            // Flapping Wings
-            const wingGeo = new THREE.BoxGeometry(0.28, 0.04, 0.18);
+            // Left & Right Wings on Pivots for Flapping
             const lWingPivot = new THREE.Group();
-            lWingPivot.position.set(-0.16, 0.05, 0);
+            lWingPivot.position.set(-0.16, 0.04, 0);
             pg.add(lWingPivot);
             pg.lWingPivot = lWingPivot;
 
-            const lWing = new THREE.Mesh(wingGeo, owlBrownMat);
-            lWing.position.set(-0.14, 0, 0);
+            const lWing = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.04, 0.16), owlMat);
+            lWing.position.set(-0.12, 0, 0);
             lWingPivot.add(lWing);
 
             const rWingPivot = new THREE.Group();
-            rWingPivot.position.set(0.16, 0.05, 0);
+            rWingPivot.position.set(0.16, 0.04, 0);
             pg.add(rWingPivot);
             pg.rWingPivot = rWingPivot;
 
-            const rWing = new THREE.Mesh(wingGeo, owlBrownMat);
-            rWing.position.set(0.14, 0, 0);
+            const rWing = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.04, 0.16), owlMat);
+            rWing.position.set(0.12, 0, 0);
             rWingPivot.add(rWing);
+
         } else if (id.includes('wisp')) {
-            // 🔮 WILL-O'-WISP PET: Luminous Spirit Orb Floating ABOVE HEAD (y = 2.35)
+            // 🌀 WILL-O'-WISP PET: Luminous Spirit Orb Elevated ABOVE HEAD (y = 2.35)
             pg.position.set(0.78, 2.35, -0.50);
 
-            const coreMat = new THREE.MeshBasicMaterial({ color: 0x00e5ff });
-            const ringMat = new THREE.MeshBasicMaterial({ color: 0x18ffff, transparent: true, opacity: 0.65 });
+            const wispTex = Character3D.getRadialGlowTexture('#ffffff', '#00e5ff');
+            const wispCore = new THREE.Mesh(
+                new THREE.PlaneGeometry(0.55, 0.55),
+                new THREE.MeshBasicMaterial({
+                    map: wispTex,
+                    transparent: true,
+                    blending: THREE.AdditiveBlending,
+                    depthWrite: false
+                })
+            );
+            pg.add(wispCore);
+            pg.wispCore = wispCore;
 
-            const core = new THREE.Mesh(new THREE.SphereGeometry(0.16, 12, 12), coreMat);
-            pg.add(core);
-            pg.wispCore = core;
+            const ringGeo = new THREE.TorusGeometry(0.24, 0.016, 6, 24);
+            const ringMat = new THREE.MeshBasicMaterial({ color: 0x80d8ff, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0.85 });
+            pg.gRing1 = new THREE.Mesh(ringGeo, ringMat);
+            pg.add(pg.gRing1);
 
-            const gRing1 = new THREE.Mesh(new THREE.TorusGeometry(0.26, 0.015, 6, 24), ringMat);
-            pg.add(gRing1);
-            pg.gRing1 = gRing1;
+            pg.gRing2 = new THREE.Mesh(ringGeo, ringMat);
+            pg.gRing2.rotation.x = Math.PI / 2;
+            pg.add(pg.gRing2);
 
-            const gRing2 = new THREE.Mesh(new THREE.TorusGeometry(0.22, 0.015, 6, 24), ringMat);
-            gRing2.rotation.x = Math.PI / 2;
-            pg.add(gRing2);
-            pg.gRing2 = gRing2;
         } else if (id.includes('void')) {
-            // 👻 VOID WRAITH PET: Hooded Phantom Spirit Floating ABOVE HEAD (y = 2.20)
+            // 👻 VOID WRAITH PET: Ghostly Spirit Elevated ABOVE HEAD (y = 2.20)
             pg.position.set(-0.75, 2.20, -0.60);
 
-            const wraithRobeMat = new THREE.MeshStandardMaterial({ color: 0x1a0f2e, roughness: 0.5 });
-            const wraithEyeMat = new THREE.MeshBasicMaterial({ color: 0x7c4dff });
+            const wraithTex = Character3D.getRadialGlowTexture('#ede7f6', '#7c4dff');
+            const wraithBody = new THREE.Mesh(
+                new THREE.PlaneGeometry(0.50, 0.65),
+                new THREE.MeshBasicMaterial({
+                    map: wraithTex,
+                    transparent: true,
+                    blending: THREE.AdditiveBlending,
+                    depthWrite: false
+                })
+            );
+            pg.add(wraithBody);
+            pg.wraithBody = wraithBody;
 
-            // Hood
-            const hood = new THREE.Mesh(new THREE.ConeGeometry(0.18, 0.38, 7), wraithRobeMat);
-            hood.position.set(0, 0.15, 0);
-            hood.rotation.x = 0.15;
-            pg.add(hood);
-
-            // Void Face (Interior)
-            const face = new THREE.Mesh(new THREE.SphereGeometry(0.11, 8, 8), new THREE.MeshBasicMaterial({ color: 0x0a0514 }));
-            face.position.set(0, 0.1, 0.05);
-            pg.add(face);
-
-            // Glowing Eyes
-            const lEye = new THREE.Mesh(new THREE.SphereGeometry(0.025, 6, 6), wraithEyeMat);
-            lEye.position.set(-0.045, 0.11, 0.13);
+            const vEyeMat = new THREE.MeshBasicMaterial({ color: 0x00f0ff });
+            const lEye = new THREE.Mesh(new THREE.SphereGeometry(0.025, 6, 6), vEyeMat);
+            lEye.position.set(-0.065, 0.08, 0.08);
             pg.add(lEye);
 
-            const rEye = new THREE.Mesh(new THREE.SphereGeometry(0.025, 6, 6), wraithEyeMat);
-            rEye.position.set(0.045, 0.11, 0.13);
+            const rEye = new THREE.Mesh(new THREE.SphereGeometry(0.025, 6, 6), vEyeMat);
+            rEye.position.set(0.065, 0.08, 0.08);
             pg.add(rEye);
 
-            // Ghostly Tail Base
-            const tailGeo = new THREE.ConeGeometry(0.15, 0.32, 6);
-            tailGeo.rotateX(Math.PI);
-            const tail = new THREE.Mesh(tailGeo, wraithRobeMat);
-            tail.position.set(0, -0.15, 0);
-            pg.add(tail);
-            pg.wraithTail = tail;
         } else if (id.includes('egg')) {
-            // 🥚 EASTER EGG PET: Floating Decorated Pastel Egg ABOVE HEAD (y = 2.15)
+            // 🥚 EASTER EGG PET: Playful Elevated Companion ABOVE HEAD (y = 2.15)
             pg.position.set(0.75, 2.15, -0.55);
 
-            const eggMat = new THREE.MeshStandardMaterial({ color: 0xffc1e3, roughness: 0.3, metalness: 0.2 });
-            const stripeMat = new THREE.MeshStandardMaterial({ color: 0x80deea, roughness: 0.3 });
-            const ribbonMat = new THREE.MeshStandardMaterial({ color: 0xffd700, emissive: 0xffb300, emissiveIntensity: 0.4 });
+            const eggGeo = new THREE.SphereGeometry(0.19, 14, 14);
+            eggGeo.scale(1.0, 1.35, 1.0);
+            const eggMat = new THREE.MeshStandardMaterial({ color: 0xffd1dc, roughness: 0.35 });
+            const eggMesh = new THREE.Mesh(eggGeo, eggMat);
+            pg.add(eggMesh);
 
-            // Egg Body
-            const egg = new THREE.Mesh(new THREE.SphereGeometry(0.2, 16, 16), eggMat);
-            egg.scale.set(0.88, 1.25, 0.88);
-            pg.add(egg);
-            pg.eggMesh = egg;
+            const ribbonMat = new THREE.MeshStandardMaterial({ color: 0xffb7b2, roughness: 0.3 });
+            const ribRing = new THREE.Mesh(new THREE.TorusGeometry(0.20, 0.018, 6, 24), ribbonMat);
+            ribRing.rotation.x = Math.PI / 2;
+            ribRing.position.y = 0.04;
+            pg.add(ribRing);
 
-            // Decorative Ring Stripe
-            const stripe = new THREE.Mesh(new THREE.TorusGeometry(0.18, 0.02, 8, 24), stripeMat);
-            stripe.rotation.x = Math.PI / 2;
-            pg.add(stripe);
-
-            // Golden Bow on top
             const bowL = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.12, 4), ribbonMat);
             bowL.position.set(-0.07, 0.28, 0);
             bowL.rotation.z = -Math.PI / 2.5;
@@ -2581,7 +2786,7 @@ export class Character3D {
         const t = this.animTime;
 
         if (this.currentPetId.includes('fox')) {
-            // Articulated 4-legged walking animation & smooth follow physics
+            // Articulated 4-legged walking animation & prominent elevated follow physics
             if (isMoving) {
                 pg.legPhase = (pg.legPhase || 0) + dt * 11.5;
                 const swing = Math.sin(pg.legPhase) * 0.65;
@@ -2592,15 +2797,15 @@ export class Character3D {
                     if (pg.legs.blLeg) pg.legs.blLeg.rotation.x = -swing;
                 }
                 // Trot bobbing & tail sway
-                if (pg.bodyGroup) pg.bodyGroup.position.y = 0.24 + Math.abs(Math.sin(pg.legPhase)) * 0.04;
+                if (pg.bodyGroup) pg.bodyGroup.position.y = Math.abs(Math.sin(pg.legPhase)) * 0.04;
                 if (pg.tailPivot) {
                     pg.tailPivot.rotation.y = Math.sin(pg.legPhase * 1.4) * 0.55;
                     pg.tailPivot.rotation.z = Math.sin(pg.legPhase * 0.7) * 0.20;
                 }
-                // Smooth follow offset lagging behind slightly
+                // Elevated at hip/waist level (y = 0.72)
                 pg.position.x = damp(pg.position.x, 0.95, 4.0, dt);
                 pg.position.z = damp(pg.position.z, -1.05, 4.0, dt);
-                pg.position.y = 0;
+                pg.position.y = 0.72 + Math.abs(Math.sin(pg.legPhase)) * 0.05;
             } else {
                 // Smooth deceleration back to idle standing pose
                 if (pg.legs) {
@@ -2611,14 +2816,18 @@ export class Character3D {
                     if (pg.legs.brLeg) pg.legs.brLeg.rotation.x *= dampRate;
                 }
                 // Idle breathing & soft tail wag
-                if (pg.bodyGroup) pg.bodyGroup.position.y = 0.24 + Math.sin(t * 3.0) * 0.015;
+                if (pg.bodyGroup) pg.bodyGroup.position.y = Math.sin(t * 3.0) * 0.015;
                 if (pg.tailPivot) {
                     pg.tailPivot.rotation.y = Math.sin(t * 4.0) * 0.35;
                     pg.tailPivot.rotation.z = Math.sin(t * 2.0) * 0.10;
                 }
                 pg.position.x = damp(pg.position.x, 1.05, 3.0, dt);
                 pg.position.z = damp(pg.position.z, -0.85, 3.0, dt);
-                pg.position.y = 0;
+                pg.position.y = 0.72 + Math.sin(t * 3.0) * 0.035;
+            }
+            if (pg.foxAuraMesh) {
+                pg.foxAuraMesh.rotation.z = t * 1.2;
+                pg.foxAuraMesh.scale.setScalar(0.95 + Math.sin(t * 4.0) * 0.08);
             }
         } else if (this.currentPetId.includes('owl')) {
             // Hover bob ABOVE HEAD (y = 2.25)
@@ -2640,7 +2849,6 @@ export class Character3D {
             // Ghostly float & drift ABOVE HEAD (y = 2.20)
             pg.position.y = 2.20 + Math.sin(t * 2.4) * 0.09;
             pg.rotation.z = Math.sin(t * 2.0) * 0.06;
-            if (pg.wraithTail) pg.wraithTail.rotation.x = Math.PI + Math.sin(t * 3.5) * 0.15;
             pg.position.x = -0.75 + Math.cos(t * 1.2) * 0.05;
             pg.position.z = -0.60 + Math.sin(t * 1.2) * 0.05;
         } else if (this.currentPetId.includes('egg')) {
@@ -2651,6 +2859,7 @@ export class Character3D {
             pg.position.z = -0.55 + Math.cos(t * 1.4) * 0.05;
         }
     }
+
 }
 
 window.Character3D = Character3D;

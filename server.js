@@ -1226,6 +1226,9 @@ io.on('connection', (socket) => {
                 saveLocalDb();
             }
 
+            // 🌟 Tag this specific session as a brand new hero (matching 2D Exonie)
+            socket.isBrandNewCharacter = true;
+
             socket.emit('characterCreated', { slotIndex: slotIdx, character: newChar });
             socket.emit('accountCharacters', slots);
 
@@ -1482,6 +1485,15 @@ io.on('connection', (socket) => {
             }
             socket.emit('gameState', { self: onlinePlayers[socket.id], players: playersInInstance });
             socket.to(instId).emit('playerJoined', onlinePlayers[socket.id]);
+
+            // 🌟 GLOBAL WELCOME BROADCAST (100% Authentic to 2D Exonie: Only for Brand New Characters)
+            if (socket.isBrandNewCharacter) {
+                socket.isBrandNewCharacter = false;
+                const epicWelcomeMsg = `<span style="color: #ffeb3b; font-size: 1.1em; font-weight: bold; text-shadow: 0 0 10px #ff9800, 0 0 20px #ffea00;">🎊 THE GATES OPEN: A new hero, ${finalName}, has just stepped into the maze of Exonie! Welcome! 🎊</span>`;
+                setTimeout(() => {
+                    io.emit('systemMessage', epicWelcomeMsg);
+                }, 2000);
+            }
 
             // Sync Friends List on world enter
             sendFriendsUpdateTo(finalName);
