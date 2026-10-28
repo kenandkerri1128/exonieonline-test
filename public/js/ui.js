@@ -766,6 +766,40 @@ export class UIManager {
     }
 
     // ==========================================
+    // 🏡 REAL ESTATE UI: Private Residence Sale (PER CHARACTER)
+    // ==========================================
+    openHomeSaleUI() {
+        let modal = document.getElementById('home-sale-modal');
+        if (!modal) {
+            modal = document.createElement('div');
+            modal.id = 'home-sale-modal';
+            modal.className = 'game-modal-dialog';
+            modal.style.cssText = 'display:none; position:fixed; top:50%; left:50%; transform:translate(-50%, -50%); background:rgba(15,23,42,0.97); border:2px solid #4CAF50; padding:22px; z-index:99999; width:360px; border-radius:12px; box-shadow:0 0 30px rgba(76,175,80,0.5); color:white; text-align:center; backdrop-filter:blur(10px); font-family:inherit;';
+            document.body.appendChild(modal);
+        }
+
+        const charName = (window.game && window.game.player && window.game.player.name) || 'This Character';
+
+        modal.innerHTML = `
+            <div style="cursor:grab; padding:10px; background:#1e293b; margin:-22px -22px 16px -22px; border-radius:10px 10px 0 0; border-bottom:2px solid #4CAF50;">
+                <h2 style="margin:0; color:#4CAF50; font-size:1.2rem; text-shadow:0 0 10px rgba(76,175,80,0.6);">🏡 Home For Sale!</h2>
+            </div>
+            <p style="color:#cbd5e1; font-size:13px; line-height:1.45; margin-bottom:14px;">
+                Purchase a private sanctuary for <strong style="color:#38bdf8;">${charName}</strong>.<br>
+                Includes your private 15-slot Storage Vault and the ability to invite party members to visit!
+            </p>
+            <div style="margin: 14px 0; padding: 12px; background: rgba(0,0,0,0.45); border: 1px dashed #ffd700; border-radius: 8px;">
+                <div style="font-size:11px; color:#94a3b8; text-transform:uppercase; letter-spacing:1px; margin-bottom:4px;">Character Deed Price</div>
+                <span style="color:#ffd700; font-size:26px; font-weight:800; letter-spacing:1px;">1,000,000 G</span>
+                <div style="font-size:10.5px; color:#a3e635; margin-top:4px;">* Bound strictly to this character</div>
+            </div>
+            <button class="btn-item-action" style="background:linear-gradient(135deg, #22c55e, #16a34a); width:100%; margin-bottom:10px; font-size:14px; font-weight:800; padding:12px; border:none; border-radius:8px; color:#fff; cursor:pointer; box-shadow:0 0 15px rgba(34,197,94,0.4);" onclick="window.buyHome()">Purchase Deed (1,000,000 G)</button>
+            <button class="btn-item-action" style="background:#334155; width:100%; font-size:13px; font-weight:700; padding:10px; border:none; border-radius:8px; color:#cbd5e1; cursor:pointer;" onclick="document.getElementById('home-sale-modal').style.display='none'">Maybe Later</button>
+        `;
+        modal.style.display = 'block';
+    }
+
+    // ==========================================
     // 🏰 GUILD SYSTEM UI (2D REPLICATED)
     // ==========================================
     toggleGuildModal() {
@@ -797,6 +831,7 @@ export class UIManager {
     renderGuildModal(data) {
         const modal = document.getElementById('guild-modal');
         if (!modal) return;
+        this.lastGuildData = data;
         const game = window.game;
 
         if (data.hasGuild) {
@@ -896,7 +931,9 @@ export class UIManager {
             if (data.hasBase) {
                 html += `<button style="background:#22c55e; width:100%; margin-bottom:6px; padding:8px; font-size:12px; font-weight:bold; border:none; border-radius:6px; color:#fff; cursor:pointer;" onclick="window.enterGuildBase()">🏰 Enter Guild Base</button>`;
             } else if (myRole === 'Master') {
-                html += `<button style="background:#f59e0b; width:100%; margin-bottom:6px; padding:8px; font-size:12px; font-weight:800; border:none; border-radius:6px; color:#fff; cursor:pointer;" onclick="window.buyGuildBaseConfirm()">🏰 Purchase Guild Base (1,000,000 G)</button>`;
+                html += `<button style="background:#f59e0b; width:100%; margin-bottom:6px; padding:8px; font-size:12px; font-weight:800; border:none; border-radius:6px; color:#fff; cursor:pointer;" onclick="window.buyGuildBaseConfirm()">🏰 Purchase Guild Base (1,000,000 Guild Gold)</button>`;
+            } else {
+                html += `<div style="background:#1e293b; border:1px dashed #f59e0b; border-radius:6px; padding:8px; margin-bottom:6px; text-align:center; font-size:11.5px; color:#f59e0b; font-weight:600;">🏰 Guild Base: Not Purchased<br><span style="color:#94a3b8; font-size:10.5px;">(Master can purchase for 1,000,000 Guild Funds)</span></div>`;
             }
 
             html += `<button style="background:#334155; width:100%; margin-top:4px; padding:8px; font-size:12px; font-weight:bold; border:none; border-radius:6px; color:#fff; cursor:pointer;" onclick="document.getElementById('guild-modal').style.display='none'">Close</button>`;
@@ -1580,6 +1617,16 @@ export class UIManager {
             this.game?.cancelTrade();
             return;
         }
+        const homeSale = document.getElementById('home-sale-modal');
+        if (homeSale && homeSale.style.display === 'block') {
+            homeSale.style.display = 'none';
+            return;
+        }
+        const guildM = document.getElementById('guild-modal');
+        if (guildM && guildM.style.display === 'block') {
+            guildM.style.display = 'none';
+            return;
+        }
 
         if (!this.settingsModal) return;
         const isHidden = this.settingsModal.style.display === 'none' || !this.settingsModal.style.display;
@@ -1597,7 +1644,9 @@ export class UIManager {
             this.tavernModal, this.leaderboardModal, this.dungeonModal,
             this.mazeGuideModal, this.settingsModal, this.statsModal,
             this.inventoryModal, this.skillsModal, this.inspectModal,
-            this.cashShopModal, this.tradeScreen
+            this.cashShopModal, this.tradeScreen,
+            document.getElementById('home-sale-modal'),
+            document.getElementById('guild-modal')
         ];
         return modals.some(m => m && (m.style.display === 'flex' || m.style.display === 'block'));
     }
@@ -3441,8 +3490,34 @@ window.guildKickMember = function(mName) {
     }
 };
 
+// 🏡 Authentic 2D Exonie Private Residence (Home) Purchase
+window.openHomeSaleUI = function() {
+    window.game?.ui?.openHomeSaleUI?.();
+};
+
+window.buyHome = function() {
+    const charName = window.game?.player?.name || 'This character';
+    const currentGold = window.game?.player?.gold || 0;
+    if (currentGold < 1000000) {
+        window.game?.audio?.playSfx?.('bump');
+        window.game?.ui?.showToast(`⚠️ ${charName} needs 1,000,000 Gold to purchase a Home! (Current: ${currentGold.toLocaleString()} G)`);
+        return;
+    }
+    const modal = document.getElementById('home-sale-modal');
+    if (modal) {
+        modal.innerHTML = `
+            <div style="padding: 25px 10px;">
+                <h3 style="color:#4CAF50; margin:0 0 10px 0;">🏡 Processing Deed Registration...</h3>
+                <p style="color:#94a3b8; font-size:13px; margin:0;">Registering deed for <strong>${charName}</strong> with the Kingdom of Exonie...</p>
+            </div>
+        `;
+    }
+    window.game?.socket?.emit('requestBuyHome');
+};
+
 window.buyGuildBaseConfirm = function() {
-    if (confirm("Spend 1,000,000 Guild Funds to purchase a Guild Base? Only the Master can do this.")) {
+    const guildGold = window.game?.ui?.lastGuildData?.guildGold || 0;
+    if (confirm(`Spend 1,000,000 Guild Funds to purchase a Guild Base? (Available in Guild Funds: ${guildGold.toLocaleString()} G)\nOnly the Guild Master can purchase the Base.`)) {
         window.game?.socket?.emit('requestBuyGuildBase');
     }
 };
@@ -3450,6 +3525,10 @@ window.buyGuildBaseConfirm = function() {
 window.enterGuildBase = function() {
     const modal = document.getElementById('guild-modal');
     if (modal) modal.style.display = 'none';
+    if (window.game?.ui?.lastGuildData && !window.game.ui.lastGuildData.hasBase) {
+        window.game?.ui?.showToast('⚠️ Your guild does not own a Guild Base yet!');
+        return;
+    }
     window.game?.loadMap('guildbase');
 };
 

@@ -1956,7 +1956,17 @@ io.on('connection', (socket) => {
                 onlinePlayers[socket.id].guild_details.level = liveG.level || 0;
             }
 
-            const mapId = data.mapId || pData.map_id || 'town';
+            let mapId = data.mapId || pData.map_id || 'town';
+            if (mapId === 'home' && (!onlinePlayers[socket.id].baseStats || !onlinePlayers[socket.id].baseStats.hasHome)) {
+                mapId = 'town';
+            }
+            if (mapId === 'guildbase') {
+                const gName = onlinePlayers[socket.id].guild || (onlinePlayers[socket.id].guild_details && onlinePlayers[socket.id].guild_details.name);
+                const g = gName ? guilds[gName] : null;
+                if (!g || !g.hasBase) {
+                    mapId = 'town';
+                }
+            }
             const instId = getInstanceId(socket.id, mapId);
             socket.join(instId);
             onlinePlayers[socket.id].mapId = mapId;
@@ -2108,12 +2118,52 @@ io.on('connection', (socket) => {
 
     socket.on('changeMap', (data) => {
         if (!onlinePlayers[socket.id]) return;
+        const newMapId = data.mapId || 'town';
+
+        // 🏡 Authentic 2D Exonie Private Residence (Home) Ownership Check (Per Character)
+        if (newMapId === 'home') {
+            const p = onlinePlayers[socket.id];
+            const pName = p ? p.name : '';
+            const partyId = playerParty[pName];
+            let canEnterHome = false;
+            if (partyId && parties[partyId]) {
+                const leaderName = parties[partyId].leader;
+                const leader = Object.values(onlinePlayers).find(pl => pl.name === leaderName);
+                if (leader && leader.baseStats && leader.baseStats.hasHome) {
+                    canEnterHome = true;
+                } else if (p && p.baseStats && p.baseStats.hasHome) {
+                    canEnterHome = true;
+                }
+            } else if (p && p.baseStats && p.baseStats.hasHome) {
+                canEnterHome = true;
+            }
+
+            if (!canEnterHome) {
+                socket.emit('systemMessage', partyId ? 'The Party Leader does not own a Home!' : 'You do not own a Home! Purchase a private residence for 1,000,000 Gold.');
+                return;
+            }
+        }
+
+        // 🏰 Authentic 2D Exonie Guild Base Access Check
+        if (newMapId === 'guildbase') {
+            const p = onlinePlayers[socket.id];
+            const gName = p ? (p.guild || (p.guild_details && p.guild_details.name)) : null;
+            const guild = gName ? guilds[gName] : null;
+            if (!guild) {
+                socket.emit('systemMessage', 'You must belong to a Guild to enter a Guild Base!');
+                return;
+            }
+            if (!guild.hasBase) {
+                socket.emit('systemMessage', 'Your Guild does not own a Base! The Guild Master must purchase it for 1,000,000 Guild Gold.');
+                return;
+            }
+        }
+
         const oldInst = onlinePlayers[socket.id].instanceId;
         if (oldInst) {
             socket.leave(oldInst);
             socket.to(oldInst).emit('playerLeft', socket.id);
         }
-        const newMapId = data.mapId || 'town';
         if (newMapId === 'town') {
             onlinePlayers[socket.id].isMazeTrial = false;
         }
@@ -3700,17 +3750,105 @@ io.on('connection', (socket) => {
 
         if (guild.roles[p.name] !== 'Master') return socket.emit('systemMessage', "Only the Guild Master can purchase the Base.");
         if (guild.hasBase) return socket.emit('systemMessage', "Your guild already owns a base.");
-        if ((guild.gold || 0) < 1000000) return socket.emit('systemMessage', `Insufficient Funds! Guild needs ${(1000000 - (guild.gold || 0)).toLocaleString()} G more.`);
+        if ((guild.gold || 0) < 1000000) return socket.emit('systemMessage', `Insufficient Funds! Guild needs ${(1000000 - (guild.gold || 0)).toLocaleString()} G more in Guild Funds.`);
 
         guild.gold -= 1000000;
         guild.hasBase = true;
         saveGuildsToDB();
 
-        socket.emit('systemMessage', "SUCCESS! Your Guild Base is now open!");
+        socket.emit('systemMessage', "🏰 SUCCESS! Your Guild Base is now open!");
         guild.members.forEach(mName => {
             const sid = Object.keys(onlinePlayers).find(k => onlinePlayers[k].name === mName);
-            if (sid) io.to(sid).emit('requestGuildUI_Refresh');
+            if (sid) {
+                io.to(sid).emit('requestGuildUI_Refresh');
+                io.to(sid).emit('systemMessage', '🏰 [GUILD] The Guild Base has been successfully purchased by the Guild Master!');
+            }
         });
+    });
+
+    // ==========================================
+    // 🏡 REAL ESTATE ENGINE: Buy a Home (PER CHARACTER - 100% 2D EXONIE)
+    // ==========================================
+    socket.on('requestBuyHome', async () => {
+        const p = onlinePlayers[socket.id];
+        if (!p) return;
+
+        const HOME_PRICE = 1000000;
+
+        if ((p.gold || 0) < HOME_PRICE) {
+            return socket.emit('systemMessage', 'Not enough gold to buy a home (1,000,000 Gold required).');
+        }
+
+        if (p.baseStats && p.baseStats.hasHome) {
+            return socket.emit('systemMessage', 'This character already owns a home!');
+        }
+
+        // Deduct Gold and Grant Deed strictly to THIS character
+        p.gold -= HOME_PRICE;
+        if (!p.baseStats) p.baseStats = {};
+        p.baseStats.hasHome = true;
+
+        const charName = p.name || p.id;
+        const identifier = socket.accountIdentifier || socket.email || p.email;
+
+        if (supabase) {
+            try {
+                // Update character row if separate character row exists
+                await supabase.from('Exonians').update({
+                    gold: p.gold,
+                    base_stats: p.baseStats
+                }).eq('character_name', charName);
+
+                // If account row exists (3-slot pipe format), update specific slot
+                if (identifier) {
+                    const dbRows = await findAccountRows(identifier);
+                    if (dbRows && dbRows.length > 0) {
+                        const slots = parseRowsToSlots(dbRows);
+                        const slotIdx = Math.max(0, Math.min(2, Number(p.slotIndex) || 0));
+                        if (slots[slotIdx]) {
+                            slots[slotIdx].gold = p.gold;
+                            if (!slots[slotIdx].base_stats) slots[slotIdx].base_stats = {};
+                            slots[slotIdx].base_stats.hasHome = true;
+                            if (dbRows.length === 1 && String(dbRows[0].character_name || '').includes('|')) {
+                                const updatePayload = serializeSlotsToRow(slots, dbRows[0]);
+                                let q = supabase.from('Exonians').update(updatePayload);
+                                if (dbRows[0].id) q = q.eq('id', dbRows[0].id);
+                                else if (dbRows[0].email) q = q.eq('email', dbRows[0].email);
+                                else q = q.eq('character_name', dbRows[0].character_name);
+                                await q;
+                            }
+                        }
+                    }
+                }
+            } catch (err) {
+                console.error('[HOME BUY ERROR]', err);
+            }
+        } else {
+            // Offline / Local database support
+            if (identifier) {
+                const dbRows = await findAccountRows(identifier);
+                if (dbRows && dbRows.length > 0) {
+                    const slots = parseRowsToSlots(dbRows);
+                    const slotIdx = Math.max(0, Math.min(2, Number(p.slotIndex) || 0));
+                    if (slots[slotIdx]) {
+                        slots[slotIdx].gold = p.gold;
+                        if (!slots[slotIdx].base_stats) slots[slotIdx].base_stats = {};
+                        slots[slotIdx].base_stats.hasHome = true;
+                        const updatePayload = serializeSlotsToRow(slots, dbRows[0]);
+                        const key = String(identifier).toLowerCase();
+                        if (memoryDb.users[key]) {
+                            Object.assign(memoryDb.users[key], updatePayload);
+                        } else {
+                            memoryDb.users[key] = Object.assign({}, dbRows[0], updatePayload);
+                        }
+                        saveLocalDb();
+                    }
+                }
+            }
+        }
+
+        socket.emit('homeBought', { gold: p.gold, hasHome: true });
+        socket.emit('systemMessage', '🏡 Congratulations! You successfully bought a Home for 1,000,000 Gold! You can enter your Home anytime.');
     });
 
     socket.on('requestGuildLevelUp', () => {

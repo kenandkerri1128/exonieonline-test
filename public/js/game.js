@@ -1047,6 +1047,24 @@ export class GameApp {
                     }
                 });
 
+                // 🏡 HOME PURCHASED SYNC (Per Character)
+                this.socket.on('homeBought', (data) => {
+                    const newGold = (data && data.gold !== undefined) ? data.gold : data;
+                    if (typeof newGold === 'number') {
+                        this.player.gold = newGold;
+                    }
+                    if (!this.player.baseStats) this.player.baseStats = {};
+                    this.player.baseStats.hasHome = true;
+                    this.saveCharacterToAccountSlot();
+                    if (this.ui) {
+                        this.ui.updatePlayerHUD(this.player);
+                        const modal = document.getElementById('home-sale-modal');
+                        if (modal) modal.style.display = 'none';
+                        this.ui.showToast('🏡 Congratulations! You are now a Homeowner! You can enter your Home anytime.');
+                    }
+                    this.audio.playSfx('levelup');
+                });
+
                 this.socket.on('updateLocalGuildTag', (guildName) => {
                     this.player.guild = guildName;
                     if (this.player.guild_details) this.player.guild_details.name = guildName;
@@ -3545,6 +3563,31 @@ export class GameApp {
                 this.portalCooldown = 3.0;
                 this.audio.playSfx('bump');
                 window.openMazeGuide();
+                return;
+            }
+
+            // 🏡 Authentic 2D Exonie Private Residence (Home) Intercept (Per Character)
+            if (tid === 'home') {
+                const hasHome = !!(this.player.baseStats && this.player.baseStats.hasHome);
+                const isParty = this.party && this.party.members && this.party.members.length > 1;
+                const isLeader = !isParty || (this.party.leader === this.player.name);
+
+                if (!hasHome) {
+                    if (isLeader) {
+                        this.portalCooldown = 3.0;
+                        this.player.pos.z += 2.5; // Bounce player back so they don't get stuck
+                        this.audio.playSfx('bump');
+                        this.ui.openHomeSaleUI();
+                        return;
+                    }
+                }
+            }
+
+            // 🏰 Authentic 2D Exonie Guild Station (Portal K) Intercept
+            if (tid === 'guildbase') {
+                this.portalCooldown = 3.0;
+                this.audio.playSfx('bump');
+                this.ui.toggleGuildModal();
                 return;
             }
 
