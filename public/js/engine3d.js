@@ -61,6 +61,7 @@ export class Engine3D {
         this.onDodgeCallback = null;
 
         this.transientMeshes = [];
+        this.projectiles = [];
 
         this.setupLights();
         this.initParticlePool();
@@ -573,44 +574,528 @@ export class Engine3D {
     }
 
     // ==========================================
-    // ❄️ ICE MASTER: 3D FALLING ICICLE DROP
+    // 🔮 WEAPON PROJECTILES (STAFF, GUN, PENDANT)
     // ==========================================
-    spawnFallingIcicle(targetPos, onImpact = null) {
-        const group = new THREE.Group();
-        const startY = targetPos.y + 11.0;
-        group.position.set(targetPos.x, startY, targetPos.z);
 
-        const geo = new THREE.ConeGeometry(0.35, 2.2, 8);
-        geo.rotateX(Math.PI); // Point downward!
-        const mat = new THREE.MeshStandardMaterial({
-            color: 0x80d8ff,
-            emissive: 0x00e5ff,
-            emissiveIntensity: 0.8,
-            roughness: 0.1,
-            metalness: 0.9,
+    // Staff Normal Attack: Arcane / Frost Glowing Magical Orb
+    spawnMagicOrb(startPos, endPos, colorHex = 0xba68c8, onImpact = null) {
+        const group = new THREE.Group();
+        group.position.copy(startPos);
+
+        const coreGeo = new THREE.SphereGeometry(0.20, 12, 10);
+        const coreMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+        group.add(new THREE.Mesh(coreGeo, coreMat));
+
+        const auraGeo = new THREE.SphereGeometry(0.42, 12, 10);
+        const auraMat = new THREE.MeshBasicMaterial({
+            color: colorHex,
+            transparent: true,
+            opacity: 0.85,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false
+        });
+        group.add(new THREE.Mesh(auraGeo, auraMat));
+
+        this.scene.add(group);
+
+        const dist = startPos.distanceTo(endPos);
+        const duration = Math.max(0.12, Math.min(0.35, dist / 36.0));
+
+        this.projectiles.push({
+            mesh: group,
+            geometries: [coreGeo, auraGeo],
+            materials: [coreMat, auraMat],
+            startPos: startPos.clone(),
+            endPos: endPos.clone(),
+            duration: duration,
+            elapsed: 0,
+            onTick: (dt, t) => {
+                group.rotation.x += dt * 8.0;
+                group.rotation.y += dt * 10.0;
+                if (Math.random() < 0.65) {
+                    this.emitParticle(
+                        group.position.x + (Math.random() - 0.5) * 0.3,
+                        group.position.y + (Math.random() - 0.5) * 0.3,
+                        group.position.z + (Math.random() - 0.5) * 0.3,
+                        (Math.random() - 0.5) * 0.8,
+                        (Math.random() - 0.5) * 0.8,
+                        (Math.random() - 0.5) * 0.8,
+                        colorHex, 0.28, 0.32, -0.2
+                    );
+                }
+            },
+            onImpact: () => {
+                this.spawnHitSparks(endPos, colorHex, 22);
+                this.spawnGroundShockwave(endPos, colorHex, 1.8);
+                if (onImpact) onImpact();
+            }
+        });
+    }
+
+    // Gun Normal Attack: Fast Metallic Bullet Projectile with Muzzle Tracer
+    spawnBulletProjectile(startPos, endPos, onImpact = null) {
+        const group = new THREE.Group();
+        group.position.copy(startPos);
+        group.lookAt(endPos);
+
+        const bulletGeo = new THREE.CylinderGeometry(0.045, 0.045, 0.40, 8);
+        bulletGeo.rotateX(Math.PI / 2);
+        const bulletMat = new THREE.MeshStandardMaterial({
+            color: 0xffd54f,
+            metalness: 0.95,
+            roughness: 0.15,
+            emissive: 0xff9800,
+            emissiveIntensity: 0.8
+        });
+        group.add(new THREE.Mesh(bulletGeo, bulletMat));
+
+        const tipGeo = new THREE.SphereGeometry(0.055, 8, 8);
+        const tipMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+        const tipMesh = new THREE.Mesh(tipGeo, tipMat);
+        tipMesh.position.z = 0.20;
+        group.add(tipMesh);
+
+        this.scene.add(group);
+
+        const dist = startPos.distanceTo(endPos);
+        const duration = Math.max(0.06, Math.min(0.16, dist / 90.0));
+
+        this.projectiles.push({
+            mesh: group,
+            geometries: [bulletGeo, tipGeo],
+            materials: [bulletMat, tipMat],
+            startPos: startPos.clone(),
+            endPos: endPos.clone(),
+            duration: duration,
+            elapsed: 0,
+            onTick: (dt, t) => {
+                if (Math.random() < 0.5) {
+                    this.emitParticle(
+                        group.position.x, group.position.y, group.position.z,
+                        (Math.random() - 0.5) * 0.5, 0.2, (Math.random() - 0.5) * 0.5,
+                        0xffd54f, 0.15, 0.18, 0.5
+                    );
+                }
+            },
+            onImpact: () => {
+                this.spawnHitSparks(endPos, 0xffd54f, 16);
+                if (onImpact) onImpact();
+            }
+        });
+    }
+
+    // Pendant Normal Attack: Shimmering Starlight Holy Projectile
+    spawnShimmeringProjectile(startPos, endPos, colorHex = 0x69f0ae, onImpact = null) {
+        const group = new THREE.Group();
+        group.position.copy(startPos);
+
+        const starGeo = new THREE.OctahedronGeometry(0.22);
+        const starMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+        group.add(new THREE.Mesh(starGeo, starMat));
+
+        const shimmerGeo = new THREE.SphereGeometry(0.38, 10, 8);
+        const shimmerMat = new THREE.MeshBasicMaterial({
+            color: colorHex,
+            transparent: true,
+            opacity: 0.80,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false
+        });
+        group.add(new THREE.Mesh(shimmerGeo, shimmerMat));
+
+        this.scene.add(group);
+
+        const dist = startPos.distanceTo(endPos);
+        const duration = Math.max(0.12, Math.min(0.30, dist / 35.0));
+
+        this.projectiles.push({
+            mesh: group,
+            geometries: [starGeo, shimmerGeo],
+            materials: [starMat, shimmerMat],
+            startPos: startPos.clone(),
+            endPos: endPos.clone(),
+            duration: duration,
+            elapsed: 0,
+            onTick: (dt, t) => {
+                group.rotation.x += dt * 6.0;
+                group.rotation.y += dt * 9.0;
+                group.rotation.z += dt * 7.0;
+                if (Math.random() < 0.7) {
+                    this.emitParticle(
+                        group.position.x + (Math.random() - 0.5) * 0.35,
+                        group.position.y + (Math.random() - 0.5) * 0.35,
+                        group.position.z + (Math.random() - 0.5) * 0.35,
+                        (Math.random() - 0.5) * 0.6,
+                        0.5,
+                        (Math.random() - 0.5) * 0.6,
+                        Math.random() < 0.5 ? 0xffffff : colorHex,
+                        0.25, 0.35, -0.3
+                    );
+                }
+            },
+            onImpact: () => {
+                this.spawnHitSparks(endPos, colorHex, 24);
+                this.spawnGroundShockwave(endPos, colorHex, 2.2);
+                if (onImpact) onImpact();
+            }
+        });
+    }
+
+    // Explosives Expert: Thrown Flaming Molotov Cocktail Bottle
+    spawnThrownMolotov(startPos, endPos, onImpact = null) {
+        const group = new THREE.Group();
+        group.position.copy(startPos);
+
+        const bottleGeo = new THREE.CylinderGeometry(0.08, 0.11, 0.36, 8);
+        const bottleMat = new THREE.MeshStandardMaterial({
+            color: 0x8d6e63,
+            roughness: 0.2,
+            metalness: 0.1,
             transparent: true,
             opacity: 0.85
         });
-        const cone = new THREE.Mesh(geo, mat);
-        group.add(cone);
+        group.add(new THREE.Mesh(bottleGeo, bottleMat));
+
+        const flameGeo = new THREE.SphereGeometry(0.10, 8, 8);
+        const flameMat = new THREE.MeshBasicMaterial({ color: 0xff3d00 });
+        const flameMesh = new THREE.Mesh(flameGeo, flameMat);
+        flameMesh.position.y = 0.20;
+        group.add(flameMesh);
+
         this.scene.add(group);
 
-        const fallDuration = 0.26;
+        this.projectiles.push({
+            mesh: group,
+            geometries: [bottleGeo, flameGeo],
+            materials: [bottleMat, flameMat],
+            startPos: startPos.clone(),
+            endPos: endPos.clone(),
+            isArc: true,
+            arcHeight: 2.8,
+            duration: 0.38,
+            elapsed: 0,
+            onTick: (dt, t) => {
+                group.rotation.x += dt * 14.0;
+                group.rotation.z += dt * 11.0;
+                this.emitParticle(
+                    group.position.x, group.position.y, group.position.z,
+                    (Math.random() - 0.5) * 0.8, Math.random() * 0.8, (Math.random() - 0.5) * 0.8,
+                    Math.random() < 0.5 ? 0xff3d00 : 0xffea00,
+                    0.28, 0.35, -1.0
+                );
+            },
+            onImpact: () => {
+                this.spawnHitSparks(endPos, 0xff3d00, 32);
+                this.spawnGroundShockwave(endPos, 0xff5722, 4.5);
+                if (onImpact) onImpact();
+            }
+        });
+    }
+
+    // ==========================================
+    // ❄️ ICE MASTER: MASSIVE FALLING ICICLE DROP (VERY OBVIOUS VFX & SFX)
+    // ==========================================
+    spawnFallingIcicle(targetPos, onImpact = null) {
+        // 1. Glowing Cyan Ground Targeting Rune Decal
+        const runeGeo = new THREE.RingGeometry(0.8, 1.45, 32);
+        const runeMat = new THREE.MeshBasicMaterial({
+            color: 0x00e5ff,
+            transparent: true,
+            opacity: 0.90,
+            side: THREE.DoubleSide,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false
+        });
+        const runeMesh = new THREE.Mesh(runeGeo, runeMat);
+        runeMesh.rotation.x = -Math.PI / 2;
+        runeMesh.position.set(targetPos.x, targetPos.y + 0.08, targetPos.z);
+        this.scene.add(runeMesh);
+
+        this.transientMeshes.push({
+            mesh: runeMesh,
+            materials: [runeMat],
+            life: 0.40,
+            maxLife: 0.40,
+            scaleSpeed: 1.2
+        });
+
+        // 2. Colossal Crystallized Ice Spear Group
+        const group = new THREE.Group();
+        const startY = targetPos.y + 17.0;
+        group.position.set(targetPos.x, startY, targetPos.z);
+
+        const spearBodyGeo = new THREE.CylinderGeometry(0.08, 0.65, 3.4, 6);
+        spearBodyGeo.rotateX(Math.PI); // Point downward!
+        const spearTipGeo = new THREE.ConeGeometry(0.65, 1.5, 6);
+        spearTipGeo.rotateX(Math.PI); // Point downward!
+        spearTipGeo.translate(0, -2.45, 0);
+
+        const iceMat = new THREE.MeshStandardMaterial({
+            color: 0xe0f7fa,
+            emissive: 0x00e5ff,
+            emissiveIntensity: 1.6,
+            roughness: 0.08,
+            metalness: 0.85,
+            transparent: true,
+            opacity: 0.92
+        });
+
+        const bodyMesh = new THREE.Mesh(spearBodyGeo, iceMat);
+        const tipMesh = new THREE.Mesh(spearTipGeo, iceMat);
+        group.add(bodyMesh, tipMesh);
+
+        // Core White Glint Inner Light
+        const glintGeo = new THREE.CylinderGeometry(0.04, 0.25, 4.2, 6);
+        glintGeo.rotateX(Math.PI);
+        const glintMat = new THREE.MeshBasicMaterial({
+            color: 0xffffff,
+            transparent: true,
+            opacity: 0.85,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false
+        });
+        group.add(new THREE.Mesh(glintGeo, glintMat));
+
+        this.scene.add(group);
+
+        const fallDuration = 0.28;
         let elapsed = 0;
         const tickInterval = setInterval(() => {
             elapsed += 0.016;
             const t = Math.min(1.0, elapsed / fallDuration);
-            group.position.y = THREE.MathUtils.lerp(startY, targetPos.y + 0.2, t * t);
+            // Accelerating gravity drop curve
+            group.position.y = THREE.MathUtils.lerp(startY, targetPos.y + 0.15, t * t);
+
+            // Trailing ice flakes and frosty snow particles
+            for (let k = 0; k < 3; k++) {
+                this.emitParticle(
+                    group.position.x + (Math.random() - 0.5) * 0.8,
+                    group.position.y + Math.random() * 2.5,
+                    group.position.z + (Math.random() - 0.5) * 0.8,
+                    (Math.random() - 0.5) * 1.5,
+                    2.0 + Math.random() * 2.0,
+                    (Math.random() - 0.5) * 1.5,
+                    k % 2 === 0 ? 0x00e5ff : 0xffffff,
+                    0.35, 0.45, -2.0
+                );
+            }
+
             if (t >= 1.0) {
                 clearInterval(tickInterval);
                 this.scene.remove(group);
-                geo.dispose();
-                mat.dispose();
-                this.spawnGroundShockwave(targetPos, 0x00e5ff, 4.5);
-                this.spawnHitSparks(targetPos, 0x80d8ff, 28);
+                spearBodyGeo.dispose();
+                spearTipGeo.dispose();
+                glintGeo.dispose();
+                iceMat.dispose();
+                glintMat.dispose();
+
+                // 💥 IMPACT: Dramatic Screen Shake & Authentic Procedural Ice Shatter Audio
+                this.addScreenshake(0.95);
+                if (window.game?.audio?.playIceShatter) {
+                    window.game.audio.playIceShatter();
+                } else if (window.game?.audio?.playSfx) {
+                    window.game.audio.playSfx('ice');
+                }
+
+                // Dual Expanding Frost Nova Shockwaves
+                this.spawnGroundShockwave(targetPos, 0x00e5ff, 6.2);
+                this.spawnGroundShockwave(targetPos, 0x80d8ff, 3.8);
+
+                // 45+ Exploding Ice Shards in all directions
+                for (let s = 0; s < 45; s++) {
+                    const angle = Math.random() * Math.PI * 2;
+                    const spd = 4.0 + Math.random() * 8.0;
+                    this.emitParticle(
+                        targetPos.x, targetPos.y + 0.3, targetPos.z,
+                        Math.cos(angle) * spd, 3.0 + Math.random() * 5.0, Math.sin(angle) * spd,
+                        s % 3 === 0 ? 0xffffff : (s % 3 === 1 ? 0x00e5ff : 0x80d8ff),
+                        0.45, 0.70, -6.0
+                    );
+                }
+
+                // Ground Ice Spikes Cluster (5 sharp crystalline cones erupting from the ground for 0.75s)
+                const spikeCluster = new THREE.Group();
+                spikeCluster.position.set(targetPos.x, targetPos.y, targetPos.z);
+                const spikeGeo = new THREE.ConeGeometry(0.32, 1.6, 6);
+                const spikeMat = new THREE.MeshStandardMaterial({
+                    color: 0xe0f7fa,
+                    emissive: 0x00e5ff,
+                    emissiveIntensity: 1.2,
+                    transparent: true,
+                    opacity: 0.90,
+                    roughness: 0.1
+                });
+                for (let i = 0; i < 5; i++) {
+                    const sm = new THREE.Mesh(spikeGeo, spikeMat);
+                    const ang = (i / 5) * Math.PI * 2;
+                    const dist = 0.9 + Math.random() * 0.8;
+                    sm.position.set(Math.cos(ang) * dist, 0.7, Math.sin(ang) * dist);
+                    sm.rotation.x = (Math.random() - 0.5) * 0.45;
+                    sm.rotation.z = (Math.random() - 0.5) * 0.45;
+                    spikeCluster.add(sm);
+                }
+                this.scene.add(spikeCluster);
+                this.transientMeshes.push({
+                    mesh: spikeCluster,
+                    materials: [spikeMat],
+                    life: 0.75,
+                    maxLife: 0.75,
+                    scaleSpeed: -0.8
+                });
+
                 if (onImpact) onImpact();
             }
         }, 16);
+    }
+
+    // ==========================================
+    // ✨ HEALER / CELESTIAL: DRAMATIC LIGHT PILLAR
+    // ==========================================
+    spawnLightPillar(pos, colorHex = 0x00e676, radius = 2.0, height = 15.0, duration = 0.65) {
+        const group = new THREE.Group();
+        group.position.set(pos.x, pos.y + height / 2, pos.z);
+
+        const pillarGeo = new THREE.CylinderGeometry(radius * 0.8, radius, height, 16, 1, true);
+        const pillarMat = new THREE.MeshBasicMaterial({
+            color: colorHex,
+            transparent: true,
+            opacity: 0.85,
+            blending: THREE.AdditiveBlending,
+            side: THREE.DoubleSide,
+            depthWrite: false
+        });
+        group.add(new THREE.Mesh(pillarGeo, pillarMat));
+
+        const coreGeo = new THREE.CylinderGeometry(radius * 0.3, radius * 0.35, height, 16, 1, true);
+        const coreMat = new THREE.MeshBasicMaterial({
+            color: 0xffffff,
+            transparent: true,
+            opacity: 0.95,
+            blending: THREE.AdditiveBlending,
+            side: THREE.DoubleSide,
+            depthWrite: false
+        });
+        group.add(new THREE.Mesh(coreGeo, coreMat));
+
+        this.scene.add(group);
+        this.transientMeshes.push({
+            mesh: group,
+            materials: [pillarMat, coreMat],
+            life: duration,
+            maxLife: duration,
+            scaleSpeed: 1.5,
+            rotSpeedY: 3.0
+        });
+
+        this.spawnGroundShockwave(pos, colorHex, radius * 2.5);
+        for (let i = 0; i < 35; i++) {
+            const a = Math.random() * Math.PI * 2;
+            const r = Math.random() * radius;
+            this.emitParticle(
+                pos.x + Math.cos(a) * r, pos.y + Math.random() * 2.0, pos.z + Math.sin(a) * r,
+                Math.cos(a) * 0.8, 4.0 + Math.random() * 3.0, Math.sin(a) * 0.8,
+                Math.random() < 0.5 ? 0xffffff : colorHex,
+                0.35, 0.70, -1.0
+            );
+        }
+    }
+
+    // ==========================================
+    // 🔥 BERSERKER: ROARING INFERNO FIRE PILLAR
+    // ==========================================
+    spawnFirePillar(pos, duration = 0.85) {
+        const group = new THREE.Group();
+        group.position.set(pos.x, pos.y + 3.5, pos.z);
+
+        const fireGeo = new THREE.CylinderGeometry(1.6, 2.2, 7.0, 16, 1, true);
+        const fireMat = new THREE.MeshBasicMaterial({
+            color: 0xff3d00,
+            transparent: true,
+            opacity: 0.90,
+            blending: THREE.AdditiveBlending,
+            side: THREE.DoubleSide,
+            depthWrite: false
+        });
+        group.add(new THREE.Mesh(fireGeo, fireMat));
+
+        const coreGeo = new THREE.CylinderGeometry(0.8, 1.2, 7.0, 16, 1, true);
+        const coreMat = new THREE.MeshBasicMaterial({
+            color: 0xffea00,
+            transparent: true,
+            opacity: 0.95,
+            blending: THREE.AdditiveBlending,
+            side: THREE.DoubleSide,
+            depthWrite: false
+        });
+        group.add(new THREE.Mesh(coreGeo, coreMat));
+
+        this.scene.add(group);
+        this.transientMeshes.push({
+            mesh: group,
+            materials: [fireMat, coreMat],
+            life: duration,
+            maxLife: duration,
+            scaleSpeed: 1.8,
+            rotSpeedY: 6.0
+        });
+
+        this.spawnGroundShockwave(pos, 0xff1744, 7.0);
+        for (let i = 0; i < 40; i++) {
+            const a = Math.random() * Math.PI * 2;
+            const r = Math.random() * 2.0;
+            this.emitParticle(
+                pos.x + Math.cos(a) * r, pos.y + Math.random() * 3.0, pos.z + Math.sin(a) * r,
+                Math.cos(a) * 1.5, 6.0 + Math.random() * 4.0, Math.sin(a) * 1.5,
+                Math.random() < 0.5 ? 0xffea00 : 0xff1744,
+                0.40, 0.80, -2.0
+            );
+        }
+    }
+
+    // ==========================================
+    // 🎯 SNIPER: PIERCING HIGH-POWER LASER BEAM
+    // ==========================================
+    spawnSniperBeam(startPos, endPos, colorHex = 0xffffff, width = 0.35, duration = 0.24) {
+        const dist = startPos.distanceTo(endPos);
+        if (dist < 0.1) return;
+
+        const mid = new THREE.Vector3().addVectors(startPos, endPos).multiplyScalar(0.5);
+        const group = new THREE.Group();
+        group.position.copy(mid);
+        group.lookAt(endPos);
+
+        const coreGeo = new THREE.CylinderGeometry(width * 0.4, width * 0.4, dist, 8);
+        coreGeo.rotateX(Math.PI / 2);
+        const coreMat = new THREE.MeshBasicMaterial({
+            color: 0xffffff,
+            transparent: true,
+            opacity: 0.98,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false
+        });
+        group.add(new THREE.Mesh(coreGeo, coreMat));
+
+        const glowGeo = new THREE.CylinderGeometry(width * 1.6, width * 1.6, dist, 10);
+        glowGeo.rotateX(Math.PI / 2);
+        const glowMat = new THREE.MeshBasicMaterial({
+            color: colorHex,
+            transparent: true,
+            opacity: 0.80,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false
+        });
+        group.add(new THREE.Mesh(glowGeo, glowMat));
+
+        this.scene.add(group);
+        this.transientMeshes.push({
+            mesh: group,
+            materials: [coreMat, glowMat],
+            life: duration,
+            maxLife: duration,
+            scaleSpeed: 0
+        });
+
+        this.spawnHitSparks(endPos, colorHex, 28);
     }
 
     // ==========================================
@@ -701,6 +1186,30 @@ export class Engine3D {
                 if (fx.materials) {
                     for (const m of fx.materials) m.opacity = ratio;
                 }
+            }
+        }
+
+        // Update Projectiles (Smooth 60 FPS interpolation, trails, and impact callbacks)
+        for (let i = this.projectiles.length - 1; i >= 0; i--) {
+            const p = this.projectiles[i];
+            p.elapsed += dt;
+            const t = Math.min(1.0, p.elapsed / p.duration);
+
+            if (p.isArc) {
+                p.mesh.position.lerpVectors(p.startPos, p.endPos, t);
+                p.mesh.position.y += Math.sin(t * Math.PI) * (p.arcHeight || 2.5);
+            } else {
+                p.mesh.position.lerpVectors(p.startPos, p.endPos, t);
+            }
+
+            if (p.onTick) p.onTick(dt, t);
+
+            if (t >= 1.0) {
+                this.scene.remove(p.mesh);
+                if (p.geometries) p.geometries.forEach(g => g?.dispose?.());
+                if (p.materials) p.materials.forEach(m => m?.dispose?.());
+                this.projectiles.splice(i, 1);
+                if (p.onImpact) p.onImpact();
             }
         }
     }

@@ -1767,6 +1767,11 @@ io.on('connection', (socket) => {
         socket.broadcast.emit('remoteSkillEffect', data);
     });
 
+    socket.on('broadcastSkill', (data) => {
+        if (!data) return;
+        socket.broadcast.emit('broadcastSkill', data);
+    });
+
     socket.on('partyHeal', (data) => {
         if (!data) return;
         socket.broadcast.emit('partyHeal', data);

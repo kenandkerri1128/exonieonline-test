@@ -269,7 +269,7 @@ export class CombatSystem {
             return;
         }
 
-        // 2. GUN (Sniper / Explosives Expert) — 800ms attack interval, 2D AttackPower formula
+        // 2. GUN (Sniper / Explosives Expert) — 800ms attack interval, Small Fast Metallic Bullet Projectile
         if (wpnSprite.includes('gun') || pClass === 'Sniper' || pClass === 'Explosives Expert') {
             const now = performance.now();
             if (now - this.lastAttackTime < 800) return;
@@ -287,24 +287,24 @@ export class CombatSystem {
                 ? target.group.position.clone().add(new THREE.Vector3(0, 1.0, 0))
                 : player.pos.clone().add(new THREE.Vector3(Math.sin(player.rotY) * range, 1.38, Math.cos(player.rotY) * range));
 
-            this.engine.spawnBulletTracer(muzzlePos, targetPos);
             this.engine.addScreenshake(0.20);
+            this.engine.spawnBulletProjectile(muzzlePos, targetPos, () => {
+                if (target && target.isAlive) {
+                    const trueDmg = Math.floor((player.atk || 12) * (0.9 + Math.random() * 0.2) * cloneMult);
+                    const finalDmg = Math.max(1, trueDmg - (target.def || 0));
 
-            if (target) {
-                const trueDmg = Math.floor((player.atk || 12) * (0.9 + Math.random() * 0.2) * cloneMult);
-                const finalDmg = Math.max(1, trueDmg - (target.def || 0));
-
-                target.takeDamage(finalDmg);
-                this.engine.spawnHitSparks(target.group.position, 0xffd600, 14);
-                this.spawnFloatingDamage(target.group.position, finalDmg, false);
-                this.registerComboHit(1);
-                this.applyOnHitPassives(player, target, finalDmg, onMonsterKilled);
-                if (!target.isAlive && onMonsterKilled) onMonsterKilled(target);
-            }
+                    target.takeDamage(finalDmg);
+                    this.engine.spawnHitSparks(target.group.position, 0xffd600, 14);
+                    this.spawnFloatingDamage(target.group.position, finalDmg, false);
+                    this.registerComboHit(1);
+                    this.applyOnHitPassives(player, target, finalDmg, onMonsterKilled);
+                    if (!target.isAlive && onMonsterKilled) onMonsterKilled(target);
+                }
+            });
             return;
         }
 
-        // 3. STAFF (Summoner / Ice Master) — 800ms attack interval, 2D MagicAttack formula
+        // 3. STAFF (Summoner / Ice Master) — 800ms attack interval, Arcane/Frost Magical Orb Projectile
         if (wpnSprite.includes('staff') || pClass === 'Summoner' || pClass === 'Ice Master') {
             const now = performance.now();
             if (now - this.lastAttackTime < 800) return;
@@ -313,33 +313,31 @@ export class CombatSystem {
             const target = this.autoAimNearestMonster(player, monsters, 17);
 
             if (player.char3D) player.char3D.triggerAttack(1, 'staff');
-            if (this.audio) this.audio.playSfx('lightning');
+            if (this.audio) this.audio.playSfx('magic');
 
             const castPos = player.pos.clone().add(new THREE.Vector3(Math.sin(player.rotY) * 1.0, 1.6, Math.cos(player.rotY) * 1.0));
             const targetPos = target
                 ? target.group.position.clone().add(new THREE.Vector3(0, 1.0, 0))
                 : player.pos.clone().add(new THREE.Vector3(Math.sin(player.rotY) * 16, 1.4, Math.cos(player.rotY) * 16));
 
-            this.engine.spawnLaserBolt(castPos, targetPos, pClass === 'Ice Master' ? 0x80d8ff : 0x7c4dff);
+            const orbColor = pClass === 'Ice Master' ? 0x00e5ff : 0xba68c8;
+            this.engine.spawnMagicOrb(castPos, targetPos, orbColor, () => {
+                if (target && target.isAlive) {
+                    const trueDmg = Math.floor((player.mag || 13) * (0.9 + Math.random() * 0.2) * cloneMult);
+                    const finalDmg = Math.max(1, trueDmg - (target.def || 0));
 
-            if (target) {
-                const trueDmg = Math.floor((player.mag || 13) * (0.9 + Math.random() * 0.2) * cloneMult);
-                const finalDmg = Math.max(1, trueDmg - (target.def || 0));
-
-                setTimeout(() => {
-                    if (!target.isAlive) return;
                     target.takeDamage(finalDmg);
-                    this.engine.spawnHitSparks(target.group.position, 0x80d8ff, 15);
+                    this.engine.spawnHitSparks(target.group.position, orbColor, 18);
                     this.spawnFloatingDamage(target.group.position, finalDmg, false);
                     this.registerComboHit(1);
                     this.applyOnHitPassives(player, target, finalDmg, onMonsterKilled);
                     if (!target.isAlive && onMonsterKilled) onMonsterKilled(target);
-                }, 80);
-            }
+                }
+            });
             return;
         }
 
-        // 4. PENDANT (Healer) — 800ms attack interval, 2D MagicAttack formula
+        // 4. PENDANT (Healer) — 800ms attack interval, Shimmering Holy Starlight Projectile
         if (wpnSprite.includes('pendant') || pClass === 'Healer') {
             const now = performance.now();
             if (now - this.lastAttackTime < 800) return;
@@ -348,14 +346,12 @@ export class CombatSystem {
             const target = this.autoAimNearestMonster(player, monsters, 16);
 
             if (player.char3D) player.char3D.triggerAttack(1, 'pendant');
-            if (this.audio) this.audio.playSfx('splash');
+            if (this.audio) this.audio.playSfx('holy');
 
             const prayerPos = player.pos.clone().add(new THREE.Vector3(Math.sin(player.rotY) * 0.8, 1.4, Math.cos(player.rotY) * 0.8));
             const targetPos = target
                 ? target.group.position.clone().add(new THREE.Vector3(0, 1.0, 0))
                 : player.pos.clone().add(new THREE.Vector3(Math.sin(player.rotY) * 15, 1.4, Math.cos(player.rotY) * 15));
-
-            this.engine.spawnLaserBolt(prayerPos, targetPos, 0x00e676);
 
             // Healer Lv.75 Passive: Healing Touch (normal attacks heal for 5% of INT)
             const intVal = player.totalInt || (player.baseStats && player.baseStats.int) || 10;
@@ -365,20 +361,19 @@ export class CombatSystem {
                 this.spawnFloatingDamage(player.pos, `+${healTick} HP`, false, true);
             }
 
-            if (target) {
-                const trueDmg = Math.floor((player.mag || 12) * (0.9 + Math.random() * 0.2) * cloneMult);
-                const finalDmg = Math.max(1, trueDmg - (target.def || 0));
+            this.engine.spawnShimmeringProjectile(prayerPos, targetPos, 0x69f0ae, () => {
+                if (target && target.isAlive) {
+                    const trueDmg = Math.floor((player.mag || 12) * (0.9 + Math.random() * 0.2) * cloneMult);
+                    const finalDmg = Math.max(1, trueDmg - (target.def || 0));
 
-                setTimeout(() => {
-                    if (!target.isAlive) return;
                     target.takeDamage(finalDmg);
                     this.engine.spawnHitSparks(target.group.position, 0x00e676, 16);
                     this.spawnFloatingDamage(target.group.position, finalDmg, false);
                     this.registerComboHit(1);
                     this.applyOnHitPassives(player, target, finalDmg, onMonsterKilled);
                     if (!target.isAlive && onMonsterKilled) onMonsterKilled(target);
-                }, 80);
-            }
+                }
+            });
             return;
         }
 
@@ -563,9 +558,9 @@ export class CombatSystem {
 
         if (pClass === 'Blademaster') {
             if (skillSlot === 1) {
-                // Parry (Lv.25, 13s CD): 70% chance to parry attacks for 10s
-                this.engine.spawnSlashArc(player.pos, player.rotY, 0x00e5ff, 3.2);
-                if (this.audio) this.audio.playSfx('slash');
+                // Parry (Lv.25, 13s CD): 70% chance to parry attacks for 10s + Metallic Clang SFX
+                this.engine.spawnSlashArc(player.pos, player.rotY, 0x00e5ff, 3.5);
+                if (this.audio) this.audio.playSfx('clang');
                 player.isParrying = true;
                 if (player.char3D?.attachParryGuard) player.char3D.attachParryGuard();
                 this.spawnFloatingDamage(player.pos, '⚔️ PARRY STANCE (10s)!', false, true);
@@ -573,26 +568,33 @@ export class CombatSystem {
                     player.isParrying = false;
                     if (player.char3D?.detachParryGuard) player.char3D.detachParryGuard();
                 }, 10000);
-                this.damageMonstersInRadius(player, player.pos, 4.0, atkVal * 1.8, monsters, onMonsterKilled);
+                this.damageMonstersInRadius(player, player.pos, 4.5, atkVal * 1.8, monsters, onMonsterKilled);
             } else {
-                // Mega Slash (Lv.50, 50s CD): 5x ATK Power
-                this.engine.addScreenshake(0.9);
-                this.engine.spawnGroundShockwave(player.pos, 0xff1744, 7.0);
-                if (this.audio) this.audio.playSfx('slash');
-                this.damageMonstersInCone(player, player.pos, playerForward, 8.5, atkVal * 5.0, monsters, onMonsterKilled);
+                // Mega Slash (Lv.50, 50s CD): 5x ATK Power with Colossal Crescent Wave
+                this.engine.addScreenshake(1.1);
+                this.engine.spawnSlashArc(player.pos, player.rotY, 0xff1744, 7.5);
+                this.engine.spawnGroundShockwave(player.pos, 0xff1744, 8.5);
+                if (this.audio) {
+                    this.audio.playSfx('slash');
+                    this.audio.playSfx('explosion');
+                }
+                this.spawnFloatingDamage(player.pos, '⚔️ MEGA SLASH (5x ATK)!', true);
+                this.damageMonstersInCone(player, player.pos, playerForward, 9.5, atkVal * 5.0, monsters, onMonsterKilled);
             }
         } else if (pClass === 'Berserker') {
             if (skillSlot === 1) {
-                // Callout! (Lv.1, 14s CD): Taunt enemies + 3x DEF for 10s
+                // Callout! (Lv.1, 14s CD): Taunt enemies + 3x DEF for 10s + Booming Warcry Roar
                 player.calloutActive = true;
                 if (window.game) window.game.recalculateStats();
                 setTimeout(() => {
                     player.calloutActive = false;
                     if (window.game) window.game.recalculateStats();
                 }, 10000);
-                this.spawnFloatingDamage(player.pos, '🛡️ CALLOUT! (DEF x3)', false, true);
+                this.spawnFloatingDamage(player.pos, '🛡️ CALLOUT! (DEF x3, TAUNT!)', false, true);
+                this.engine.spawnGroundShockwave(player.pos, 0xff1744, 4.0);
                 this.engine.spawnGroundShockwave(player.pos, 0xff1744, 7.5);
-                if (this.audio) this.audio.playSfx('slash');
+                this.engine.spawnGroundShockwave(player.pos, 0xff5252, 10.5);
+                if (this.audio) this.audio.playSfx('taunt');
 
                 // Provoke all monsters within 22 units to aggro on Berserker
                 if (monsters) {
@@ -603,34 +605,37 @@ export class CombatSystem {
                     }
                 }
 
-                this.damageMonstersInRadius(player, player.pos, 8.0, atkVal * 1.5, monsters, onMonsterKilled);
+                this.damageMonstersInRadius(player, player.pos, 8.5, atkVal * 1.5, monsters, onMonsterKilled);
             } else {
-                // Immortal (Lv.50, 100s CD): HP cannot drop below 1 for 10s
+                // Immortal (Lv.50, 100s CD): HP cannot drop below 1 for 10s + Roaring Inferno Pillar
                 player.isImmortal = true;
                 if (player.char3D?.attachFieryAura) player.char3D.attachFieryAura();
+                this.engine.spawnFirePillar(player.pos, 1.0);
                 setTimeout(() => {
                     player.isImmortal = false;
                     if (player.char3D?.detachFieryAura) player.char3D.detachFieryAura();
                 }, 10000);
                 this.spawnFloatingDamage(player.pos, '🔥 IMMORTAL (10s)!', true, true);
-                this.engine.spawnLevelUpVFX(player.pos);
-                if (this.audio) this.audio.playSfx('splash');
+                if (this.audio) {
+                    this.audio.playSfx('explosion');
+                    this.audio.playSfx('buff');
+                }
             }
         } else if (pClass === 'Healer') {
             // Boost Passive (Lv.25): Makes Heal 3x INT instead of 2x INT
             const mult = player.level >= 25 ? 3 : 2;
             if (skillSlot === 1) {
+                // Heal (Lv.1, 8s CD): Celestial Light Pillar + Party Heal + Holy Chime
                 const healAmt = intVal * mult;
                 player.hp = Math.min(player.maxHp, player.hp + healAmt);
                 this.spawnFloatingDamage(player.pos, `+${healAmt} HP`, false, true);
-                this.engine.spawnHitSparks(player.pos.clone().add(new THREE.Vector3(0, 1.5, 0)), 0x00e676, 28);
-                this.engine.spawnGroundShockwave(player.pos, 0x00e676, 6.0);
-                if (this.audio) this.audio.playSfx('splash');
+                this.engine.spawnLightPillar(player.pos, 0x00e676, 2.2, 14.0, 0.7);
+                if (this.audio) this.audio.playSfx('holy');
                 if (window.game?.socket?.connected) {
                     window.game.socket.emit('partyHeal', { healerName: player.name, healAmt: healAmt });
                 }
             } else {
-                // Purification (Lv.50, 100s CD): Full party heal & cleanse (Max 5/5 per run)
+                // Purification (Lv.50, 100s CD): Full Party Revival & Sacred Dome (Max 5/5 per run)
                 player.purificationUses = (Number(player.purificationUses) || 0) + 1;
                 player.hp = player.maxHp;
                 if (window.game && window.game.ui) {
@@ -638,8 +643,12 @@ export class CombatSystem {
                     window.game.ui.updatePlayerHUD(player);
                 }
                 this.spawnFloatingDamage(player.pos, `✨ PURIFICATION! (${player.purificationUses}/5)`, true, true);
-                this.engine.spawnLevelUpVFX(player.pos);
-                if (this.audio) this.audio.playSfx('splash');
+                this.engine.spawnLightPillar(player.pos, 0xffeb3b, 3.5, 18.0, 1.0);
+                this.engine.spawnGroundShockwave(player.pos, 0xffffff, 10.0);
+                if (this.audio) {
+                    this.audio.playSfx('holy');
+                    this.audio.playSfx('buff');
+                }
                 if (window.game?.socket?.connected) {
                     window.game.socket.emit('partyRevive', { healerName: player.name });
                 }
@@ -666,53 +675,86 @@ export class CombatSystem {
                 const label = hasBigBoss ? '👑 SUMMONED 2 SLIMES + BIG BOSS SLIME!' : `✨ SUMMONED ${numSlimes} ALLIED SLIME(S)!`;
                 this.engine.spawnGroundShockwave(player.pos, 0x00e5ff, 6.0);
                 this.spawnFloatingDamage(player.pos, label, true, true);
-                if (this.audio) this.audio.playSfx('splash');
+                if (this.audio) {
+                    this.audio.playSfx('magic');
+                    this.audio.playSfx('splash');
+                }
                 this.damageMonstersInRadius(player, player.pos, 6.0, intVal * 1.5, monsters, onMonsterKilled);
             } else {
-                // Enhance! (Lv.50, 100s CD): Slimes gain 100% stats for 10s + Big Boss deals 1800 AoE Earthquake
+                // Enhance! (Lv.50, 100s CD): Slimes gain 100% stats for 10s + Rotating Golden Sun-Ring & Glowing Pulsing Slime Body!
                 this.engine.addScreenshake(1.0);
                 this.engine.spawnGroundShockwave(player.pos, 0xffd700, 9.5);
                 this.spawnFloatingDamage(player.pos, '✨ ENHANCE! (10s DOUBLE POWER)', true, true);
-                if (this.audio) this.audio.playSfx('bump');
+                if (this.audio) this.audio.playSfx('enhance');
 
                 const now = Date.now();
                 for (const sm of this.alliedMinions) {
                     sm.enhancedUntil = now + 10000;
-                    if (sm.mesh && sm.mesh.material) {
-                        sm.mesh.material.emissive?.setHex(0xffd700);
-                        sm.mesh.material.emissiveIntensity = 1.2;
+
+                    // Attach visible rotating golden sun-ring / halo mesh above slime head
+                    if (!sm.enhanceRing && sm.group) {
+                        const ringR = (sm.isBoss ? 0.85 : 0.48) * (sm.baseScale || 1.0);
+                        const ringGeo = new THREE.TorusGeometry(ringR, 0.07, 8, 24);
+                        const ringMat = new THREE.MeshBasicMaterial({
+                            color: 0xffd700,
+                            transparent: true,
+                            opacity: 0.95,
+                            blending: THREE.AdditiveBlending
+                        });
+                        const ringMesh = new THREE.Mesh(ringGeo, ringMat);
+                        ringMesh.rotation.x = Math.PI / 2;
+                        ringMesh.position.y = (sm.isBoss ? 1.6 : 0.95) * (sm.baseScale || 1.0);
+                        sm.enhanceRing = ringMesh;
+                        sm.group.add(ringMesh);
                     }
-                    setTimeout(() => {
-                        if (sm.mesh && sm.mesh.material) {
-                            sm.mesh.material.emissive?.setHex(0x000000);
-                            sm.mesh.material.emissiveIntensity = 0;
+
+                    // Traverse meshes and supercharge emissive golden glow
+                    sm.group?.traverse(child => {
+                        if (child.isMesh && child.material) {
+                            if (!child._origEmissive) {
+                                child._origEmissive = child.material.emissive?.getHex() || 0x000000;
+                                child._origEmissiveIntensity = child.material.emissiveIntensity || 0;
+                            }
+                            child.material.emissive?.setHex(0xffd700);
+                            child.material.emissiveIntensity = 1.4;
                         }
-                    }, 10000);
+                    });
+
+                    // Scale up slime 25% while enhanced!
+                    const bScale = sm.baseScale || (sm.isBoss ? 2.4 : 1.0);
+                    sm.group?.scale.set(bScale * 1.25, bScale * 1.25, bScale * 1.25);
                 }
                 this.damageMonstersInRadius(player, player.pos, 9.5, Math.max(atkVal * 4.0, intVal * 5.0), monsters, onMonsterKilled);
             }
         } else if (pClass === 'Ice Master') {
             const isSplash = player.level >= 75; // Ice Splash Lv.75 makes skills AoE
             if (skillSlot === 1) {
-                // Icicle Spear (Lv.1, 25s CD): 3D Falling Icicle drops from the sky + Frost Nova + Freeze
-                const impactPos = player.pos.clone().add(playerForward.clone().multiplyScalar(5.0));
+                // Icicle Spear (Lv.1, 25s CD): 3D Falling Crystal Lance drops on target + Freeze + Ice Shatter SFX
+                const target = this.findTarget(player.pos, player.rotY, monsters, 22) || this.autoAimNearestMonster(player, monsters, 22);
+                const impactPos = target
+                    ? target.group.position.clone()
+                    : player.pos.clone().add(playerForward.clone().multiplyScalar(6.5));
+
                 this.engine.spawnFallingIcicle(impactPos, () => {
-                    if (this.audio) this.audio.playSfx('lightning');
                     this.spawnFloatingDamage(impactPos, '❄️ ICICLE SPEAR!', true);
                     this.damageMonstersInRadius(player, impactPos, isSplash ? 7.5 : 4.5, intVal * 2.5, monsters, onMonsterKilled, true);
                 });
             } else {
-                // Icicle Storm (Lv.50, 100s CD): 3 distinct 3D Icicles falling in rapid succession + Freeze
-                this.engine.addScreenshake(0.95);
+                // Icicle Storm (Lv.50, 100s CD): 3 distinct 3D Giant Ice Spears falling in rapid succession + Freeze
+                this.engine.addScreenshake(1.1);
+                const target = this.findTarget(player.pos, player.rotY, monsters, 24) || this.autoAimNearestMonster(player, monsters, 24);
+                const center = target
+                    ? target.group.position.clone()
+                    : player.pos.clone().add(playerForward.clone().multiplyScalar(7.0));
+
                 const offsets = [
-                    player.pos.clone().add(playerForward.clone().multiplyScalar(4.0)),
-                    player.pos.clone().add(playerForward.clone().multiplyScalar(7.0).add(new THREE.Vector3(-2.2, 0, 0))),
-                    player.pos.clone().add(playerForward.clone().multiplyScalar(7.0).add(new THREE.Vector3(2.2, 0, 0)))
+                    center.clone(),
+                    center.clone().add(new THREE.Vector3(-2.8, 0, -1.2)),
+                    center.clone().add(new THREE.Vector3(2.8, 0, 1.2))
                 ];
                 offsets.forEach((pt, idx) => {
                     setTimeout(() => {
                         this.engine.spawnFallingIcicle(pt, () => {
-                            if (this.audio) this.audio.playSfx(idx === 0 ? 'splash' : 'lightning');
                             this.spawnFloatingDamage(pt, '❄️ ICICLE STORM!', true);
                             this.damageMonstersInRadius(player, pt, isSplash ? 8.5 : 5.5, intVal * 2.0, monsters, onMonsterKilled, true);
                         });
@@ -721,56 +763,141 @@ export class CombatSystem {
             }
         } else if (pClass === 'Sniper') {
             if (skillSlot === 1) {
-                // Silver Bullet (Lv.25, 5s CD): 2x ATK
-                if (this.audio) this.audio.playSfx('gunshot');
-                this.engine.spawnSlashArc(player.pos, player.rotY, 0xffffff, 4.0);
+                // Silver Bullet (Lv.25, 5s CD): Supersonic Piercing Silver Beam + Sonic Crack SFX
+                if (this.audio) this.audio.playSfx('beam');
+                const target = this.findTarget(player.pos, player.rotY, monsters, 22) || this.autoAimNearestMonster(player, monsters, 22);
+                const muzzlePos = player.pos.clone().add(new THREE.Vector3(Math.sin(player.rotY) * 1.15, 1.38, Math.cos(player.rotY) * 1.15));
+                const endPos = target
+                    ? target.group.position.clone().add(new THREE.Vector3(0, 1.0, 0))
+                    : player.pos.clone().add(playerForward.clone().multiplyScalar(22.0).add(new THREE.Vector3(0, 1.4, 0)));
+
+                this.engine.spawnSniperBeam(muzzlePos, endPos, 0xffffff, 0.28, 0.22);
                 this.spawnFloatingDamage(player.pos, '⚡ SILVER BULLET!', true);
-                this.damageMonstersInCone(player, player.pos, playerForward, 20.0, atkVal * 2.2, monsters, onMonsterKilled);
+                this.damageMonstersInCone(player, player.pos, playerForward, 22.0, atkVal * 2.2, monsters, onMonsterKilled);
             } else {
-                // Killshot (Lv.50, 50s CD): 4x ATK with devastating bullet beam
-                this.engine.addScreenshake(0.85);
-                if (this.audio) this.audio.playSfx('gunshot');
+                // Killshot (Lv.50, 50s CD): 4.5x ATK Devastating Heavy Crimson Railgun Cannon Beam
+                this.engine.addScreenshake(1.25);
+                if (this.audio) {
+                    this.audio.playSfx('beam');
+                    this.audio.playSfx('explosion');
+                }
+                const target = this.findTarget(player.pos, player.rotY, monsters, 25) || this.autoAimNearestMonster(player, monsters, 25);
+                const muzzlePos = player.pos.clone().add(new THREE.Vector3(Math.sin(player.rotY) * 1.15, 1.38, Math.cos(player.rotY) * 1.15));
+                const endPos = target
+                    ? target.group.position.clone().add(new THREE.Vector3(0, 1.0, 0))
+                    : player.pos.clone().add(playerForward.clone().multiplyScalar(25.0).add(new THREE.Vector3(0, 1.4, 0)));
+
+                this.engine.spawnSniperBeam(muzzlePos, endPos, 0xff1744, 0.55, 0.35);
                 this.spawnFloatingDamage(player.pos, '🎯 KILLSHOT!', true);
-                this.damageMonstersInCone(player, player.pos, playerForward, 24.0, atkVal * 4.5, monsters, onMonsterKilled);
+                this.damageMonstersInCone(player, player.pos, playerForward, 25.0, atkVal * 4.5, monsters, onMonsterKilled);
             }
         } else if (pClass === 'Explosives Expert') {
             if (skillSlot === 1) {
-                // Molotov (Lv.1, 12s CD; Improved Oil Lv.25 increases duration to 10s)
-                if (this.audio) this.audio.playSfx('bump');
-                const firePos = player.pos.clone().add(playerForward.clone().multiplyScalar(5.0));
+                // Molotov (Lv.1, 12s CD; Improved Oil Lv.25 increases duration to 10s) — Thrown Flaming Bottle + Glass Shatter
+                if (this.audio) this.audio.playSfx('glass');
+                const target = this.findTarget(player.pos, player.rotY, monsters, 18) || this.autoAimNearestMonster(player, monsters, 18);
+                const firePos = target
+                    ? target.group.position.clone()
+                    : player.pos.clone().add(playerForward.clone().multiplyScalar(6.0));
                 const dur = player.level >= 25 ? 10.0 : 3.0;
-                this.spawnMolotovFireZone(firePos, atkVal, dur);
-                this.spawnFloatingDamage(firePos, '🔥 MOLOTOV COCKTAIL (BURNING)!', true, true);
+                const tossPos = player.pos.clone().add(new THREE.Vector3(0, 1.4, 0));
+
+                this.engine.spawnThrownMolotov(tossPos, firePos, () => {
+                    this.spawnMolotovFireZone(firePos, atkVal, dur);
+                    this.spawnFloatingDamage(firePos, '🔥 MOLOTOV COCKTAIL (BURNING)!', true, true);
+                });
             } else {
-                // Go Boom! (Lv.50, 30s CD; Big Explosion Lv.75 increases AoE)
+                // Go Boom! (Lv.50, 30s CD; Big Explosion Lv.75 increases AoE) — Massive Thunderous Bomb Blast
                 const radius = player.level >= 75 ? 11.0 : 8.0;
-                this.engine.addScreenshake(1.1);
+                this.engine.addScreenshake(1.3);
                 const bombPos = player.pos.clone().add(playerForward.clone().multiplyScalar(5));
                 this.engine.spawnGroundShockwave(bombPos, 0xff1744, radius);
-                this.engine.spawnHitSparks(bombPos, 0xff3d00, 40);
-                if (this.audio) this.audio.playSfx('gunshot');
+                this.engine.spawnHitSparks(bombPos, 0xff3d00, 48);
+                if (this.audio) this.audio.playSfx('explosion');
                 this.spawnFloatingDamage(bombPos, '💣 GO BOOM!', true);
                 this.damageMonstersInRadius(player, bombPos, radius, atkVal * 5.0, monsters, onMonsterKilled);
             }
         } else if (pClass === 'Phantom Striker') {
             if (skillSlot === 1) {
-                // Shadow Step (Lv.1, 5s CD): Blink 8 units forward + 80% Damage Reduction for 2s!
-                if (this.audio) this.audio.playSfx('slash');
-                const targetPos = player.pos.clone().add(playerForward.clone().multiplyScalar(7.5));
-                if (Math.hypot(targetPos.x, targetPos.z) < 46) {
-                    player.pos.copy(targetPos);
+                // Shadow Step (Lv.1, 5s CD): Blink 8 units in desired direction + 80% Damage Reduction for 2s!
+                let inputX = 0;
+                let inputZ = 0;
+                if (window.game) {
+                    const k = window.game.keys || {};
+                    if (k['KeyW'] || k['ArrowUp']) inputZ -= 1;
+                    if (k['KeyS'] || k['ArrowDown']) inputZ += 1;
+                    if (k['KeyA'] || k['ArrowLeft']) inputX -= 1;
+                    if (k['KeyD'] || k['ArrowRight']) inputX += 1;
+                    if (window.game.ui?.joystick?.active) {
+                        inputX = window.game.ui.joystick.vectorX;
+                        inputZ = window.game.ui.joystick.vectorY;
+                    }
                 }
+
+                const camYaw = this.engine?.cameraYaw || 0;
+                let blinkAngle = player.rotY || 0;
+                if (Math.hypot(inputX, inputZ) > 0.1) {
+                    // Holding movement keys or joystick: blink in that movement direction relative to camera
+                    blinkAngle = Math.atan2(inputX, inputZ) + camYaw;
+                } else if (this.engine?.isPointerLocked) {
+                    // Idle in Dragon Nest pointer lock: blink in camera aim direction
+                    blinkAngle = camYaw + Math.PI;
+                }
+
+                const blinkDir = new THREE.Vector3(Math.sin(blinkAngle), 0, Math.cos(blinkAngle));
+                player.rotY = blinkAngle;
+                if (player.char3D?.group) {
+                    player.char3D.group.rotation.y = blinkAngle;
+                }
+
+                const startPos = player.pos.clone();
+                this.engine.spawnHitSparks(startPos, 0x00e5ff, 22);
+
+                // Step-by-step raymarch collision check (stops cleanly right before walls or obstacles)
+                const totalDist = 8.0;
+                const stepSize = 0.4;
+                const steps = Math.floor(totalDist / stepSize);
+                let lastSafePos = player.pos.clone();
+                const world = window.game?.world;
+
+                for (let i = 1; i <= steps; i++) {
+                    const testPos = startPos.clone().add(blinkDir.clone().multiplyScalar(i * stepSize));
+                    if (world && world.checkCollision && world.checkCollision(testPos.x, testPos.z, 0.5)) {
+                        break; // Collided with obstacle
+                    }
+                    lastSafePos.copy(testPos);
+                }
+
+                player.pos.copy(lastSafePos);
+                if (player.char3D?.group) {
+                    player.char3D.group.position.copy(player.pos);
+                }
+
                 player.damageReductionTimer = 2.0; // 🛡️ 80% Damage Reduction for 2 seconds!
-                this.engine.spawnHitSparks(player.pos, 0x00e5ff, 22);
+                if (this.audio) this.audio.playSfx('blink');
+                this.engine.spawnGroundShockwave(lastSafePos, 0x00e5ff, 3.8);
+                this.engine.spawnHitSparks(lastSafePos, 0x00e5ff, 26);
                 this.spawnFloatingDamage(player.pos, '💨 SHADOW STEP (80% REDUCTION)!', false, true);
+
+                if (window.game?.socket?.connected) {
+                    window.game.socket.emit('playerMoved', {
+                        x: player.pos.x,
+                        y: player.pos.y,
+                        z: player.pos.z,
+                        rotY: player.rotY
+                    });
+                }
             } else {
-                // Blink Stab (Lv.50, 30s CD): Blink to nearest enemy and stab for 2x ATK
-                if (this.audio) this.audio.playSfx('slash');
-                const target = this.findTarget(player.pos, player.rotY, monsters, 16);
+                // Blink Stab (Lv.50, 30s CD): Blink to nearest enemy and stab for 3x ATK
+                if (this.audio) {
+                    this.audio.playSfx('blink');
+                    this.audio.playSfx('slash');
+                }
+                const target = this.findTarget(player.pos, player.rotY, monsters, 18) || this.autoAimNearestMonster(player, monsters, 18);
                 if (target) {
                     player.pos.copy(target.group.position).sub(playerForward.clone().multiplyScalar(1.4));
                 }
-                this.engine.spawnSlashArc(player.pos, player.rotY, 0x00e5ff, 3.5);
+                this.engine.spawnSlashArc(player.pos, player.rotY, 0x00e5ff, 4.0);
                 this.damageMonstersInRadius(player, player.pos, 5.0, atkVal * 3.0, monsters, onMonsterKilled);
             }
         } else if (pClass === 'Ninja Assassin') {
@@ -787,7 +914,10 @@ export class CombatSystem {
                 this.spawnShadowClone(player);
                 this.engine.spawnLevelUpVFX(player.pos);
                 this.spawnFloatingDamage(player.pos, '👥 SHADOW COPY (2x DMG)!', true, true);
-                if (this.audio) this.audio.playSfx('lightning');
+                if (this.audio) {
+                    this.audio.playSfx('lightning');
+                    this.audio.playSfx('blink');
+                }
                 setTimeout(() => { player.shadowCloneActive = false; }, 10000);
             }
         } else if (pClass === 'Tech Genius') {
@@ -974,6 +1104,7 @@ export class CombatSystem {
         const minion = {
             group: group,
             isBoss: isBoss,
+            baseScale: scale,
             intVal: intVal,
             lifeTimer: 35.0,
             attackCooldown: 0.8,
@@ -1196,7 +1327,53 @@ export class CombatSystem {
             m.hopTime += delta * 6;
             m.attackCooldown = Math.max(0, m.attackCooldown - delta);
 
+            // Animate Enhance! golden halo ring, pulsing glow, and sparkling trail
+            if (m.enhancedUntil && Date.now() < m.enhancedUntil) {
+                if (m.enhanceRing) {
+                    m.enhanceRing.rotation.z += delta * 4.5;
+                    m.enhanceRing.rotation.y += delta * 2.5;
+                }
+                const glowPulse = 1.2 + 0.5 * Math.sin(Date.now() * 0.01);
+                m.group?.traverse(child => {
+                    if (child.isMesh && child.material && child.material.emissive) {
+                        child.material.emissiveIntensity = glowPulse;
+                    }
+                });
+                if (Math.random() < 0.35) {
+                    this.engine.emitParticle(
+                        m.group.position.x + (Math.random() - 0.5) * 0.6,
+                        m.group.position.y + 0.4 + Math.random() * 0.6,
+                        m.group.position.z + (Math.random() - 0.5) * 0.6,
+                        (Math.random() - 0.5) * 0.8,
+                        1.5 + Math.random() * 1.5,
+                        (Math.random() - 0.5) * 0.8,
+                        0xffd700, 0.28, 0.40, -1.0
+                    );
+                }
+            } else if (m.enhancedUntil && Date.now() >= m.enhancedUntil) {
+                m.enhancedUntil = 0;
+                if (m.enhanceRing) {
+                    m.group?.remove(m.enhanceRing);
+                    m.enhanceRing.geometry?.dispose();
+                    m.enhanceRing.material?.dispose();
+                    m.enhanceRing = null;
+                }
+                m.group?.traverse(child => {
+                    if (child.isMesh && child.material && child._origEmissive !== undefined) {
+                        child.material.emissive?.setHex(child._origEmissive);
+                        child.material.emissiveIntensity = child._origEmissiveIntensity || 0;
+                    }
+                });
+                const bScale = m.baseScale || (m.isBoss ? 1.6 : 0.85);
+                m.group?.scale.set(bScale, bScale, bScale);
+            }
+
             if (m.lifeTimer <= 0) {
+                if (m.enhanceRing) {
+                    m.group?.remove(m.enhanceRing);
+                    m.enhanceRing.geometry?.dispose();
+                    m.enhanceRing.material?.dispose();
+                }
                 this.engine.spawnHitSparks(m.group.position, 0x00e5ff, 12);
                 this.engine.scene.remove(m.group);
                 this.alliedMinions.splice(i, 1);

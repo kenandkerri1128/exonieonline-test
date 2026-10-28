@@ -18,9 +18,11 @@ class AudioManager {
         this.pendingTrack = 'loginmenu';
         this.audioEnabled = false;
         this.masterVolume = 0.70;
+        this.ctx = null;
 
         const enableAudio = () => {
             this.audioEnabled = true;
+            this.initWebAudio();
             if (this.pendingTrack && !this.currentBgm) {
                 this.playBgm(this.pendingTrack);
             }
@@ -31,6 +33,16 @@ class AudioManager {
         window.addEventListener('click', enableAudio);
         window.addEventListener('keydown', enableAudio);
         window.addEventListener('touchstart', enableAudio);
+    }
+
+    initWebAudio() {
+        if (!this.ctx && (window.AudioContext || window.webkitAudioContext)) {
+            const AudioCtx = window.AudioContext || window.webkitAudioContext;
+            this.ctx = new AudioCtx();
+        }
+        if (this.ctx && this.ctx.state === 'suspended') {
+            this.ctx.resume().catch(() => {});
+        }
     }
 
     setMasterVolume(vol) {
@@ -62,8 +74,302 @@ class AudioManager {
         this.currentBgm = audio;
     }
 
+    // ==========================================
+    // 🎵 PROCEDURAL WEBAUDIO SFX SYNTHESIZERS
+    // ==========================================
+
+    // ❄️ Ice Master: Crisp crystalline shatter & ice lance impact crack
+    playIceShatter() {
+        this.initWebAudio();
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+        const vol = Math.min(1, 0.85 * (this.masterVolume / 0.70));
+
+        // 1. Crystal ringing strike
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(2400, now);
+        osc.frequency.exponentialRampToValueAtTime(340, now + 0.36);
+        gain.gain.setValueAtTime(vol * 0.75, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.36);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.37);
+
+        // 2. Highpass noise burst (shattering ice crystals)
+        const bufferSize = Math.floor(this.ctx.sampleRate * 0.32);
+        const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+        const out = buffer.getChannelData(0);
+        for (let i = 0; i < bufferSize; i++) {
+            out[i] = (Math.random() * 2 - 1) * Math.exp(-i / (this.ctx.sampleRate * 0.08));
+        }
+        const whiteNoise = this.ctx.createBufferSource();
+        whiteNoise.buffer = buffer;
+        const filter = this.ctx.createBiquadFilter();
+        filter.type = 'highpass';
+        filter.frequency.setValueAtTime(1200, now);
+        filter.frequency.exponentialRampToValueAtTime(3800, now + 0.30);
+        const noiseGain = this.ctx.createGain();
+        noiseGain.gain.setValueAtTime(vol * 0.85, now);
+        noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 0.32);
+        whiteNoise.connect(filter);
+        filter.connect(noiseGain);
+        noiseGain.connect(this.ctx.destination);
+        whiteNoise.start(now);
+
+        // 3. Sub impact thump
+        const sub = this.ctx.createOscillator();
+        const subGain = this.ctx.createGain();
+        sub.type = 'sine';
+        sub.frequency.setValueAtTime(150, now);
+        sub.frequency.exponentialRampToValueAtTime(32, now + 0.28);
+        subGain.gain.setValueAtTime(vol * 0.65, now);
+        subGain.gain.exponentialRampToValueAtTime(0.001, now + 0.28);
+        sub.connect(subGain);
+        subGain.connect(this.ctx.destination);
+        sub.start(now);
+        sub.stop(now + 0.29);
+    }
+
+    // ✨ Healer: Sacred angelic harmonic chime
+    playHolyChime() {
+        this.initWebAudio();
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+        const vol = Math.min(1, 0.70 * (this.masterVolume / 0.70));
+        const freqs = [523.25, 659.25, 783.99, 1046.50]; // C Major Chord
+        freqs.forEach((f, idx) => {
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(f, now + idx * 0.03);
+            gain.gain.setValueAtTime(vol * 0.25, now + idx * 0.03);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.65);
+            osc.connect(gain);
+            gain.connect(this.ctx.destination);
+            osc.start(now + idx * 0.03);
+            osc.stop(now + 0.66);
+        });
+    }
+
+    // 🔮 Staff / Arcane: Ethereal magical projectile whoosh
+    playMagicOrb() {
+        this.initWebAudio();
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+        const vol = Math.min(1, 0.65 * (this.masterVolume / 0.70));
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(340, now);
+        osc.frequency.exponentialRampToValueAtTime(860, now + 0.16);
+        gain.gain.setValueAtTime(vol * 0.55, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.23);
+    }
+
+    // 💥 Explosives: Deep punchy explosion blast
+    playExplosion() {
+        this.initWebAudio();
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+        const vol = Math.min(1, 0.90 * (this.masterVolume / 0.70));
+
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(130, now);
+        osc.frequency.exponentialRampToValueAtTime(26, now + 0.45);
+        gain.gain.setValueAtTime(vol * 0.8, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.45);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.46);
+
+        const bufferSize = Math.floor(this.ctx.sampleRate * 0.40);
+        const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+        const out = buffer.getChannelData(0);
+        for (let i = 0; i < bufferSize; i++) {
+            out[i] = (Math.random() * 2 - 1) * Math.exp(-i / (this.ctx.sampleRate * 0.12));
+        }
+        const noise = this.ctx.createBufferSource();
+        noise.buffer = buffer;
+        const filter = this.ctx.createBiquadFilter();
+        filter.type = 'lowpass';
+        filter.frequency.setValueAtTime(450, now);
+        filter.frequency.exponentialRampToValueAtTime(90, now + 0.38);
+        const noiseGain = this.ctx.createGain();
+        noiseGain.gain.setValueAtTime(vol * 0.85, now);
+        noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 0.40);
+        noise.connect(filter);
+        filter.connect(noiseGain);
+        noiseGain.connect(this.ctx.destination);
+        noise.start(now);
+    }
+
+    // 💨 Phantom Striker: Ethereal shadow phase whoosh
+    playShadowBlink() {
+        this.initWebAudio();
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+        const vol = Math.min(1, 0.75 * (this.masterVolume / 0.70));
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(1400, now);
+        osc.frequency.exponentialRampToValueAtTime(240, now + 0.18);
+        gain.gain.setValueAtTime(vol * 0.65, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.19);
+    }
+
+    // 👑 Summoner Enhance!: Triumphant rising power-up fanfare
+    playEnhanceFanfare() {
+        this.initWebAudio();
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+        const vol = Math.min(1, 0.75 * (this.masterVolume / 0.70));
+        const notes = [440, 554.37, 659.25, 880]; // A Major Arpeggio
+        notes.forEach((f, idx) => {
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(f, now + idx * 0.05);
+            gain.gain.setValueAtTime(vol * 0.45, now + idx * 0.05);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.05 + 0.32);
+            osc.connect(gain);
+            gain.connect(this.ctx.destination);
+            osc.start(now + idx * 0.05);
+            osc.stop(now + idx * 0.05 + 0.33);
+        });
+    }
+
+    // ⚔️ Blademaster: Sharp metallic deflection clang
+    playParryClang() {
+        this.initWebAudio();
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+        const vol = Math.min(1, 0.80 * (this.masterVolume / 0.70));
+        const freqs = [1560, 2480];
+        freqs.forEach(f => {
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            osc.type = 'square';
+            osc.frequency.setValueAtTime(f, now);
+            gain.gain.setValueAtTime(vol * 0.4, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
+            osc.connect(gain);
+            gain.connect(this.ctx.destination);
+            osc.start(now);
+            osc.stop(now + 0.23);
+        });
+    }
+
+    // 🛡️ Berserker: Low booming warcry roar
+    playTauntRoar() {
+        this.initWebAudio();
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+        const vol = Math.min(1, 0.85 * (this.masterVolume / 0.70));
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(160, now);
+        osc.frequency.exponentialRampToValueAtTime(65, now + 0.45);
+        gain.gain.setValueAtTime(vol * 0.7, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.45);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.46);
+    }
+
+    // 🍾 Molotov: Glass shatter & flame burst
+    playBottleShatter() {
+        this.initWebAudio();
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+        const vol = Math.min(1, 0.80 * (this.masterVolume / 0.70));
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(3200, now);
+        osc.frequency.exponentialRampToValueAtTime(700, now + 0.14);
+        gain.gain.setValueAtTime(vol * 0.6, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.14);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.15);
+        this.playExplosion();
+    }
+
+    // 🎯 Sniper: High velocity sonic whip-crack beam
+    playSniperBeam() {
+        this.initWebAudio();
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+        const vol = Math.min(1, 0.85 * (this.masterVolume / 0.70));
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(3100, now);
+        osc.frequency.exponentialRampToValueAtTime(95, now + 0.12);
+        gain.gain.setValueAtTime(vol * 0.8, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.14);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.15);
+    }
+
     playSfx(sfxName) {
         if (!this.audioEnabled) return;
+        this.initWebAudio();
+
+        // Procedural WebAudio SFX mappings for zero-latency, reliable audio
+        switch (sfxName) {
+            case 'ice':
+                this.playIceShatter();
+                return;
+            case 'holy':
+                this.playHolyChime();
+                return;
+            case 'magic':
+                this.playMagicOrb();
+                return;
+            case 'explosion':
+                this.playExplosion();
+                return;
+            case 'blink':
+                this.playShadowBlink();
+                return;
+            case 'enhance':
+                this.playEnhanceFanfare();
+                return;
+            case 'clang':
+                this.playParryClang();
+                return;
+            case 'taunt':
+                this.playTauntRoar();
+                return;
+            case 'glass':
+                this.playBottleShatter();
+                return;
+            case 'beam':
+                this.playSniperBeam();
+                return;
+        }
+
         const url = `music/${sfxName}.mp3`;
         const audio = new Audio(url);
         audio.volume = Math.min(1, 0.65 * (this.masterVolume / 0.70));
@@ -85,13 +391,12 @@ class AudioManager {
     playWeaponSfx(weaponSprite) {
         if (!this.audioEnabled) return;
         const s = String(weaponSprite || '').toLowerCase();
-        let sfx = 'bump';
-        if (s.includes('staff')) sfx = 'lightning';
-        else if (s.includes('gun')) sfx = 'gunshot';
-        else if (s.includes('pendant')) sfx = 'splash';
-        else if (s.includes('sword') || s.includes('dagger')) sfx = 'slash';
-        else if (s.includes('touchpad')) sfx = 'lightning';
-        this.playSfx(sfx);
+        if (s.includes('staff')) this.playSfx('magic');
+        else if (s.includes('gun')) this.playSfx('gunshot');
+        else if (s.includes('pendant')) this.playSfx('holy');
+        else if (s.includes('sword') || s.includes('dagger')) this.playSfx('slash');
+        else if (s.includes('touchpad')) this.playSfx('lightning');
+        else this.playSfx('bump');
     }
 }
 
