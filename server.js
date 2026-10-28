@@ -1098,8 +1098,8 @@ async function processMonthlyTavernRewards() {
                 // Rank 2: 1x Huge Nugget (500,000 Gold)
                 rewardItem = { id: 'reward_' + Date.now() + '_2', name: "Huge Nugget", type: "material", rarity: "Divine", color: "#ffea00", sellPrice: 500000, desc: "A massive chunk of pure gold. Sell for 500,000 Gold.", quantity: 1 };
             } else if (rank === 3) {
-                // Rank 3: 2x Big Gold Bar (250,000 Gold each = 500,000 Gold total)
-                rewardItem = { id: 'reward_' + Date.now() + '_3', name: "Big Gold Bar", type: "material", rarity: "Godly", color: "#e0ffff", sellPrice: 250000, desc: "A heavy bar of pure gold. Sell for 250,000 Gold.", quantity: 2 };
+                // Rank 3: 1x Big Gold Bar (250,000 Gold)
+                rewardItem = { id: 'reward_' + Date.now() + '_3', name: "Big Gold Bar", type: "material", rarity: "Godly", color: "#e0ffff", sellPrice: 250000, desc: "A heavy bar of pure gold. Sell for 250,000 Gold.", quantity: 1 };
             }
 
             if (rewardItem) {
