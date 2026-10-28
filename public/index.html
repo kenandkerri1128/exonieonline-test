@@ -322,6 +322,7 @@
                 <button class="hud-btn" id="btn-inventory" title="Inventory [B]">🎒</button>
                 <button class="hud-btn" id="btn-skills" title="Skills & Class [K]">📜</button>
                 <button class="hud-btn" id="btn-guild" title="Guild [G]" onclick="window.game?.ui?.toggleGuildModal()">🏰</button>
+                <button class="hud-btn" id="btn-friends" title="Friends [F]" onclick="window.game?.ui?.toggleFriendsModal()">👥</button>
                 <button class="hud-btn" id="btn-mailbox" title="System Mail [M]" onclick="window.game?.ui?.toggleMailbox()" style="position:relative;">
                     ✉️
                     <span id="hud-mail-badge" style="display:none; position:absolute; top:-4px; right:-4px; background:#ef4444; color:#fff; font-size:10px; font-weight:bold; width:16px; height:16px; border-radius:50%; line-height:16px; text-align:center; box-shadow:0 0 6px #ef4444;">1</span>
@@ -633,15 +634,29 @@
                     </div>
                     <div class="keybind-grid" id="keybind-customizer-grid">
                         <div class="keybind-row"><span>Active Skill 1</span><button type="button" class="keybind-btn" data-bind="skill1" id="bind-btn-skill1">1 / Q</button></div>
-                        <div class="keybind-row"><span>Active Skill 2</span><button type="button" class="keybind-btn" data-bind="skill2" id="bind-btn-skill2">2 / E</button></div>
-                        <div class="keybind-row"><span>Health Potion</span><button type="button" class="keybind-btn" data-bind="potion" id="bind-btn-potion">3</button></div>
-                        <div class="keybind-row"><span>Dodge Roll</span><button type="button" class="keybind-btn" data-bind="dodge" id="bind-btn-dodge">SHIFT</button></div>
                         <div class="keybind-row"><span>Player Stats</span><button type="button" class="keybind-btn" data-bind="stats" id="bind-btn-stats">P</button></div>
+
+                        <div class="keybind-row"><span>Active Skill 2</span><button type="button" class="keybind-btn" data-bind="skill2" id="bind-btn-skill2">2 / E</button></div>
                         <div class="keybind-row"><span>Bag & Equipment</span><button type="button" class="keybind-btn" data-bind="bag" id="bind-btn-bag">B / I</button></div>
-                        <div class="keybind-row"><span>Class & Skills</span><button type="button" class="keybind-btn" data-bind="skills" id="bind-btn-skills">K</button></div>
+
+                        <div class="keybind-row"><span>Health Potion</span><button type="button" class="keybind-btn" data-bind="potion" id="bind-btn-potion">3</button></div>
+                        <div class="keybind-row"><span>Class & Skill Tree</span><button type="button" class="keybind-btn" data-bind="skills" id="bind-btn-skills">K</button></div>
+
+                        <div class="keybind-row"><span>Dodge Roll</span><button type="button" class="keybind-btn" data-bind="dodge" id="bind-btn-dodge">SHIFT</button></div>
+                        <div class="keybind-row"><span>Guild Menu</span><button type="button" class="keybind-btn" data-bind="guild" id="bind-btn-guild">G</button></div>
+
+                        <div class="keybind-row"><span>Jump</span><button type="button" class="keybind-btn" data-bind="jump" id="bind-btn-jump">SPACE</button></div>
+                        <div class="keybind-row"><span>Friends List</span><button type="button" class="keybind-btn" data-bind="friends" id="bind-btn-friends">F</button></div>
+
+                        <div class="keybind-row"><span>Target Lock / Cycle</span><button type="button" class="keybind-btn" data-bind="target" id="bind-btn-target">TAB</button></div>
+                        <div class="keybind-row"><span>System Mailbox</span><button type="button" class="keybind-btn" data-bind="mailbox" id="bind-btn-mailbox">M</button></div>
+
+                        <div class="keybind-row"><span>World / Local Chat</span><button type="button" class="keybind-btn" data-bind="chat" id="bind-btn-chat">ENTER</button></div>
+                        <div class="keybind-row"><span>Cash Shop (Emporium)</span><button type="button" class="keybind-btn" data-bind="shop" id="bind-btn-shop">C</button></div>
                     </div>
-                    <div style="font-size:0.75rem; color:#94a3b8; margin-top:6px;">
-                        • <strong>[WASD / Arrows]</strong>: Move &nbsp;|&nbsp; <strong>[Left Click]</strong>: Auto-Aim & Attack &nbsp;|&nbsp; <strong>[Right Drag]</strong>: Orbit Camera
+                    <div style="font-size:0.74rem; color:#94a3b8; margin-top:8px; line-height:1.45;">
+                        • <strong>[WASD / Arrow Keys]</strong>: Move Character &nbsp;|&nbsp; <strong>[Left Click]</strong>: Auto-Aim & Attack<br>
+                        • <strong>[Right Click + Drag]</strong>: Orbit 3D Camera &nbsp;|&nbsp; <strong>[Alt]</strong>: Toggle Free Mouse Cursor &nbsp;|&nbsp; <strong>[Esc]</strong>: Settings / Close
                     </div>
                 </div>
 

@@ -2694,9 +2694,16 @@ export class GameApp {
             skill2Alt: 'KeyE',
             potion: 'Digit3',
             dodge: 'ShiftLeft',
+            jump: 'Space',
+            target: 'Tab',
+            chat: 'Enter',
             stats: 'KeyP',
             bag: 'KeyB',
-            skills: 'KeyK'
+            skills: 'KeyK',
+            guild: 'KeyG',
+            friends: 'KeyF',
+            mailbox: 'KeyM',
+            shop: 'KeyC'
         };
     }
 
@@ -2776,15 +2783,15 @@ export class GameApp {
                 this.ui.toggleInventory();
             } else if (e.code === kb.skills) {
                 this.ui.toggleSkills();
-            } else if (e.code === 'KeyF') {
+            } else if (e.code === (kb.friends || 'KeyF')) {
                 this.ui.toggleFriendsModal();
-            } else if (e.code === 'KeyC') {
+            } else if (e.code === (kb.shop || 'KeyC')) {
                 this.ui.toggleCashShop();
-            } else if (e.code === 'KeyG') {
+            } else if (e.code === (kb.guild || 'KeyG')) {
                 this.ui.toggleGuildModal();
-            } else if (e.code === 'KeyM') {
+            } else if (e.code === (kb.mailbox || 'KeyM')) {
                 this.ui.toggleMailbox();
-            } else if (e.code === 'Space') {
+            } else if (e.code === (kb.jump || 'Space')) {
                 e.preventDefault();
                 this.onJumpTrigger();
             } else if (e.code === kb.dodge || e.code === 'ShiftRight') {
@@ -2799,10 +2806,10 @@ export class GameApp {
                 this.onSkillTrigger(2);
             } else if (e.code === kb.potion) {
                 this.useHealthPotion();
-            } else if (e.code === 'Tab') {
+            } else if (e.code === (kb.target || 'Tab')) {
                 e.preventDefault();
                 this.toggleTargetLock();
-            } else if (e.code === 'Enter') {
+            } else if (e.code === (kb.chat || 'Enter')) {
                 e.preventDefault();
                 this.openChatInput();
             }

@@ -1016,12 +1016,40 @@ export class UIManager {
 
     formatKeyLabel(code) {
         if (!code) return '';
+        const map = {
+            'ShiftLeft': 'SHIFT',
+            'ShiftRight': 'R-SHIFT',
+            'ControlLeft': 'CTRL',
+            'ControlRight': 'R-CTRL',
+            'AltLeft': 'ALT',
+            'AltRight': 'R-ALT',
+            'Space': 'SPACE',
+            'Tab': 'TAB',
+            'Enter': 'ENTER',
+            'Escape': 'ESC',
+            'Backspace': 'BKSP',
+            'CapsLock': 'CAPS',
+            'ArrowUp': 'UP',
+            'ArrowDown': 'DOWN',
+            'ArrowLeft': 'LEFT',
+            'ArrowRight': 'RIGHT',
+            'Backquote': '`',
+            'Minus': '-',
+            'Equal': '=',
+            'BracketLeft': '[',
+            'BracketRight': ']',
+            'Backslash': '\\',
+            'Semicolon': ';',
+            'Quote': "'",
+            'Comma': ',',
+            'Period': '.',
+            'Slash': '/'
+        };
+        if (map[code]) return map[code];
         return String(code)
             .replace(/^Key/, '')
             .replace(/^Digit/, '')
-            .replace('ShiftLeft', 'SHIFT')
-            .replace('ShiftRight', 'SHIFT')
-            .replace('Space', 'SPACE');
+            .replace(/^Numpad/, 'NUM');
     }
 
     refreshKeybindLabels() {
@@ -1031,21 +1059,44 @@ export class UIManager {
             const el = document.getElementById(id);
             if (el) el.textContent = txt;
         };
-        const k1 = `${this.formatKeyLabel(kb.skill1)} / ${this.formatKeyLabel(kb.skill1Alt)}`;
-        const k2 = `${this.formatKeyLabel(kb.skill2)} / ${this.formatKeyLabel(kb.skill2Alt)}`;
+        const setAttr = (id, attr, val) => {
+            const el = document.getElementById(id);
+            if (el) el.setAttribute(attr, val);
+        };
+
+        const k1 = `${this.formatKeyLabel(kb.skill1)} / ${this.formatKeyLabel(kb.skill1Alt || 'KeyQ')}`;
+        const k2 = `${this.formatKeyLabel(kb.skill2)} / ${this.formatKeyLabel(kb.skill2Alt || 'KeyE')}`;
         const kPot = this.formatKeyLabel(kb.potion);
 
         setTxt('hb-key-1', k1);
         setTxt('hb-key-2', k2);
         setTxt('hb-key-3', kPot);
 
+        // Settings Keybind Customizer Buttons
         setTxt('bind-btn-skill1', k1);
         setTxt('bind-btn-skill2', k2);
         setTxt('bind-btn-potion', kPot);
         setTxt('bind-btn-dodge', this.formatKeyLabel(kb.dodge));
+        setTxt('bind-btn-jump', this.formatKeyLabel(kb.jump));
+        setTxt('bind-btn-target', this.formatKeyLabel(kb.target));
+        setTxt('bind-btn-chat', this.formatKeyLabel(kb.chat));
+
         setTxt('bind-btn-stats', this.formatKeyLabel(kb.stats));
-        setTxt('bind-btn-bag', this.formatKeyLabel(kb.bag));
+        setTxt('bind-btn-bag', `${this.formatKeyLabel(kb.bag)} / I`);
         setTxt('bind-btn-skills', this.formatKeyLabel(kb.skills));
+        setTxt('bind-btn-guild', this.formatKeyLabel(kb.guild));
+        setTxt('bind-btn-friends', this.formatKeyLabel(kb.friends));
+        setTxt('bind-btn-mailbox', this.formatKeyLabel(kb.mailbox));
+        setTxt('bind-btn-shop', this.formatKeyLabel(kb.shop));
+
+        // Update HUD Menu Button Tooltips
+        setAttr('btn-stats', 'title', `Player Stats [${this.formatKeyLabel(kb.stats)}]`);
+        setAttr('btn-inventory', 'title', `Inventory [${this.formatKeyLabel(kb.bag)}]`);
+        setAttr('btn-skills', 'title', `Skills & Class [${this.formatKeyLabel(kb.skills)}]`);
+        setAttr('btn-guild', 'title', `Guild [${this.formatKeyLabel(kb.guild)}]`);
+        setAttr('btn-friends', 'title', `Friends [${this.formatKeyLabel(kb.friends)}]`);
+        setAttr('btn-mailbox', 'title', `System Mail [${this.formatKeyLabel(kb.mailbox)}]`);
+        setAttr('btn-cash-shop', 'title', `Cash Shop [${this.formatKeyLabel(kb.shop)}]`);
     }
 
     toggleStats() {
