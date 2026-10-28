@@ -2291,8 +2291,16 @@ io.on('connection', (socket) => {
     socket.on('monsterKill', (data) => {
         const mob = MonsterDatabase[data.monsterKey] || MonsterDatabase['common_mobs1'];
         const drop = Math.random() < 0.65 ? generateDrop(data.level || mob.level, mob.category) : null;
+        const p = onlinePlayers[socket.id];
+        let expYield = mob.expYield || 10;
+        if (p && p.guild_details && p.guild_details.level) {
+            const gLevel = Number(p.guild_details.level) || 0;
+            if (gLevel > 0) {
+                expYield += Math.ceil(expYield * (gLevel * 0.02));
+            }
+        }
         socket.emit('monsterLoot', {
-            exp: mob.expYield,
+            exp: expYield,
             gold: mob.goldYield,
             drop: drop
         });
@@ -3716,29 +3724,90 @@ io.on('connection', (socket) => {
 
     socket.on('donateGuildGold', async (amount) => {
         const p = onlinePlayers[socket.id];
-        if (!p || !p.guild_details) return;
+        if (!p || !p.guild_details || !p.guild_details.name) return;
         const amt = parseInt(amount, 10);
-        if (isNaN(amt) || amt <= 0 || (p.gold || 0) < amt) {
-            return socket.emit('systemMessage', "Invalid donation amount or insufficient funds.");
+        if (isNaN(amt) || amt <= 0) {
+            return socket.emit('systemMessage', "Please enter a valid donation amount.");
+        }
+        if ((p.gold || 0) < amt) {
+            return socket.emit('systemMessage', "Not enough gold to donate.");
         }
 
-        const guild = guilds[p.guild_details.name];
+        const gName = p.guild_details.name;
+        const guild = guilds[gName];
         if (!guild) return;
 
         p.gold -= amt;
         guild.gold = (guild.gold || 0) + amt;
+        p.guild_details.guildGold = guild.gold;
 
+        // Persist donor gold and updated guild_details to Supabase
         if (supabase) {
-            await supabase.from('Exonians').update({ gold: p.gold }).eq('character_name', p.name);
+            try {
+                await supabase.from('Exonians').update({ gold: p.gold, guild_details: p.guild_details }).eq('character_name', p.name);
+
+                // Update multi-slot row if applicable
+                const identifier = socket.accountIdentifier || socket.email || p.email;
+                if (identifier) {
+                    const dbRows = await findAccountRows(identifier);
+                    if (dbRows && dbRows.length > 0) {
+                        const slots = parseRowsToSlots(dbRows);
+                        const slotIdx = Math.max(0, Math.min(2, Number(p.slotIndex) || 0));
+                        if (slots[slotIdx]) {
+                            slots[slotIdx].gold = p.gold;
+                            slots[slotIdx].guild_details = p.guild_details;
+                            if (dbRows.length === 1 && String(dbRows[0].character_name || '').includes('|')) {
+                                const updatePayload = serializeSlotsToRow(slots, dbRows[0]);
+                                let q = supabase.from('Exonians').update(updatePayload);
+                                if (dbRows[0].id) q = q.eq('id', dbRows[0].id);
+                                else if (dbRows[0].email) q = q.eq('email', dbRows[0].email);
+                                else q = q.eq('character_name', dbRows[0].character_name);
+                                await q;
+                            }
+                        }
+                    }
+                }
+            } catch (err) {
+                console.error('[DONATE GUILD SAVE ERROR]', err);
+            }
+        } else {
+            const identifier = socket.accountIdentifier || socket.email || p.email;
+            if (identifier) {
+                const dbRows = await findAccountRows(identifier);
+                if (dbRows && dbRows.length > 0) {
+                    const slots = parseRowsToSlots(dbRows);
+                    const slotIdx = Math.max(0, Math.min(2, Number(p.slotIndex) || 0));
+                    if (slots[slotIdx]) {
+                        slots[slotIdx].gold = p.gold;
+                        slots[slotIdx].guild_details = p.guild_details;
+                        const updatePayload = serializeSlotsToRow(slots, dbRows[0]);
+                        const key = String(identifier).toLowerCase();
+                        if (memoryDb.users[key]) Object.assign(memoryDb.users[key], updatePayload);
+                        saveLocalDb();
+                    }
+                }
+            }
         }
 
-        socket.emit('purchaseSuccess', { newGold: p.gold });
-        socket.emit('systemMessage', `Donated ${amt.toLocaleString()} Gold to the Guild!`);
         saveGuildsToDB();
+
+        socket.emit('goldUpdate', { gold: p.gold });
+        socket.emit('purchaseSuccess', { newGold: p.gold });
+        socket.emit('syncGuildDetails', p.guild_details);
+        socket.emit('systemMessage', `💰 You donated ${amt.toLocaleString()} Gold to the Guild Funds!`);
 
         guild.members.forEach(mName => {
             const sid = Object.keys(onlinePlayers).find(k => onlinePlayers[k].name === mName);
-            if (sid) io.to(sid).emit('requestGuildUI_Refresh');
+            if (sid && onlinePlayers[sid]) {
+                if (onlinePlayers[sid].guild_details) {
+                    onlinePlayers[sid].guild_details.guildGold = guild.gold;
+                }
+                io.to(sid).emit('requestGuildUI_Refresh');
+                io.to(sid).emit('syncGuildDetails', onlinePlayers[sid].guild_details);
+                if (mName !== p.name) {
+                    io.to(sid).emit('systemMessage', `🏰 [GUILD] ${p.name} donated ${amt.toLocaleString()} Gold to the Guild Funds!`);
+                }
+            }
         });
     });
 
@@ -3851,25 +3920,45 @@ io.on('connection', (socket) => {
         socket.emit('systemMessage', '🏡 Congratulations! You successfully bought a Home for 1,000,000 Gold! You can enter your Home anytime.');
     });
 
-    socket.on('requestGuildLevelUp', () => {
+    socket.on('requestGuildLevelUp', async () => {
         const p = onlinePlayers[socket.id];
-        if (!p || !p.guild_details) return;
+        if (!p || !p.guild_details || !p.guild_details.name) return;
         const guild = guilds[p.guild_details.name];
         if (!guild) return;
 
-        if (guild.roles[p.name] !== 'Master') return socket.emit('systemMessage', "Only the Guild Master can level up the guild.");
+        if (guild.roles[p.name] !== 'Master') {
+            return socket.emit('systemMessage', "Only the Guild Master can level up the guild.");
+        }
         guild.level = guild.level || 0;
-        if (guild.level >= 10) return socket.emit('systemMessage', "Your guild is already at max level (10).");
-        if ((guild.gold || 0) < 1000000) return socket.emit('systemMessage', `Guild needs ${(1000000 - (guild.gold || 0)).toLocaleString()} G in guild funds to level up.`);
+        if (guild.level >= 10) {
+            return socket.emit('systemMessage', "Your guild is already at max level (10).");
+        }
+        if ((guild.gold || 0) < 1000000) {
+            return socket.emit('systemMessage', `Guild needs ${(1000000 - (guild.gold || 0)).toLocaleString()} G in Guild Funds to level up.`);
+        }
 
         guild.gold -= 1000000;
         guild.level += 1;
         saveGuildsToDB();
 
-        socket.emit('systemMessage', `🏰 Guild leveled up to Level ${guild.level}!`);
-        guild.members.forEach(mName => {
+        guild.members.forEach(async (mName) => {
             const sid = Object.keys(onlinePlayers).find(k => onlinePlayers[k].name === mName);
-            if (sid) io.to(sid).emit('requestGuildUI_Refresh');
+            if (sid && onlinePlayers[sid]) {
+                const mp = onlinePlayers[sid];
+                if (!mp.guild_details) mp.guild_details = {};
+                mp.guild_details.level = guild.level;
+                mp.guild_details.guildGold = guild.gold;
+
+                if (supabase) {
+                    try {
+                        await supabase.from('Exonians').update({ guild_details: mp.guild_details }).eq('character_name', mp.name);
+                    } catch (e) {}
+                }
+
+                io.to(sid).emit('syncGuildDetails', mp.guild_details);
+                io.to(sid).emit('requestGuildUI_Refresh');
+                io.to(sid).emit('systemMessage', `🏰 [GUILD] Congratulations! <${guild.name}> reached Level ${guild.level}! (+${guild.level * 2}% Stats, +${guild.level * 2}% EXP, Cap: ${20 + (guild.level * 5)} Members)`);
+            }
         });
     });
 

@@ -1074,6 +1074,44 @@ export class GameApp {
                     }
                 });
 
+                this.socket.on('syncGuildDetails', (details) => {
+                    if (!details) return;
+                    this.player.guild_details = Object.assign({}, this.player.guild_details || {}, details);
+                    if (details.name) this.player.guild = details.name;
+                    this.recalculateStats();
+                    if (this.player.char3D) {
+                        this.player.char3D.updateOverheadUI(this.player.name, this.player.level, this.player.hp, this.player.maxHp, true, this.player.title, this.player.guild);
+                    }
+                    if (this.ui) {
+                        this.ui.updatePlayerHUD(this.player);
+                    }
+                    this.saveCharacterToAccountSlot();
+                });
+
+                this.socket.on('goldUpdate', (data) => {
+                    if (!data) return;
+                    const newGold = data.gold !== undefined ? data.gold : data.newGold;
+                    if (typeof newGold === 'number') {
+                        this.player.gold = newGold;
+                        this.saveCharacterToAccountSlot();
+                        if (this.ui) this.ui.updatePlayerHUD(this.player);
+                    }
+                });
+
+                this.socket.on('purchaseSuccess', (data) => {
+                    if (!data) return;
+                    const newGold = data.newGold !== undefined ? data.newGold : data.gold;
+                    if (typeof newGold === 'number') {
+                        this.player.gold = newGold;
+                        this.saveCharacterToAccountSlot();
+                        if (this.ui) this.ui.updatePlayerHUD(this.player);
+                    }
+                    if (Array.isArray(data.inventory)) {
+                        this.player.inventory = data.inventory;
+                        if (this.ui) this.ui.renderInventory();
+                    }
+                });
+
                 this.socket.on('applyGammaShield', (data) => {
                     if (!data) return;
                     if (data.targetId === this.player.name) {
@@ -2159,6 +2197,16 @@ export class GameApp {
 
         if (this.player.calloutActive) {
             totalDef *= 3;
+        }
+
+        // 🏰 Authentic 2D Exonie Guild Level Perk (+2% per guild level to all combat stats)
+        const gLevel = Number(this.player.guild_details?.level || 0);
+        if (gLevel > 0) {
+            const gMult = 1 + (gLevel * 0.02);
+            totalHp = Math.floor(totalHp * gMult);
+            totalDef = Math.floor(totalDef * gMult);
+            totalAtk = Math.floor(totalAtk * gMult);
+            totalMag = Math.floor(totalMag * gMult);
         }
 
         this.player.maxHp = Math.max(1, totalHp);
@@ -3468,7 +3516,13 @@ export class GameApp {
     // EXP and Leveling up matching 2D Exonie exactly
     gainExp(amt) {
         if (this.player.level >= MAX_LEVEL) return;
-        this.player.exp += amt;
+        let finalAmt = Number(amt) || 0;
+        // 🏰 Authentic 2D Exonie Guild Level Perk (+2% bonus EXP per level)
+        const gLevel = Number(this.player.guild_details?.level || 0);
+        if (gLevel > 0) {
+            finalAmt += Math.ceil(finalAmt * (gLevel * 0.02));
+        }
+        this.player.exp += finalAmt;
 
         while (this.player.exp >= this.player.maxExp && this.player.level < MAX_LEVEL) {
             this.player.exp -= this.player.maxExp;

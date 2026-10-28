@@ -865,7 +865,7 @@ export class UIManager {
             // Master level up
             if (myRole === 'Master') {
                 if (currentLevel < 10) {
-                    html += `<button onclick="window.game?.socket?.emit('requestGuildLevelUp')" style="width:100%; padding:8px; margin-bottom:10px; background:linear-gradient(45deg, #f59e0b, #ef4444); color:white; border:none; border-radius:6px; font-weight:800; cursor:pointer;">⬆️ Level Up Guild (1,000,000 G)</button>`;
+                    html += `<button onclick="window.guildLevelUpConfirm()" style="width:100%; padding:9px; margin-bottom:10px; background:linear-gradient(45deg, #f59e0b, #ef4444); color:white; border:none; border-radius:6px; font-weight:800; cursor:pointer; font-size:12.5px;">⬆️ Level Up Guild to Lv. ${currentLevel + 1} (1,000,000 Guild Gold)</button>`;
                 } else {
                     html += `<div style="text-align:center; color:#ffd700; margin-bottom:10px; font-weight:bold; font-size:12px;">🌟 GUILD MAX LEVEL REACHED (10) 🌟</div>`;
                 }
@@ -3464,10 +3464,35 @@ window.applyToGuild = function(gName) {
 };
 
 window.donateGuildPrompt = function() {
-    const amt = prompt("How much Gold would you like to donate to Guild Funds?");
-    const parsed = parseInt(amt, 10);
-    if (!isNaN(parsed) && parsed > 0) {
-        window.game?.socket?.emit('donateGuildGold', parsed);
+    const currentGold = window.game?.player?.gold || 0;
+    const charName = window.game?.player?.name || 'Your character';
+    const amtStr = prompt(`How much Gold would you like to donate to Guild Funds?\n\nAvailable Personal Gold (${charName}): ${currentGold.toLocaleString()} G`);
+    if (amtStr === null) return;
+    const parsed = parseInt(amtStr.replace(/,/g, '').trim(), 10);
+    if (isNaN(parsed) || parsed <= 0) {
+        window.game?.audio?.playSfx?.('bump');
+        window.game?.ui?.showToast('⚠️ Please enter a valid positive Gold amount to donate.');
+        return;
+    }
+    if (parsed > currentGold) {
+        window.game?.audio?.playSfx?.('bump');
+        window.game?.ui?.showToast(`⚠️ Insufficient Gold! ${charName} only has ${currentGold.toLocaleString()} G.`);
+        return;
+    }
+    window.game?.socket?.emit('donateGuildGold', parsed);
+};
+
+window.guildLevelUpConfirm = function() {
+    const data = window.game?.ui?.lastGuildData;
+    const currentLevel = data?.guildLevel || 0;
+    const guildGold = data?.guildGold || 0;
+    if (currentLevel >= 10) {
+        window.game?.ui?.showToast('🌟 Your guild is already at max level (10)!');
+        return;
+    }
+    const nextLvl = currentLevel + 1;
+    if (confirm(`Level up the Guild to Level ${nextLvl} for 1,000,000 Guild Funds?\n\nAvailable Guild Funds: ${guildGold.toLocaleString()} G\nNext Level Perks:\n• +${nextLvl * 2}% All Combat Stats (+${nextLvl * 2}% to HP, ATK, MAG, DEF)\n• +${nextLvl * 2}% Bonus Monster & Boss EXP\n• ${20 + (nextLvl * 5)} Max Guild Members`)) {
+        window.game?.socket?.emit('requestGuildLevelUp');
     }
 };
 
