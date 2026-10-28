@@ -5,7 +5,7 @@ import { World3D } from './world3d.js?v=3.0';
 import { Monster3D } from './monsters3d.js?v=3.0';
 import { CombatSystem } from './combat.js?v=3.0';
 import { UIManager } from './ui.js?v=3.0';
-import { CLASSES, MONSTER_DATABASE, STARTER_ITEMS, DEFAULT_BASE_STATS, MAX_LEVEL, getExpForNextLevel, generateLoot, generateTavernLoot, generateHauntedLoot, getItemSellPrice, CASH_SHOP_ITEMS } from './game_data.js?v=3.0';
+import { CLASSES, MONSTER_DATABASE, STARTER_ITEMS, DEFAULT_BASE_STATS, MAX_LEVEL, getExpForNextLevel, generateLoot, generateTavernLoot, generateHauntedLoot, generateBattlefieldLoot, getItemSellPrice, CASH_SHOP_ITEMS, EVENT_CAVE_ACTIVE } from './game_data.js?v=3.0';
 import { MAPS_DATA } from './maps_data.js?v=3.0';
 
 // ==========================================
@@ -759,10 +759,17 @@ export class GameApp {
                         this.player.title = data.self.title;
                         this.ui.updatePlayerHUD(this.player);
                         if (this.player.char3D) {
-                            this.player.char3D.updateOverheadUI(this.player.name, this.player.level, this.player.hp, this.player.maxHp, true, this.player.title);
+                            const guildName = this.player.guild || (this.player.guild_details && this.player.guild_details.name) || null;
+                            this.player.char3D.updateOverheadUI(this.player.name, this.player.level, this.player.hp, this.player.maxHp, true, this.player.title, guildName);
                         }
                     }
                     if (data && data.players) {
+                        // 🛡️ INSTANCE PRUNING: Remove any remote players who are not in our new room/map!
+                        for (const sid in this.remotePlayers) {
+                            if (!data.players[sid]) {
+                                this.removeRemotePlayer(sid);
+                            }
+                        }
                         for (const [sid, pData] of Object.entries(data.players)) {
                             const myName = this.player?.name;
                             if (sid !== this.socket.id && (!myName || pData.name !== myName)) {
@@ -854,6 +861,21 @@ export class GameApp {
                     }
                 });
 
+                // 2D Exonie System Announcements & World Broadcasts (Floor Boss respawns, Neutral Zone boss, PvP deaths)
+                this.socket.on('systemMessage', (msg) => {
+                    if (!msg) return;
+                    const rawText = typeof msg === 'string' ? msg : (msg.text || JSON.stringify(msg));
+                    const formatted = `<span style="color:#ffeb3b; font-weight:bold;">[System] ${rawText}</span>`;
+                    this.appendChatLine('world', formatted);
+                    this.appendChatLine('local', formatted);
+                    if (this.activeChatTab !== 'world') {
+                        const dot = document.getElementById('world-unread-dot');
+                        if (dot) dot.style.display = 'inline-block';
+                    }
+                    const cleanToast = rawText.startsWith('<') ? rawText.replace(/<[^>]+>/g, '') : rawText;
+                    this.ui.showToast(`📢 ${cleanToast}`);
+                });
+
                 this.socket.on('worldAnnouncement', (data) => {
                     if (data && data.html) {
                         this.ui.showWorldAnnouncement(data.html, data.color || '#ffd700', false);
@@ -867,7 +889,8 @@ export class GameApp {
                     this.ui.showToast(`🏆 CONQUERED! Unlocked title <${newTitle}>!`);
                     this.ui.updatePlayerHUD(this.player);
                     if (this.player.char3D) {
-                        this.player.char3D.updateOverheadUI(this.player.name, this.player.level, this.player.hp, this.player.maxHp, true, this.player.title);
+                        const guildName = this.player.guild || (this.player.guild_details && this.player.guild_details.name) || null;
+                        this.player.char3D.updateOverheadUI(this.player.name, this.player.level, this.player.hp, this.player.maxHp, true, this.player.title, guildName);
                     }
                     this.saveCharacterToAccountSlot();
                 });
@@ -879,7 +902,8 @@ export class GameApp {
                     if (rp) {
                         rp.title = data.title;
                         if (rp.char3D) {
-                            rp.char3D.updateOverheadUI(rp.name, rp.level, rp.hp, rp.maxHp, false, rp.title);
+                            const rGuild = rp.guild || (rp.guild_details && rp.guild_details.name) || null;
+                            rp.char3D.updateOverheadUI(rp.name, rp.level, rp.hp, rp.maxHp, false, rp.title, rGuild);
                         }
                     }
                 });
@@ -919,6 +943,113 @@ export class GameApp {
                     if (this.currentMapId === 'battlefield') {
                         this.ui.showToast('🏰 The Battlefield threat has retreated. Returning to Town.');
                         this.loadMap('town');
+                    }
+                });
+
+                
+                // ==========================================
+                // ⚔️ REMOTE PLAYER ATTACKS & SKILL VFX (Pure Visuals)
+                // ==========================================
+                this.socket.on('remotePlayerAttack', (data) => {
+                    if (!data) return;
+                    const lookupId = data.id || data.socketId || data.name;
+                    const rp = this.remotePlayers[lookupId] || Object.values(this.remotePlayers || {}).find(p => p.name === data.name || p.name === data.id);
+                    if (rp && rp.char3D) {
+                        if (data.rotY !== undefined) rp.char3D.group.rotation.y = data.rotY;
+                        rp.char3D.triggerAttack(data.comboStep || 1, data.weaponType || 'sword');
+                        const rpPos = rp.char3D.group.position;
+                        if (data.weaponType === 'gun') {
+                            const muzzlePos = rpPos.clone().add(new THREE.Vector3(Math.sin(data.rotY || 0) * 1.15, 1.38, Math.cos(data.rotY || 0) * 1.15));
+                            const targetPos = muzzlePos.clone().add(new THREE.Vector3(Math.sin(data.rotY || 0) * 20, 0, Math.cos(data.rotY || 0) * 20));
+                            this.engine.spawnBulletProjectile(muzzlePos, targetPos);
+                            if (this.audio) this.audio.playSfx('gunshot');
+                        } else if (data.weaponType === 'staff') {
+                            const castPos = rpPos.clone().add(new THREE.Vector3(Math.sin(data.rotY || 0) * 1.0, 1.6, Math.cos(data.rotY || 0) * 1.0));
+                            const targetPos = castPos.clone().add(new THREE.Vector3(Math.sin(data.rotY || 0) * 16, 0, Math.cos(data.rotY || 0) * 16));
+                            this.engine.spawnMagicOrb(castPos, targetPos, 0x00e5ff);
+                            if (this.audio) this.audio.playSfx('magic');
+                        } else if (data.weaponType === 'pendant') {
+                            const castPos = rpPos.clone().add(new THREE.Vector3(Math.sin(data.rotY || 0) * 1.0, 1.6, Math.cos(data.rotY || 0) * 1.0));
+                            const targetPos = castPos.clone().add(new THREE.Vector3(Math.sin(data.rotY || 0) * 16, 0, Math.cos(data.rotY || 0) * 16));
+                            this.engine.spawnShimmeringProjectile(castPos, targetPos, 0xffea00);
+                            if (this.audio) this.audio.playSfx('magic');
+                        } else {
+                            this.engine.spawnSlashArc(rpPos, data.rotY || 0, 0x00e5ff, 2.5);
+                            if (this.audio) this.audio.playSfx('slash');
+                        }
+                    }
+                });
+
+                this.socket.on('remotePlayerSkill', (data) => {
+                    if (!data) return;
+                    const lookupId = data.id || data.socketId || data.name;
+                    const rp = this.remotePlayers[lookupId] || Object.values(this.remotePlayers || {}).find(p => p.name === data.name || p.name === data.id);
+                    if (rp && rp.char3D) {
+                        if (data.rotY !== undefined) rp.char3D.group.rotation.y = data.rotY;
+                        rp.char3D.triggerSkillCast(0x00e5ff);
+                        rp.char3D.triggerAttack(1, 'sword');
+                    }
+                    const pos = (rp && rp.char3D && rp.char3D.group.position) ? rp.char3D.group.position.clone() : new THREE.Vector3(data.x, data.y || 0, data.z);
+                    if (this.combat && this.combat.spawnRemoteSkillVFX) {
+                        this.combat.spawnRemoteSkillVFX(data.pClass, data.skillSlot, pos, data.rotY || 0);
+                    }
+                });
+
+                // ==========================================
+                // ⚔️ NEUTRAL ZONE PvP DAMAGE & DEATH
+                // ==========================================
+                this.socket.on('remotePlayerDamaged', (data) => {
+                    if (!data) return;
+                    const lookupId = data.id || data.socketId;
+                    const rp = this.remotePlayers[lookupId] || Object.values(this.remotePlayers || {}).find(p => p.name === data.id);
+                    if (rp) {
+                        rp.hp = data.hp;
+                        rp.maxHp = data.maxHp;
+                        if (rp.char3D) {
+                            rp.char3D.updateOverheadUI(rp.name, rp.level, rp.hp, rp.maxHp, false, rp.title, rp.guild);
+                            this.engine.spawnHitSparks(rp.char3D.group.position, 0xff1744, 18);
+                        }
+                    }
+                });
+
+                this.socket.on('playerDefeated', (data) => {
+                    this.player.hp = 0;
+                    this.isGhost = true;
+                    if (this.player.char3D) {
+                        this.player.char3D.triggerDeath();
+                    }
+                    this.ui.showDeathScreen(data?.killer ? `Slain in PvP by ${data.killer}` : 'You have fallen in battle.');
+                });
+
+                this.socket.on('forceTeleport', (data) => {
+                    if (data && data.mapId) {
+                        this.loadMap(data.mapId, data.x, data.z);
+                    }
+                });
+
+                // ==========================================
+                // 🏰 GUILD SYSTEM REALTIME SYNC
+                // ==========================================
+                this.socket.on('guildDataResponse', (data) => {
+                    if (this.ui) this.ui.renderGuildModal(data);
+                });
+
+                this.socket.on('guildInviteReceived', (data) => {
+                    if (this.ui) this.ui.showGuildInvite(data);
+                });
+
+                this.socket.on('requestGuildUI_Refresh', () => {
+                    if (this.ui && this.ui.isGuildModalOpen()) {
+                        this.socket.emit('requestGuildData');
+                    }
+                });
+
+                this.socket.on('updateLocalGuildTag', (guildName) => {
+                    this.player.guild = guildName;
+                    if (this.player.guild_details) this.player.guild_details.name = guildName;
+                    else if (guildName) this.player.guild_details = { name: guildName, role: 'Member', level: 0 };
+                    if (this.player.char3D) {
+                        this.player.char3D.updateOverheadUI(this.player.name, this.player.level, this.player.hp, this.player.maxHp, true, this.player.title, guildName);
                     }
                 });
 
@@ -1134,9 +1265,12 @@ export class GameApp {
                     this.audio.playSfx('bump');
                 });
 
-                // ⚔️ Party Portal Wait Alert
+                // ⚔️ Party Portal Wait Alert (Debounced to avoid annoying chat spam)
                 this.socket.on('partyPortalWaitAlert', (data) => {
                     if (!data) return;
+                    const now = Date.now();
+                    if (this._lastPortalAlertTime && (now - this._lastPortalAlertTime < 12000)) return;
+                    this._lastPortalAlertTime = now;
                     this.audio.playSfx('bump');
                     if (this.ui) {
                         this.ui.showToast(`⚔️ [Party Teleport] ${data.from} is waiting at ${data.portalName}! (${data.readyCount}/${data.totalCount} ready)`);
@@ -1173,7 +1307,10 @@ export class GameApp {
                     existing.char3D.setCosmeticAura(existing.equips?.aura?.id || null);
                     existing.char3D.setCosmeticPet(existing.equips?.pet?.id || null);
                 }
-                if (existing.char3D) existing.char3D.updateOverheadUI(existing.name, existing.level, existing.hp, existing.maxHp, false, existing.title || null);
+                if (existing.char3D) {
+                    const eg = existing.guild || (existing.guild_details && existing.guild_details.name) || null;
+                    existing.char3D.updateOverheadUI(existing.name, existing.level, existing.hp, existing.maxHp, false, existing.title || null, eg);
+                }
                 return;
             }
         }
@@ -1225,9 +1362,11 @@ export class GameApp {
             currentPos: new THREE.Vector3(data.x || 0, data.y || 0, data.z || 0),
             targetPos: new THREE.Vector3(data.x || 0, data.y || 0, data.z || 0),
             targetRotY: data.rotY || 0,
-            title: data.title || null
+            title: data.title || null,
+            guild: data.guild || (data.guild_details && data.guild_details.name) || null
         };
-        char3D.updateOverheadUI(charName, data.level || 1, data.hp || 500, data.maxHp || 500, false, data.title || null);
+        const dg = data.guild || (data.guild_details && data.guild_details.name) || null;
+        char3D.updateOverheadUI(charName, data.level || 1, data.hp || 500, data.maxHp || 500, false, data.title || null, dg);
     }
 
     removeRemotePlayer(id) {
@@ -1252,7 +1391,8 @@ export class GameApp {
             rp.char3D.group.position.copy(rp.currentPos);
             rp.char3D.group.rotation.y = rp.targetRotY;
             rp.char3D.update(delta, isMoving, 1.0);
-            rp.char3D.updateOverheadUI(rp.name, rp.level, rp.hp, rp.maxHp, false, rp.title || null);
+            const rg = rp.guild || (rp.guild_details && rp.guild_details.name) || null;
+            rp.char3D.updateOverheadUI(rp.name, rp.level, rp.hp, rp.maxHp, false, rp.title || null, rg);
         }
     }
 
@@ -1739,37 +1879,31 @@ export class GameApp {
             this.ui.showToast('⚠️ You already have an active Daily Mission!');
             return;
         }
-        const configs = {
-            easy: {
-                id: 'easy',
-                name: 'Defeat 15 Monsters in Floor 1–2',
-                targetCount: 15,
-                progress: 0,
-                reward: 25000,
-                active: true
-            },
-            medium: {
-                id: 'medium',
-                name: 'Defeat 20 Monsters in Floor 3–4',
-                targetCount: 20,
-                progress: 0,
-                reward: 100000,
-                active: true
-            },
-            hard: {
-                id: 'hard',
-                name: 'Defeat 25 Monsters in Floor 5–6+',
-                targetCount: 25,
-                progress: 0,
-                reward: 250000,
-                active: true
-            }
-        };
-        const chosen = configs[difficulty] || configs.easy;
+
+        // 🎯 2D EXONIE DAILY MISSION ENGINE (server.js lines 7147-7174):
+        // Flips 50/50 roll between common mobs (25 kills) and mini bosses (5 kills) of the tier
+        const isBoss = Math.random() < 0.5;
+        let chosen = null;
+
+        if (difficulty === 'easy') {
+            chosen = isBoss
+                ? { id: 'easy', difficulty: 'Beginner', name: 'Defeat 5 Orc Slimes', targetName: 'Orc Slime', targetKey: 'mini_boss1', targetCount: 5, progress: 0, reward: 25000, active: true }
+                : { id: 'easy', difficulty: 'Beginner', name: 'Defeat 25 Slimes', targetName: 'Slime', targetKey: 'common_mobs1', targetCount: 25, progress: 0, reward: 25000, active: true };
+        } else if (difficulty === 'medium') {
+            chosen = isBoss
+                ? { id: 'medium', difficulty: 'Novice', name: 'Defeat 5 Vampire Bats', targetName: 'Vampire Bat', targetKey: 'mini_boss2', targetCount: 5, progress: 0, reward: 100000, active: true }
+                : { id: 'medium', difficulty: 'Novice', name: 'Defeat 25 Shadow Bats', targetName: 'Shadow Bat', targetKey: 'common_mobs2', targetCount: 25, progress: 0, reward: 100000, active: true };
+        } else {
+            chosen = isBoss
+                ? { id: 'hard', difficulty: 'Expert', name: 'Defeat 5 Inferno Cores', targetName: 'Inferno Core', targetKey: 'mini_boss3', targetCount: 5, progress: 0, reward: 250000, active: true }
+                : { id: 'hard', difficulty: 'Expert', name: 'Defeat 25 Fire Sprites', targetName: 'Fire Sprite', targetKey: 'common_mobs3', targetCount: 25, progress: 0, reward: 250000, active: true };
+        }
+
         this.player.dailyMission = chosen;
         this.saveCharacterToAccountSlot();
         this.audio.playSfx('splash');
         this.ui.renderDailyMissions();
+        this.ui.updatePlayerHUD(this.player);
         this.ui.showToast(`📜 Accepted Contract: ${chosen.name} (+${chosen.reward.toLocaleString()} G)!`);
     }
 
@@ -2379,6 +2513,12 @@ export class GameApp {
 
     // Use Health Potion from inventory or hotbar
     useHealthPotion() {
+        if (this.currentMapId === 'trainingtavern') {
+            this.ui.showToast("⚠️ Potions are strictly forbidden inside the Training Tavern!");
+            this.audio.playSfx('bump');
+            return;
+        }
+
         if (this.potionCooldown > 0) {
             this.ui.showToast("Potion is on cooldown!");
             return;
@@ -2543,6 +2683,8 @@ export class GameApp {
                 this.ui.toggleFriendsModal();
             } else if (e.code === 'KeyC') {
                 this.ui.toggleCashShop();
+            } else if (e.code === 'KeyG') {
+                this.ui.toggleGuildModal();
             } else if (e.code === 'Space') {
                 e.preventDefault();
                 this.onJumpTrigger();
@@ -2824,7 +2966,7 @@ export class GameApp {
         else if (mapId === 'neutralzone') bgmTrack = 'floors';
         else if (mapId === 'battlefield') bgmTrack = 'battlefield';
         else if (mapId === 'hauntedhouse') bgmTrack = 'bossfight';
-        else if (mapId === 'guildbase') bgmTrack = 'guild';
+        else if (mapId === 'guildbase') bgmTrack = 'guildbase';
         else if (mapId === 'floor10') bgmTrack = 'bossfight2';
         else if (mapId.startsWith('floor')) bgmTrack = 'floors';
         else if (mapId.startsWith('dungeon') || mapId === 'event_cave') bgmTrack = 'bossfight';
@@ -2956,15 +3098,14 @@ export class GameApp {
         // ============================================================
         if (this.player.dailyMission && this.player.dailyMission.active) {
             const dm = this.player.dailyMission;
-            const floorNum = parseInt(String(this.currentMapId).replace('floor', ''), 10) || 0;
-            let countsForMission = false;
-            if (dm.id === 'easy' && (floorNum === 1 || floorNum === 2 || mob.monsterKey.includes('slime'))) {
-                countsForMission = true;
-            } else if (dm.id === 'medium' && (floorNum === 3 || floorNum === 4 || mob.monsterKey.includes('bat'))) {
-                countsForMission = true;
-            } else if (dm.id === 'hard' && (floorNum >= 5 || this.currentMapId.startsWith('dungeon'))) {
-                countsForMission = true;
-            }
+            const mobKey = String(mob.dbKey || mob.monsterKey || '').toLowerCase();
+            const mobName = String(mob.name || '').toLowerCase();
+            const targetKey = String(dm.targetKey || '').toLowerCase();
+            const targetName = String(dm.targetName || '').toLowerCase();
+
+            // Strict 2D check: matches specific target monster type or name
+            const countsForMission = mobKey.includes(targetKey) || mobName.includes(targetName);
+
             if (countsForMission) {
                 dm.progress = (dm.progress || 0) + 1;
                 if (dm.progress >= dm.targetCount) {
@@ -2973,15 +3114,16 @@ export class GameApp {
                     this.player.dailyMission = null;
                     this.audio.playSfx('lightning');
                     this.combat.spawnFloatingDamage(this.player.pos, `📜 QUEST COMPLETE! +${goldReward.toLocaleString()}G!`, true, true);
-                    this.ui.showWorldAnnouncement(
-                        `📜 <strong style="color:#00e5ff;">${this.player.name}</strong> completed a <strong>Guild Quest Board Contract</strong> and earned <strong style="color:#ffd700;">+${goldReward.toLocaleString()} Gold</strong>!`,
-                        '#4ade80'
-                    );
-                    this.ui.showToast(`🎉 Quest Complete! Earned +${goldReward.toLocaleString()} Gold!`);
+                    // 2D Exonie: Local confirmation only, NO world broadcast!
+                    this.ui.showToast(`📜 MISSION COMPLETE: Defeated ${dm.targetName}s! Earned +${goldReward.toLocaleString()} Gold!`);
                 } else {
-                    this.ui.showToast(`📜 Quest Progress: ${dm.progress} / ${dm.targetCount}`);
+                    this.ui.showToast(`📜 ${dm.targetName}: ${dm.progress} / ${dm.targetCount}`);
                 }
                 this.saveCharacterToAccountSlot();
+                this.ui.updatePlayerHUD(this.player);
+                if (this.ui.dailyMissionsModal && this.ui.dailyMissionsModal.style.display === 'flex') {
+                    this.ui.renderDailyMissions();
+                }
             }
         }
 
@@ -3026,43 +3168,38 @@ export class GameApp {
         }
 
         // ============================================================
-        // 2D BATTLEFIELD CO-OP RAID BOSS VICTORY (500,000 G OR LV.150 DIVINE)
+        // 2D BATTLEFIELD CO-OP RAID BOSS VICTORY (90% NULL, 9% HUGE NUGGET, 1% LV.150 DIVINE)
         // ============================================================
-        if (mob.isBattlefieldBoss) {
+        if (mob.isBattlefieldBoss || this.currentMapId === 'battlefield') {
             this.audio.playSfx('lightning');
             if (this.socket) {
                 this.socket.emit('battlefieldBossKilled', { bossName: mob.name, killerName: this.player.name });
             }
-            if (Math.random() < 0.5) {
-                this.player.gold += 500000;
-                this.combat.spawnFloatingDamage(this.player.pos, `+500,000 GOLD (HUGE NUGGET)!`, true, true);
-                this.ui.showWorldAnnouncement(
-                    `🏰 <strong style="color:#ff1744;">[BATTLEFIELD RAID]</strong> <strong style="color:#00e5ff;">${this.player.name}</strong> slew the Lv.${mob.level} <strong>${mob.name}</strong> and claimed a <strong style="color:#ffd700;">Huge Gold Nugget (500,000 G)</strong>!`,
-                    '#ff1744'
-                );
+            const bfLoot = generateBattlefieldLoot();
+            if (bfLoot) {
+                this.addItemToInventory(bfLoot);
+                if (bfLoot.name === 'Huge Nugget') {
+                    this.combat.spawnFloatingDamage(this.player.pos, `+500,000 GOLD NUGGET!`, true, true);
+                    this.ui.showWorldAnnouncement(
+                        `🏰 <strong style="color:#ff1744;">[BATTLEFIELD RAID]</strong> <strong style="color:#00e5ff;">${this.player.name}</strong> slew the Lv.${mob.level} <strong>${mob.name}</strong> and claimed a <strong style="color:#ffd700;">Huge Gold Nugget (500,000 G)</strong>!`,
+                        '#ff1744'
+                    );
+                } else {
+                    this.combat.spawnFloatingDamage(this.player.pos, `🎁 [DIVINE] ${bfLoot.name}!`, true, true);
+                    this.ui.showWorldAnnouncement(
+                        `🏰 <strong style="color:#ff1744;">[BATTLEFIELD RAID]</strong> <strong style="color:#00e5ff;">${this.player.name}</strong> slew the Lv.${mob.level} <strong>${mob.name}</strong> and obtained <strong style="color:#facc15;">[Divine] ${bfLoot.name}</strong>!`,
+                        '#facc15'
+                    );
+                }
             } else {
-                const divineWpn = {
-                    name: `Divine Sovereign Blade (Lv.150)`,
-                    type: 'weapon',
-                    weaponType: this.getEquippedWeaponType() || 'sword',
-                    rarity: 'Divine',
-                    level: 150,
-                    fixedStat: { attack: 480, magic: 480 },
-                    randomStat: { str: 45, int: 45 },
-                    sprite: 'sword3',
-                    desc: 'Forged in the Woods of the Battlefield from a Lv.500+ Raid Boss.'
-                };
-                this.addItemToInventory(divineWpn);
-                this.ui.showWorldAnnouncement(
-                    `🏰 <strong style="color:#ff1744;">[BATTLEFIELD RAID]</strong> <strong style="color:#00e5ff;">${this.player.name}</strong> slew the Lv.${mob.level} <strong>${mob.name}</strong> and obtained <strong style="color:#facc15;">[Divine] ${divineWpn.name}</strong>!`,
-                    '#facc15'
-                );
+                this.ui.showToast('⚔️ Battlefield Boss defeated! (No drop this time)');
             }
             setTimeout(() => {
                 if (this.currentMapId === 'battlefield') {
                     this.respawnInTown();
                 }
             }, 4200);
+            return;
         }
 
         // ============================================================
@@ -3115,7 +3252,12 @@ export class GameApp {
 
     onFloorBossDefeated(mob) {
         // 🛡️ STRICT 2D EXONIE: Haunted House, Tavern, Battlefield, Neutral Zone, Dungeons NEVER set floor cooldown!
-        if (mob.isTavernBoss || mob.isBattlefieldBoss || mob.isNeutralBoss || mob.isHauntedBoss || this.currentMapId === 'hauntedhouse' || this.currentMapId === 'trainingtavern' || this.currentMapId.startsWith('dungeon')) {
+        if (this.isMazeTrial || mob.isTavernBoss || mob.isBattlefieldBoss || mob.isNeutralBoss || mob.isHauntedBoss || this.currentMapId === 'hauntedhouse' || this.currentMapId === 'trainingtavern' || this.currentMapId.startsWith('dungeon')) {
+            if (this.isMazeTrial) {
+                this.audio.playSfx('lightning');
+                this.engine.addScreenshake(1.0);
+                this.ui.showToast(`🏆 Floor Boss ${mob.name} Defeated!`);
+            }
             return;
         }
 
@@ -3304,20 +3446,24 @@ export class GameApp {
             const tid = triggeredPortal.targetMapId;
 
             // ⚔️ AUTHENTIC 2D PARTY PORTAL GATING: All party members must be on the portal pad
-            const isCoopZone = tid.startsWith('dungeon') || tid.startsWith('floor') || tid === 'battlefield' || tid === 'neutral_zone' || tid === 'maze_guide' || tid === 'hauntedhouse';
+            const isCoopZone = tid.startsWith('dungeon') || tid.startsWith('floor') || tid === 'battlefield' || tid === 'neutralzone' || tid === 'neutral_zone' || tid === 'maze_guide' || tid === 'hauntedhouse';
             if (isCoopZone && this.party && this.party.members && this.party.members.length > 1) {
                 const partyCheck = this.isPartyReadyAtPortal(triggeredPortal.x, triggeredPortal.z);
                 if (!partyCheck.ready) {
-                    this.portalCooldown = 3.5;
+                    this.portalCooldown = 3.0;
                     this.audio.playSfx('bump');
-                    this.ui.showToast(`⚔️ [Party Teleport] All party members must be on the portal to enter! (${partyCheck.readyCount}/${partyCheck.totalCount} ready)`);
-                    this.socket?.emit('partyPortalWait', {
-                        portalName: triggeredPortal.label || tid,
-                        portalX: triggeredPortal.x,
-                        portalZ: triggeredPortal.z,
-                        readyCount: partyCheck.readyCount,
-                        totalCount: partyCheck.totalCount
-                    });
+                    const now = Date.now();
+                    if (!this._lastPortalWaitEmit || (now - this._lastPortalWaitEmit > 12000)) {
+                        this._lastPortalWaitEmit = now;
+                        this.ui.showToast(`⚔️ [Party Teleport] All party members must be on the portal to enter! (${partyCheck.readyCount}/${partyCheck.totalCount} ready)`);
+                        this.socket?.emit('partyPortalWait', {
+                            portalName: triggeredPortal.label || tid,
+                            portalX: triggeredPortal.x,
+                            portalZ: triggeredPortal.z,
+                            readyCount: partyCheck.readyCount,
+                            totalCount: partyCheck.totalCount
+                        });
+                    }
                     return;
                 }
             }
@@ -3357,10 +3503,36 @@ export class GameApp {
                 this.ui.openLeaderboardModal('floor');
                 return;
             }
+            // 🛡️ Spire Tower Entrance in Town: Opens Maze Guide Modal
+            if (this.currentMapId === 'town' && (tid === 'floor1' || tid === 'maze_guide')) {
+                this.portalCooldown = 3.5;
+                this.audio.playSfx('bump');
+                this.ui.openMazeGuideModal();
+                return;
+            }
+
+            // 🛡️ Maze Trial Portal Lock: Only Return to Town allowed
+            if (this.isMazeTrial && tid !== 'town') {
+                this.portalCooldown = 3.0;
+                this.audio.playSfx('bump');
+                this.ui.showToast('⚠️ You are in a Maze Trial! You can only teleport back to Town.');
+                return;
+            }
+
+            if (this.isMazeTrial && tid === 'town') {
+                this.isMazeTrial = false;
+            }
+
             if (tid === 'maze_guide') {
                 this.portalCooldown = 4.0;
                 this.audio.playSfx('bump');
                 this.ui.openMazeGuideModal();
+                return;
+            }
+            if (tid === 'event_cave' && !EVENT_CAVE_ACTIVE) {
+                this.portalCooldown = 3.0;
+                this.audio.playSfx('bump');
+                this.ui.showToast('⚠️ The Event Cave is currently closed. Stay tuned for future events!');
                 return;
             }
             if (tid === 'hauntedhouse') {
@@ -3585,6 +3757,7 @@ export class GameApp {
 
     // Check if player has Revival Juice in bag
     hasRevivalJuice() {
+        if (this.currentMapId === 'trainingtavern') return false;
         for (let i = 0; i < 30; i++) {
             const it = this.player.inventory[i];
             if (it && (it.name === 'Revival Juice' || it.sprite === 'revival_juice')) {
@@ -3596,6 +3769,11 @@ export class GameApp {
 
     // Use Revival Juice on Death Screen to revive on the spot with 100% HP
     useRevivalJuice() {
+        if (this.currentMapId === 'trainingtavern') {
+            this.ui.showToast("⚠️ Revival Juice cannot be used in the Training Tavern!");
+            this.audio.playSfx('bump');
+            return;
+        }
         for (let i = 0; i < 30; i++) {
             const it = this.player.inventory[i];
             if (it && (it.name === 'Revival Juice' || it.sprite === 'revival_juice')) {
@@ -3908,11 +4086,40 @@ export class GameApp {
                 }
             }
 
-            // Monster attacks player if in melee range
+            // Monster attacks player or provoked minion if in melee range
             if (m.state === 'attack') {
                 m.attackCooldown -= delta;
                 if (m.attackCooldown <= 0) {
                     m.attackCooldown = 1.4;
+
+                    // 🛡️ GOLEM BUSTER / MINION TAUNT INTERCEPT: Damage minion instead of Tech Genius player!
+                    if (m.provokeTimer > 0 && m.provokeTarget && m.provokeTarget.group) {
+                        const minion = m.provokeTarget;
+                        let minionDmg = Math.max(1, m.atk - (minion.def || 0));
+                        if ((minion.shieldHp || 0) > 0) {
+                            const absorbed = Math.min(minion.shieldHp, minionDmg);
+                            minion.shieldHp -= absorbed;
+                            minionDmg -= absorbed;
+                            if (minion.shieldHp <= 0 && minion.shieldMesh) {
+                                minion.group.remove(minion.shieldMesh);
+                                minion.shieldMesh = null;
+                            }
+                        }
+                        if (minionDmg > 0) {
+                            minion.hp = (minion.hp || 100) - minionDmg;
+                        }
+                        this.audio.playSfx(m.getAttackSfx ? m.getAttackSfx() : 'bump');
+                        this.engine.spawnHitSparks(minion.group.position, 0x00e5ff, 12);
+                        this.combat.spawnFloatingDamage(minion.group.position, `-${minionDmg}`, false);
+                        if (minion.hp <= 0) {
+                            if (minion.group.parent) minion.group.parent.remove(minion.group);
+                            this.combat.minions = (this.combat.minions || []).filter(item => item !== minion);
+                            m.provokeTarget = null;
+                            m.provokeTimer = 0;
+                        }
+                        continue; // Tech Genius takes ZERO damage!
+                    }
+
                     // 1. Dodge invulnerability check (i-frames)
                     if (this.player.isInvulnerable) {
                         this.combat.spawnFloatingDamage(this.player.pos, "DODGED!", false, true);
@@ -3996,7 +4203,8 @@ export class GameApp {
 
         // 5. Update Local Player Overhead UI
         if (this.player.char3D && this.player.char3D.updateOverheadUI) {
-            this.player.char3D.updateOverheadUI(this.player.name, this.player.level, this.player.hp, this.player.maxHp, true, this.player.title || null);
+            const guildName = this.player.guild || (this.player.guild_details && this.player.guild_details.name) || null;
+            this.player.char3D.updateOverheadUI(this.player.name, this.player.level, this.player.hp, this.player.maxHp, true, this.player.title || null, guildName);
         }
 
         // 6. Update Remote Players & Multiplayer Sync

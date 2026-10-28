@@ -3689,6 +3689,86 @@ html, body {
     to { filter: drop-shadow(0 0 10px #CD7F32); text-shadow: 0 0 8px #fff, 0 0 15px #CD7F32, 0 0 35px #8B4513; }
 }
 
+/* ============================================================
+   TRADE MODE: DUAL-WINDOW SIDE-BY-SIDE INTERACTIVE LAYOUT
+   ============================================================ */
+#trade-screen {
+    background: transparent !important;
+    pointer-events: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    z-index: 99998 !important;
+}
+
+#trade-screen .modal-dialog {
+    pointer-events: auto !important;
+    position: fixed !important;
+    left: 4vw !important;
+    top: 50% !important;
+    transform: translateY(-50%) !important;
+    margin: 0 !important;
+    max-width: 480px !important;
+    width: 45vw !important;
+    box-shadow: 0 0 35px rgba(56, 189, 248, 0.45) !important;
+}
+
+body.trade-mode-active #inventory-modal {
+    background: transparent !important;
+    pointer-events: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    z-index: 99999 !important;
+}
+
+body.trade-mode-active #inventory-modal .modal-dialog {
+    pointer-events: auto !important;
+    position: fixed !important;
+    right: 4vw !important;
+    left: auto !important;
+    top: 50% !important;
+    transform: translateY(-50%) !important;
+    margin: 0 !important;
+    box-shadow: 0 0 35px rgba(56, 189, 248, 0.45) !important;
+}
+
+/* ============================================================
+   PERSISTENT HUD: DAILY QUEST TRACKER (RIGHT SIDE)
+   ============================================================ */
+#daily-quest-tracker {
+    position: fixed;
+    top: 140px;
+    right: 20px;
+    width: 215px;
+    background: rgba(15, 23, 42, 0.88);
+    border: 1px solid rgba(255, 215, 0, 0.45);
+    box-shadow: 0 4px 18px rgba(0, 0, 0, 0.65), 0 0 12px rgba(255, 215, 0, 0.22);
+    border-radius: 8px;
+    padding: 10px 12px;
+    pointer-events: auto;
+    z-index: 100;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    font-family: inherit;
+    transition: opacity 0.25s ease;
+}
+.quest-tracker-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+    padding-bottom: 4px;
+}
+.quest-tier-badge {
+    font-size: 0.72rem;
+    font-weight: 800;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: #0284c7;
+    color: #fff;
+    text-transform: uppercase;
+}
+
 
 
 

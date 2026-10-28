@@ -321,12 +321,26 @@
                 <button class="hud-btn" id="btn-stats" title="Player Stats [P]">📊</button>
                 <button class="hud-btn" id="btn-inventory" title="Inventory [B]">🎒</button>
                 <button class="hud-btn" id="btn-skills" title="Skills & Class [K]">📜</button>
+                <button class="hud-btn" id="btn-guild" title="Guild [G]" onclick="window.game?.ui?.toggleGuildModal()">🏰</button>
                 <button class="hud-btn" id="btn-cash-shop" title="Cash Shop [C]" style="color:#e040fb; text-shadow:0 0 8px #e040fb;">💎</button>
                 <button class="hud-btn" id="btn-settings" title="Settings [ESC]">⚙️</button>
             </div>
             <div id="minimap-container">
                 <canvas id="minimap-canvas"></canvas>
             </div>
+        </div>
+
+        <!-- Persistent Daily Quest HUD Tracker (Right side of screen, 2D authentic) -->
+        <div id="daily-quest-tracker" style="display:none;">
+            <div class="quest-tracker-header">
+                <span style="color:#ffd700; font-weight:800; font-size:0.85rem;">📜 Daily Contract</span>
+                <span id="quest-tracker-badge" class="quest-tier-badge">Beginner</span>
+            </div>
+            <div id="quest-tracker-target" style="font-size:0.85rem; color:#fff; font-weight:700; margin-bottom:4px;">Kill Slime: 0 / 25</div>
+            <div class="quest-tracker-bar-bg" style="background:#1e293b; border-radius:4px; height:8px; width:100%; overflow:hidden; border:1px solid #334155; margin-bottom:6px;">
+                <div id="quest-tracker-bar-fill" style="background:#22c55e; width:0%; height:100%; transition:width 0.3s;"></div>
+            </div>
+            <div id="quest-tracker-reward" style="font-size:0.8rem; color:#facc15; text-align:right;">Reward: +25,000 G</div>
         </div>
 
         <!-- Center Screen: Boss Health Bar -->

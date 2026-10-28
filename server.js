@@ -226,6 +226,73 @@ function getStarterItems() {
 const onlinePlayers = {};
 const memoryAuctions = {};
 const bossTimersMemory = {};
+const bossRespawnScheduled = new Set();
+
+const guilds = {};
+
+async function loadGuildsFromDB() {
+    if (!supabase) return;
+    try {
+        const { data, error } = await supabase.from('guilds').select('*');
+        if (data) {
+            data.forEach(row => {
+                const g = row.data || row;
+                if (!g || !g.name) return;
+                guilds[g.name] = {
+                    name: g.name,
+                    gold: g.gold || 0,
+                    level: g.level || 0,
+                    members: new Set(g.members || []),
+                    roles: g.roles || {},
+                    applicants: g.applicants || [],
+                    hasBase: !!g.hasBase
+                };
+            });
+            console.log(`[GUILDS] Successfully loaded ${data.length} guilds from Supabase.`);
+        }
+    } catch (e) {
+        console.error('[GUILD LOAD ERROR]', e.message);
+    }
+}
+
+async function saveGuildsToDB() {
+    if (!supabase) return;
+    try {
+        for (const gName in guilds) {
+            const g = guilds[gName];
+            const payload = {
+                name: g.name,
+                gold: g.gold || 0,
+                level: g.level || 0,
+                members: Array.from(g.members),
+                roles: g.roles || {},
+                applicants: g.applicants || [],
+                hasBase: !!g.hasBase
+            };
+            const { data: existing } = await supabase.from('guilds').select('name').eq('name', gName).maybeSingle();
+            if (existing) {
+                await supabase.from('guilds').update({ data: payload }).eq('name', gName);
+            } else {
+                await supabase.from('guilds').insert([{ name: gName, data: payload }]);
+            }
+        }
+    } catch (e) {
+        console.error('[GUILD SAVE ERROR]', e.message);
+    }
+}
+
+// Permissions helper matching 2D Exonie
+const hasGuildPerm = (role, action, targetRole = null) => {
+    const roleLvl = { 'Master': 4, 'Vice Master': 3, 'Captain': 2, 'Member': 1 };
+    if (role === 'Master') return true;
+    if (role === 'Vice Master') {
+        if (action === 'kick') return (roleLvl[targetRole || 'Member'] || 1) < 3;
+        return ['invite', 'manage_apps'].includes(action);
+    }
+    if (role === 'Captain') return action === 'invite';
+    return false;
+};
+
 
 // ==========================================
 // 🛡️ 3-SLOT MULTI-CHARACTER PARSER & SERIALIZER
@@ -886,6 +953,11 @@ async function sendFriendsUpdateTo(username) {
 // Private maps: home (personal solo or party), dungeons, guildbase.
 // ==========================================
 function getInstanceId(socketId, mapId) {
+    // 🛡️ Route to a private Maze Trial instance if the flag is active
+    if (p && p.isMazeTrial) {
+        return raidId ? `mazetrial_${rawMap}_raid_${raidId}` : (partyId ? `mazetrial_${rawMap}_${partyId}` : `mazetrial_${rawMap}_solo_${pName}`);
+    }
+
     const rawMap = String(mapId || 'town').toLowerCase();
     if (rawMap === 'town' || rawMap === 'neutralzone' || rawMap === 'battlefield') {
         return rawMap;
@@ -896,10 +968,11 @@ function getInstanceId(socketId, mapId) {
     const raidId = partyId ? partyRaid[partyId] : null;
 
     if (rawMap === 'guildbase') {
-        if (p && p.guild) {
-            return `guildbase_${p.guild}`;
+        const gName = (p && (p.guild || (p.guild_details && p.guild_details.name)));
+        if (gName) {
+            return `guildbase_${gName}`;
         }
-        return 'town';
+        return `guildbase_solo_${pName}`;
     }
 
     if (rawMap === 'home') {
@@ -1513,8 +1586,17 @@ io.on('connection', (socket) => {
                 z: (data.pos && data.pos.z) || data.z || 0,
                 rotY: (data.pos && data.pos.rotY) || data.rotY || 0,
                 anim: 'idle',
-                title: pData.title || (pData.base_stats && pData.base_stats.title) || data.title || null
+                title: pData.title || (pData.base_stats && pData.base_stats.title) || data.title || null,
+                guild_details: pData.guild_details || data.guild_details || null,
+                guild: (pData.guild_details && pData.guild_details.name) || (data.guild_details && data.guild_details.name) || null
             };
+
+            if (onlinePlayers[socket.id].guild && guilds[onlinePlayers[socket.id].guild]) {
+                const liveG = guilds[onlinePlayers[socket.id].guild];
+                liveG.members.add(finalName);
+                if (!onlinePlayers[socket.id].guild_details) onlinePlayers[socket.id].guild_details = {};
+                onlinePlayers[socket.id].guild_details.level = liveG.level || 0;
+            }
 
             const mapId = data.mapId || pData.map_id || 'town';
             const instId = getInstanceId(socket.id, mapId);
@@ -1573,6 +1655,21 @@ io.on('connection', (socket) => {
                             }
                             if (rem > 0) {
                                 activeCooldowns[t.boss_id] = now + rem;
+                                if (!bossRespawnScheduled.has(t.boss_id) && !['neutralzone_boss', 'battlefield_boss'].includes(t.boss_id)) {
+                                    bossRespawnScheduled.add(t.boss_id);
+                                    setTimeout(async () => {
+                                        if (supabase) {
+                                            await supabase.from('boss_timers').delete().eq('boss_id', t.boss_id);
+                                        }
+                                        delete bossTimersMemory[t.boss_id];
+                                        bossRespawnScheduled.delete(t.boss_id);
+                                        io.emit('systemMessage', `The ${t.boss_id.toUpperCase()} Boss has respawned!`);
+                                    }, rem);
+                                }
+                            } else {
+                                if (supabase) {
+                                    supabase.from('boss_timers').delete().eq('boss_id', t.boss_id).then(() => {});
+                                }
                             }
                         });
                     }
@@ -1791,10 +1888,32 @@ io.on('connection', (socket) => {
     });
 
     socket.on('chatMessage', (data) => {
-        if (!data) return;
+        if (!data || !data.text) return;
         const sender = onlinePlayers[socket.id];
         const author = (sender && sender.name) || socket.characterName || (data && data.name) || (data && data.id) || 'Exonian';
-        socket.broadcast.emit('chatMessage', {
+        const rawText = String(data.text).trim();
+        const isGuildCmd = rawText.startsWith('/g ') || rawText.startsWith('/guild ');
+        const inGuildBase = sender && String(sender.mapId).toLowerCase() === 'guildbase';
+
+        // 🏰 GUILD CHAT ROUTING (Inside Guild Base or via /g /guild shortcut)
+        if ((inGuildBase || isGuildCmd) && sender && (sender.guild || (sender.guild_details && sender.guild_details.name))) {
+            const gName = sender.guild || sender.guild_details.name;
+            const messageContent = isGuildCmd ? rawText.replace(/^\/guild\s+|^\/g\s+/i, '') : rawText;
+            const guildMsg = `<span style="color:#4CAF50; font-weight:bold;">[Guild] ${author}: ${messageContent}</span>`;
+
+            // Emit to all online members of that guild across all maps
+            for (const sid in onlinePlayers) {
+                const op = onlinePlayers[sid];
+                if (op && (op.guild === gName || (op.guild_details && op.guild_details.name === gName))) {
+                    io.to(sid).emit('systemMessage', guildMsg);
+                }
+            }
+            return;
+        }
+
+        // Local chat routing: Send to everyone in the current room instance (Town, Neutral Zone, Battlefield, or private map)
+        const instId = (sender && sender.instanceId) || getInstanceId(socket.id, sender && sender.mapId);
+        io.to(instId).emit('chatMessage', {
             id: author,
             name: author,
             socketId: socket.id,
@@ -1857,6 +1976,19 @@ io.on('connection', (socket) => {
         const cdDuration = 24 * 60 * 60 * 1000; // 24 Hours matching 2D Exonie
         bossTimersMemory[floorId] = now + cdDuration;
         io.emit('bossCooldownActive', { floorId: floorId, remaining: cdDuration });
+
+        // Schedule automatic boss respawn & WORLD broadcast exactly 24h later
+        if (!bossRespawnScheduled.has(floorId)) {
+            bossRespawnScheduled.add(floorId);
+            setTimeout(async () => {
+                if (supabase) {
+                    await supabase.from('boss_timers').delete().eq('boss_id', floorId);
+                }
+                delete bossTimersMemory[floorId];
+                bossRespawnScheduled.delete(floorId);
+                io.emit('systemMessage', `The ${floorId.toUpperCase()} Boss has respawned!`);
+            }, cdDuration);
+        }
 
         if (supabase) {
             try {
@@ -2742,6 +2874,506 @@ io.on('connection', (socket) => {
         }
     });
 
+
+    // ==========================================
+    // ⚔️ REMOTE COMBAT ANIMATIONS & VFX RELAY
+    // ==========================================
+    socket.on('playerAttackAnim', (data) => {
+        if (!data) return;
+        const p = onlinePlayers[socket.id];
+        if (!p) return;
+        const instId = p.instanceId || getInstanceId(socket.id, p.mapId);
+        socket.to(instId).emit('remotePlayerAttack', {
+            id: p.name || socket.id,
+            name: p.name,
+            socketId: socket.id,
+            comboStep: data.comboStep || 1,
+            weaponType: data.weaponType || 'sword',
+            x: data.x,
+            y: data.y,
+            z: data.z,
+            rotY: data.rotY
+        });
+    });
+
+    socket.on('playerSkillAnim', (data) => {
+        if (!data) return;
+        const p = onlinePlayers[socket.id];
+        if (!p) return;
+        const instId = p.instanceId || getInstanceId(socket.id, p.mapId);
+        socket.to(instId).emit('remotePlayerSkill', {
+            id: p.name || socket.id,
+            name: p.name,
+            socketId: socket.id,
+            pClass: data.pClass,
+            skillSlot: data.skillSlot,
+            x: data.x,
+            y: data.y,
+            z: data.z,
+            rotY: data.rotY
+        });
+    });
+
+    // ==========================================
+    // ⚔️ NEUTRAL ZONE PvP ENGINE
+    // ==========================================
+    socket.on('attackPlayer', (payload) => {
+        const p = onlinePlayers[socket.id];
+        if (!p || p.isGhost || String(p.mapId).toLowerCase() !== 'neutralzone') return;
+
+        const targetSocketId = Object.keys(onlinePlayers).find(sid => {
+            const op = onlinePlayers[sid];
+            return op && (op.name === payload.targetId || op.id === payload.targetId || sid === payload.targetId);
+        });
+        if (!targetSocketId) return;
+        const target = onlinePlayers[targetSocketId];
+        if (!target || target.isGhost || String(target.mapId).toLowerCase() !== 'neutralzone') return;
+
+        // Anti-TK: Party members cannot damage each other!
+        const pParty = playerParty[p.name || socket.id];
+        const tParty = playerParty[target.name || targetSocketId];
+        if (pParty && tParty && pParty === tParty) return;
+
+        const dmg = Math.max(1, Math.floor(payload.damage || 50));
+        target.hp = Math.max(0, (target.hp !== undefined ? target.hp : 500) - dmg);
+
+        io.to('neutralzone').emit('remotePlayerDamaged', {
+            id: target.name,
+            socketId: targetSocketId,
+            hp: target.hp,
+            maxHp: target.maxHp || 500,
+            damage: dmg
+        });
+
+        if (target.hp <= 0) {
+            target.isGhost = true;
+            io.emit('systemMessage', `⚔️ [PvP] <span style="color:#f44336; font-weight:bold;">${p.name}</span> has slain <span style="color:#ff9800; font-weight:bold;">${target.name}</span> in the Neutral Zone!`);
+            io.to(targetSocketId).emit('playerDefeated', { killer: p.name });
+        }
+    });
+
+    // ==========================================
+    // 🗺️ MAZE GUIDE & FAST TRAVEL ENGINE
+    // ==========================================
+    socket.on('requestMazeTeleport', (data) => {
+        const p = onlinePlayers[socket.id];
+        if (!p || p.isGhost) return;
+        const targetFloor = parseInt(data.targetFloor, 10);
+        if (isNaN(targetFloor) || targetFloor < 1) return;
+
+        const getMaxFloor = (playerObj) => {
+            let maxF = 0;
+            let titleString = String(playerObj?.title || playerObj?.baseStats?.title || "").toUpperCase();
+            const match = titleString.match(/(?:FLOOR CONQUEROR|FLOOR DOMINATOR|FLOOR MASTER)\s+(\d+)/);
+            if (match) maxF = parseInt(match[1], 10);
+            return maxF;
+        };
+
+        const partyId = playerParty[p.name || socket.id];
+        if (partyId && parties[partyId]) {
+            const party = parties[partyId];
+            if (party.leader !== p.name && party.leaderId !== socket.id) {
+                return socket.emit('systemMessage', "Only the Party Leader can use the Maze Guide.");
+            }
+            for (const memberSid of party.members) {
+                const mp = onlinePlayers[memberSid];
+                if (!mp || mp.isGhost) return socket.emit('systemMessage', `Cannot teleport: ${mp?.name || 'Party member'} is dead or offline.`);
+                if (getMaxFloor(mp) < targetFloor) return socket.emit('systemMessage', `Cannot teleport: ${mp.name} has not conquered Floor ${targetFloor} yet.`);
+            }
+            for (const memberSid of party.members) {
+                io.to(memberSid).emit('forceTeleport', { mapId: `floor${targetFloor}`, x: 0, z: 98 });
+            }
+        } else {
+            if (getMaxFloor(p) < targetFloor) {
+                return socket.emit('systemMessage', `You have not conquered Floor ${targetFloor} yet.`);
+            }
+            socket.emit('forceTeleport', { mapId: `floor${targetFloor}`, x: 0, z: 98 });
+        }
+    });
+
+    // ==========================================
+    // 🛡️ MAZE TRIALS SYSTEM (1 Entry/Day Account-Wide)
+    // ==========================================
+    socket.on('requestMazeTrial', async (data) => {
+        const p = onlinePlayers[socket.id];
+        if (!p || p.isGhost) return;
+        const targetFloor = parseInt(data.targetFloor, 10);
+        if (isNaN(targetFloor) || targetFloor < 1 || targetFloor > 7) return;
+
+        const targetMapId = `floor${targetFloor}`;
+        const partyId = playerParty[p.name || socket.id];
+        let playersToEnter = [socket.id];
+
+        let todayMidnight = new Date();
+        todayMidnight.setUTCHours(0, 0, 0, 0);
+        const resetTs = todayMidnight.getTime();
+
+        if (partyId && parties[partyId]) {
+            const party = parties[partyId];
+            if (party.leader !== p.name && party.leaderId !== socket.id) {
+                return socket.emit('systemMessage', "Only the Party Leader can start a Maze Trial.");
+            }
+            for (const memberSid of party.members) {
+                const mp = onlinePlayers[memberSid];
+                if (!mp || mp.isGhost) return socket.emit('systemMessage', `Cannot start: ${mp?.name || 'Party member'} is dead or offline.`);
+                if (mp.mapId !== p.mapId) return socket.emit('systemMessage', `Cannot start: ${mp.name} is not in Town.`);
+                if (!mp.baseStats) mp.baseStats = {};
+                if (!mp.baseStats.mazeTrialReset || mp.baseStats.mazeTrialReset < resetTs) {
+                    mp.baseStats.mazeTrialEntries = 1;
+                    mp.baseStats.mazeTrialReset = Date.now();
+                }
+                if (mp.baseStats.mazeTrialEntries <= 0) {
+                    return socket.emit('systemMessage', `Cannot start: ${mp.name} has already completed a Maze Trial today.`);
+                }
+            }
+            playersToEnter = [...party.members];
+        } else {
+            if (!p.baseStats) p.baseStats = {};
+            if (!p.baseStats.mazeTrialReset || p.baseStats.mazeTrialReset < resetTs) {
+                p.baseStats.mazeTrialEntries = 1;
+                p.baseStats.mazeTrialReset = Date.now();
+            }
+            if (p.baseStats.mazeTrialEntries <= 0) {
+                return socket.emit('systemMessage', 'You have already done a Maze Trial today. Resets at 00:00 UTC.');
+            }
+        }
+
+        // Deduct entry & lock account
+        for (const sid of playersToEnter) {
+            const mp = onlinePlayers[sid];
+            if (mp) {
+                mp.baseStats.mazeTrialEntries = 0;
+                mp.baseStats.mazeTrialReset = Date.now();
+                mp.isMazeTrial = true;
+                if (supabase) {
+                    await supabase.from('Exonians').update({ base_stats: mp.baseStats }).eq('character_name', mp.name);
+                }
+                io.to(sid).emit('systemMessage', '🛡️ Maze Trial Entry used (1/1). Resets at 00:00 UTC.');
+                io.to(sid).emit('forceTeleport', { mapId: targetMapId, x: 0, z: 98 });
+            }
+        }
+    });
+
+    // ==========================================
+    // 🏰 GUILD SYSTEM ENGINE (Full 2D Replication)
+    // ==========================================
+    socket.on('requestGuildData', () => {
+        const p = onlinePlayers[socket.id];
+        if (!p) return;
+
+        if (p.guild_details && p.guild_details.name) {
+            const gName = p.guild_details.name;
+            if (!guilds[gName]) {
+                guilds[gName] = { name: gName, gold: p.guild_details.guildGold || 0, level: p.guild_details.level || 0, members: new Set([p.name]), roles: {}, applicants: [], hasBase: false };
+            }
+            const guild = guilds[gName];
+            guild.members.add(p.name);
+            if (!guild.roles) guild.roles = {};
+            if (!guild.roles[p.name]) guild.roles[p.name] = p.guild_details.role || 'Member';
+
+            const memberList = Array.from(guild.members).map(mName => {
+                const isOnline = Object.values(onlinePlayers).some(op => op.name === mName);
+                return { name: mName, role: guild.roles[mName] || 'Member', online: isOnline };
+            });
+
+            socket.emit('guildDataResponse', {
+                hasGuild: true,
+                details: p.guild_details,
+                guildGold: guild.gold,
+                guildLevel: guild.level || 0,
+                members: memberList,
+                applicants: guild.applicants || [],
+                hasBase: !!guild.hasBase,
+                myRole: guild.roles[p.name]
+            });
+        } else {
+            const openGuilds = Object.values(guilds).map(g => ({ name: g.name, members: g.members.size }));
+            socket.emit('guildDataResponse', { hasGuild: false, openGuilds: openGuilds });
+        }
+    });
+
+    socket.on('createGuild', async (guildName) => {
+        const p = onlinePlayers[socket.id];
+        if (!p || !guildName) return;
+        const gName = String(guildName).trim();
+        if (p.guild_details && p.guild_details.name) return socket.emit('systemMessage', "You are already in a guild!");
+        if ((p.gold || 0) < 1000000) return socket.emit('systemMessage', "You need 1,000,000 Gold to establish a Guild.");
+        if (guilds[gName]) return socket.emit('systemMessage', "A guild with this name already exists.");
+
+        p.gold -= 1000000;
+        p.guild_details = { name: gName, role: 'Master', guildGold: 0, level: 0 };
+        p.guild = gName;
+        guilds[gName] = { name: gName, gold: 0, level: 0, members: new Set([p.name]), roles: { [p.name]: 'Master' }, applicants: [], hasBase: false };
+
+        if (supabase) {
+            await supabase.from('Exonians').update({ gold: p.gold, guild_details: p.guild_details }).eq('character_name', p.name);
+        }
+
+        socket.emit('systemMessage', `🏰 Guild Established: ${gName}!`);
+        socket.emit('purchaseSuccess', { newGold: p.gold });
+        socket.emit('updateLocalGuildTag', gName);
+        io.to(p.instanceId).emit('playerTitleUpdated', { name: p.name, title: p.title, guild: gName });
+
+        saveGuildsToDB();
+        socket.emit('requestGuildUI_Refresh');
+    });
+
+    socket.on('joinGuild', async (guildName) => {
+        const p = onlinePlayers[socket.id];
+        if (!p || !guildName) return;
+        if (p.guild_details && p.guild_details.name) return socket.emit('systemMessage', "You are already in a guild!");
+
+        const guild = guilds[guildName];
+        if (!guild) return socket.emit('systemMessage', "That guild does not exist.");
+        const maxMembers = 20 + ((guild.level || 0) * 5);
+        if (guild.members.size >= maxMembers) return socket.emit('systemMessage', `Guild is full (${guild.members.size}/${maxMembers}).`);
+
+        guild.members.add(p.name);
+        if (!guild.roles) guild.roles = {};
+        guild.roles[p.name] = 'Member';
+
+        p.guild_details = { name: guildName, role: 'Member', guildGold: guild.gold, level: guild.level || 0 };
+        p.guild = guildName;
+
+        if (supabase) {
+            await supabase.from('Exonians').update({ guild_details: p.guild_details }).eq('character_name', p.name);
+        }
+
+        socket.emit('systemMessage', `🏰 You joined ${guildName}!`);
+        socket.emit('updateLocalGuildTag', guildName);
+        io.to(p.instanceId).emit('playerTitleUpdated', { name: p.name, title: p.title, guild: guildName });
+
+        saveGuildsToDB();
+        socket.emit('requestGuildUI_Refresh');
+    });
+
+    socket.on('guildApply', (guildName) => {
+        const p = onlinePlayers[socket.id];
+        if (!p || p.guild_details || !guilds[guildName]) return;
+        const guild = guilds[guildName];
+        if (!guild.applicants) guild.applicants = [];
+        if (guild.applicants.includes(p.name)) return socket.emit('systemMessage', "You have already applied.");
+
+        guild.applicants.push(p.name);
+        socket.emit('systemMessage', `Application sent to ${guildName}!`);
+        saveGuildsToDB();
+
+        guild.members.forEach(mName => {
+            const sid = Object.keys(onlinePlayers).find(k => onlinePlayers[k].name === mName);
+            if (sid) io.to(sid).emit('requestGuildUI_Refresh');
+        });
+    });
+
+    socket.on('guildInvitePlayer', (targetName) => {
+        const p = onlinePlayers[socket.id];
+        if (!p || !p.guild_details) return;
+        const guild = guilds[p.guild_details.name];
+        if (!guild || !hasGuildPerm(guild.roles[p.name], 'invite')) {
+            return socket.emit('systemMessage', "You do not have permission to invite players.");
+        }
+
+        const targetSid = Object.keys(onlinePlayers).find(sid => onlinePlayers[sid].name === targetName);
+        if (targetSid) {
+            io.to(targetSid).emit('guildInviteReceived', { from: p.name, guildName: p.guild_details.name });
+            socket.emit('systemMessage', `Invite sent to ${targetName}.`);
+        } else {
+            socket.emit('systemMessage', "Player is not online.");
+        }
+    });
+
+    socket.on('guildHandleApplicant', async ({ applicantName, accept }) => {
+        const p = onlinePlayers[socket.id];
+        if (!p || !p.guild_details) return;
+        const guild = guilds[p.guild_details.name];
+        if (!guild || !hasGuildPerm(guild.roles[p.name], 'manage_apps')) return;
+
+        guild.applicants = (guild.applicants || []).filter(a => a !== applicantName);
+
+        if (accept) {
+            const maxMembers = 20 + ((guild.level || 0) * 5);
+            if (guild.members.size >= maxMembers) return socket.emit('systemMessage', `Guild is full (${guild.members.size}/${maxMembers}).`);
+            guild.members.add(applicantName);
+            if (!guild.roles) guild.roles = {};
+            guild.roles[applicantName] = 'Member';
+
+            const targetSid = Object.keys(onlinePlayers).find(sid => onlinePlayers[sid].name === applicantName);
+            if (targetSid) {
+                const tp = onlinePlayers[targetSid];
+                tp.guild_details = { name: guild.name, role: 'Member', guildGold: guild.gold, level: guild.level || 0 };
+                tp.guild = guild.name;
+                if (supabase) {
+                    await supabase.from('Exonians').update({ guild_details: tp.guild_details }).eq('character_name', applicantName);
+                }
+                io.to(targetSid).emit('systemMessage', `You were accepted into ${guild.name}!`);
+                io.to(targetSid).emit('updateLocalGuildTag', guild.name);
+                io.to(tp.instanceId).emit('playerTitleUpdated', { name: tp.name, title: tp.title, guild: guild.name });
+            } else if (supabase) {
+                await supabase.from('Exonians').update({ guild_details: { name: guild.name, role: 'Member', guildGold: guild.gold, level: guild.level || 0 } }).eq('character_name', applicantName);
+            }
+            socket.emit('systemMessage', `${applicantName} joined the guild.`);
+        }
+
+        saveGuildsToDB();
+        guild.members.forEach(mName => {
+            const sid = Object.keys(onlinePlayers).find(k => onlinePlayers[k].name === mName);
+            if (sid) io.to(sid).emit('requestGuildUI_Refresh');
+        });
+    });
+
+    socket.on('guildUpdateRole', ({ targetName, newRole }) => {
+        const p = onlinePlayers[socket.id];
+        if (!p || !p.guild_details) return;
+        const guild = guilds[p.guild_details.name];
+        if (!guild || guild.roles[p.name] !== 'Master') return;
+        if (targetName === p.name) return socket.emit('systemMessage', "Cannot change your own role here.");
+
+        guild.roles[targetName] = newRole;
+        saveGuildsToDB();
+
+        guild.members.forEach(mName => {
+            const sid = Object.keys(onlinePlayers).find(k => onlinePlayers[k].name === mName);
+            if (sid) io.to(sid).emit('requestGuildUI_Refresh');
+        });
+    });
+
+    socket.on('guildKick', async (targetName) => {
+        const p = onlinePlayers[socket.id];
+        if (!p || !p.guild_details) return;
+        const guild = guilds[p.guild_details.name];
+        if (!guild || !hasGuildPerm(guild.roles[p.name], 'kick', guild.roles[targetName] || 'Member')) {
+            return socket.emit('systemMessage', "No permission to kick this player.");
+        }
+
+        guild.members.delete(targetName);
+        delete guild.roles[targetName];
+
+        if (supabase) {
+            await supabase.from('Exonians').update({ guild_details: null }).eq('character_name', targetName);
+        }
+
+        const targetSid = Object.keys(onlinePlayers).find(sid => onlinePlayers[sid].name === targetName);
+        if (targetSid) {
+            const tp = onlinePlayers[targetSid];
+            tp.guild_details = null;
+            tp.guild = null;
+            io.to(targetSid).emit('systemMessage', "You were kicked from the guild.");
+            io.to(targetSid).emit('updateLocalGuildTag', null);
+            io.to(targetSid).emit('requestGuildUI_Refresh');
+            io.to(tp.instanceId).emit('playerTitleUpdated', { name: tp.name, title: tp.title, guild: null });
+        }
+
+        socket.emit('systemMessage', `Kicked ${targetName} from the guild.`);
+        saveGuildsToDB();
+
+        guild.members.forEach(mName => {
+            const sid = Object.keys(onlinePlayers).find(k => onlinePlayers[k].name === mName);
+            if (sid) io.to(sid).emit('requestGuildUI_Refresh');
+        });
+    });
+
+    socket.on('guildLeave', async () => {
+        const p = onlinePlayers[socket.id];
+        if (!p || !p.guild_details) return;
+        const guild = guilds[p.guild_details.name];
+        if (!guild) return;
+
+        if (guild.roles[p.name] === 'Master') {
+            return socket.emit('systemMessage', "Masters cannot leave. Promote another player to Master first!");
+        }
+
+        guild.members.delete(p.name);
+        delete guild.roles[p.name];
+        p.guild_details = null;
+        p.guild = null;
+
+        if (supabase) {
+            await supabase.from('Exonians').update({ guild_details: null }).eq('character_name', p.name);
+        }
+
+        socket.emit('systemMessage', "You have left the guild.");
+        socket.emit('updateLocalGuildTag', null);
+        socket.emit('requestGuildUI_Refresh');
+        io.to(p.instanceId).emit('playerTitleUpdated', { name: p.name, title: p.title, guild: null });
+
+        saveGuildsToDB();
+
+        guild.members.forEach(mName => {
+            const sid = Object.keys(onlinePlayers).find(k => onlinePlayers[k].name === mName);
+            if (sid) io.to(sid).emit('requestGuildUI_Refresh');
+        });
+    });
+
+    socket.on('donateGuildGold', async (amount) => {
+        const p = onlinePlayers[socket.id];
+        if (!p || !p.guild_details) return;
+        const amt = parseInt(amount, 10);
+        if (isNaN(amt) || amt <= 0 || (p.gold || 0) < amt) {
+            return socket.emit('systemMessage', "Invalid donation amount or insufficient funds.");
+        }
+
+        const guild = guilds[p.guild_details.name];
+        if (!guild) return;
+
+        p.gold -= amt;
+        guild.gold = (guild.gold || 0) + amt;
+
+        if (supabase) {
+            await supabase.from('Exonians').update({ gold: p.gold }).eq('character_name', p.name);
+        }
+
+        socket.emit('purchaseSuccess', { newGold: p.gold });
+        socket.emit('systemMessage', `Donated ${amt.toLocaleString()} Gold to the Guild!`);
+        saveGuildsToDB();
+
+        guild.members.forEach(mName => {
+            const sid = Object.keys(onlinePlayers).find(k => onlinePlayers[k].name === mName);
+            if (sid) io.to(sid).emit('requestGuildUI_Refresh');
+        });
+    });
+
+    socket.on('requestBuyGuildBase', () => {
+        const p = onlinePlayers[socket.id];
+        if (!p || !p.guild_details) return;
+        const guild = guilds[p.guild_details.name];
+        if (!guild) return;
+
+        if (guild.roles[p.name] !== 'Master') return socket.emit('systemMessage', "Only the Guild Master can purchase the Base.");
+        if (guild.hasBase) return socket.emit('systemMessage', "Your guild already owns a base.");
+        if ((guild.gold || 0) < 1000000) return socket.emit('systemMessage', `Insufficient Funds! Guild needs ${(1000000 - (guild.gold || 0)).toLocaleString()} G more.`);
+
+        guild.gold -= 1000000;
+        guild.hasBase = true;
+        saveGuildsToDB();
+
+        socket.emit('systemMessage', "SUCCESS! Your Guild Base is now open!");
+        guild.members.forEach(mName => {
+            const sid = Object.keys(onlinePlayers).find(k => onlinePlayers[k].name === mName);
+            if (sid) io.to(sid).emit('requestGuildUI_Refresh');
+        });
+    });
+
+    socket.on('requestGuildLevelUp', () => {
+        const p = onlinePlayers[socket.id];
+        if (!p || !p.guild_details) return;
+        const guild = guilds[p.guild_details.name];
+        if (!guild) return;
+
+        if (guild.roles[p.name] !== 'Master') return socket.emit('systemMessage', "Only the Guild Master can level up the guild.");
+        guild.level = guild.level || 0;
+        if (guild.level >= 10) return socket.emit('systemMessage', "Your guild is already at max level (10).");
+        if ((guild.gold || 0) < 1000000) return socket.emit('systemMessage', `Guild needs ${(1000000 - (guild.gold || 0)).toLocaleString()} G in guild funds to level up.`);
+
+        guild.gold -= 1000000;
+        guild.level += 1;
+        saveGuildsToDB();
+
+        socket.emit('systemMessage', `🏰 Guild leveled up to Level ${guild.level}!`);
+        guild.members.forEach(mName => {
+            const sid = Object.keys(onlinePlayers).find(k => onlinePlayers[k].name === mName);
+            if (sid) io.to(sid).emit('requestGuildUI_Refresh');
+        });
+    });
+
     socket.on('disconnect', () => {
         console.log(`[Socket] Player disconnected: ${socket.id}`);
         const me = onlinePlayers[socket.id];
@@ -2903,6 +3535,7 @@ async function initBattlefieldEngine() {
 }
 
 // Start Neutral & Battlefield Engines on boot
+setTimeout(loadGuildsFromDB, 2000);
 setTimeout(checkNeutralBoss, 2500);
 setTimeout(initBattlefieldEngine, 3500);
 

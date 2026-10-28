@@ -244,69 +244,99 @@ export class Character3D {
         this._lastLevel = -1;
         this._lastName = '';
         this._lastTitle = '';
+        this._lastGuild = '';
+        this._lastRankIdx = -1;
     }
 
-    updateOverheadUI(name, level = 1, hp = 100, maxHp = 100, isSelf = false, title = null) {
+    updateOverheadUI(name, level = 1, hp = 100, maxHp = 100, isSelf = false, title = null, guildName = null) {
         if (!this.overheadGroup) this.ensureOverheadUI();
-        if (hp === this._lastHp && maxHp === this._lastMaxHp && level === this._lastLevel && name === this._lastName && title === this._lastTitle) return;
-        this._lastHp = hp;
-        this._lastMaxHp = maxHp;
-        this._lastLevel = level;
-        this._lastName = name;
-        this._lastTitle = title;
-
-        const ctx = this.overheadCanvas.getContext('2d');
-        ctx.clearRect(0, 0, 256, 72);
-
         const displayName = name || this.name || 'Hero';
 
         // 🏆 Top 3 Tavern Speedrun Champion Radiant Name Shine
         const topRanks = window.topTavernPlayers || [];
         const rankIdx = topRanks.indexOf(displayName);
+
+        if (hp === this._lastHp && maxHp === this._lastMaxHp && level === this._lastLevel && name === this._lastName && title === this._lastTitle && guildName === this._lastGuild && rankIdx === this._lastRankIdx) return;
+        this._lastHp = hp;
+        this._lastMaxHp = maxHp;
+        this._lastLevel = level;
+        this._lastName = name;
+        this._lastTitle = title;
+        this._lastGuild = guildName;
+        this._lastRankIdx = rankIdx;
+
+        const ctx = this.overheadCanvas.getContext('2d');
+        ctx.clearRect(0, 0, 256, 72);
+
         let nameColor = isSelf ? '#4ade80' : '#00e5ff';
         let glowColor = null;
+        let rankBadge = '';
         if (rankIdx === 0) {
             nameColor = '#ffffff';
             glowColor = '#FFD700'; // Gold Shine
+            rankBadge = '🥇 ';
         } else if (rankIdx === 1) {
             nameColor = '#ffffff';
             glowColor = '#E0E0E0'; // Silver Shine
+            rankBadge = '🥈 ';
         } else if (rankIdx === 2) {
             nameColor = '#ffffff';
             glowColor = '#CD7F32'; // Bronze Shine
+            rankBadge = '🥉 ';
         }
 
-        if (title) {
-            // Line 1: <TITLE> with radiant tier outline
-            const tUpper = String(title).toUpperCase();
-            let titleColor = '#ffd700'; // Default Floor Conqueror Gold
-            if (tUpper.includes('FLOOR MASTER')) titleColor = '#ff4444'; // Red
-            else if (tUpper.includes('FLOOR DOMINATOR')) titleColor = '#e040fb'; // Purple
-            else if (!tUpper.includes('FLOOR CONQUEROR')) titleColor = '#00e5ff'; // Special title Cyan
-
-            ctx.font = 'bold 12px "Segoe UI", Arial, sans-serif';
+        const hasHeader = !!(title || guildName);
+        if (hasHeader) {
+            ctx.font = 'bold 11px "Segoe UI", Arial, sans-serif';
             ctx.textAlign = 'center';
-            ctx.fillStyle = '#000000';
-            ctx.fillText(`<${title}>`, 129, 15);
-            ctx.fillText(`<${title}>`, 127, 13);
-            ctx.fillText(`<${title}>`, 128, 15);
-            ctx.fillText(`<${title}>`, 128, 13);
-            ctx.fillStyle = titleColor;
-            ctx.fillText(`<${title}>`, 128, 14);
 
-            // Line 2: Lv.X Name
-            ctx.font = 'bold 16px "Segoe UI", Arial, sans-serif';
+            let line1Text = '';
+            if (title && guildName) line1Text = `<${title}> [${guildName}]`;
+            else if (title) line1Text = `<${title}>`;
+            else line1Text = `[${guildName}]`;
+
+            let titleColor = '#ffd700';
+            const tUpper = String(title || '').toUpperCase();
+            if (tUpper.includes('FLOOR MASTER')) titleColor = '#ff4444';
+            else if (tUpper.includes('FLOOR DOMINATOR')) titleColor = '#e040fb';
+            else if (!title && guildName) titleColor = '#4CAF50'; // Authentic 2D Guild Green
+
+            // Dark outline
             ctx.fillStyle = '#000000';
-            ctx.fillText(`Lv.${level} ${displayName}`, 129, 34);
-            ctx.fillText(`Lv.${level} ${displayName}`, 127, 32);
+            ctx.fillText(line1Text, 129, 15);
+            ctx.fillText(line1Text, 127, 13);
+            ctx.fillText(line1Text, 128, 15);
+            ctx.fillText(line1Text, 128, 13);
+            ctx.fillStyle = titleColor;
+            ctx.fillText(line1Text, 128, 14);
+
+            // Line 2: Name
+            ctx.textAlign = 'center';
             if (glowColor) {
                 ctx.save();
-                ctx.shadowColor = glowColor;
-                ctx.shadowBlur = 10;
-                ctx.fillStyle = nameColor;
-                ctx.fillText(`Lv.${level} ${displayName}`, 128, 33);
+                const grad = ctx.createRadialGradient(128, 33, 4, 128, 33, 85);
+                grad.addColorStop(0, glowColor === '#FFD700' ? 'rgba(255, 215, 0, 0.45)' : (glowColor === '#E0E0E0' ? 'rgba(224, 224, 224, 0.45)' : 'rgba(205, 127, 50, 0.45)'));
+                grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+                ctx.fillStyle = grad;
+                ctx.fillRect(10, 18, 236, 28);
+
+                ctx.font = '900 16px "Segoe UI", Arial, sans-serif';
+                ctx.lineWidth = 6;
+                ctx.strokeStyle = glowColor;
+                ctx.strokeText(`${rankBadge}Lv.${level} ${displayName}`, 128, 33);
+
+                ctx.lineWidth = 2.5;
+                ctx.strokeStyle = '#ffffff';
+                ctx.strokeText(`${rankBadge}Lv.${level} ${displayName}`, 128, 33);
+
+                ctx.fillStyle = glowColor;
+                ctx.fillText(`${rankBadge}Lv.${level} ${displayName}`, 128, 33);
                 ctx.restore();
             } else {
+                ctx.font = 'bold 16px "Segoe UI", Arial, sans-serif';
+                ctx.fillStyle = '#000000';
+                ctx.fillText(`Lv.${level} ${displayName}`, 129, 34);
+                ctx.fillText(`Lv.${level} ${displayName}`, 127, 32);
                 ctx.fillStyle = nameColor;
                 ctx.fillText(`Lv.${level} ${displayName}`, 128, 33);
             }
@@ -330,19 +360,32 @@ export class Character3D {
             }
         } else {
             // Line 1: Lv.X Name
-            ctx.font = 'bold 18px "Segoe UI", Arial, sans-serif';
             ctx.textAlign = 'center';
-            ctx.fillStyle = '#000000';
-            ctx.fillText(`Lv.${level} ${displayName}`, 129, 23);
-            ctx.fillText(`Lv.${level} ${displayName}`, 127, 21);
             if (glowColor) {
                 ctx.save();
-                ctx.shadowColor = glowColor;
-                ctx.shadowBlur = 12;
-                ctx.fillStyle = nameColor;
-                ctx.fillText(`Lv.${level} ${displayName}`, 128, 22);
+                const grad = ctx.createRadialGradient(128, 22, 4, 128, 22, 85);
+                grad.addColorStop(0, glowColor === '#FFD700' ? 'rgba(255, 215, 0, 0.45)' : (glowColor === '#E0E0E0' ? 'rgba(224, 224, 224, 0.45)' : 'rgba(205, 127, 50, 0.45)'));
+                grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+                ctx.fillStyle = grad;
+                ctx.fillRect(10, 6, 236, 28);
+
+                ctx.font = '900 17px "Segoe UI", Arial, sans-serif';
+                ctx.lineWidth = 6;
+                ctx.strokeStyle = glowColor;
+                ctx.strokeText(`${rankBadge}Lv.${level} ${displayName}`, 128, 22);
+
+                ctx.lineWidth = 2.5;
+                ctx.strokeStyle = '#ffffff';
+                ctx.strokeText(`${rankBadge}Lv.${level} ${displayName}`, 128, 22);
+
+                ctx.fillStyle = glowColor;
+                ctx.fillText(`${rankBadge}Lv.${level} ${displayName}`, 128, 22);
                 ctx.restore();
             } else {
+                ctx.font = 'bold 18px "Segoe UI", Arial, sans-serif';
+                ctx.fillStyle = '#000000';
+                ctx.fillText(`Lv.${level} ${displayName}`, 129, 23);
+                ctx.fillText(`Lv.${level} ${displayName}`, 127, 21);
                 ctx.fillStyle = nameColor;
                 ctx.fillText(`Lv.${level} ${displayName}`, 128, 22);
             }

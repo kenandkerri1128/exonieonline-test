@@ -5,7 +5,7 @@
 // ============================================================================
 import * as THREE from 'three';
 import { Character3D, chamferBox } from './character3d.js';
-import { MONSTER_DATABASE } from './game_data.js';
+import { MONSTER_DATABASE, EVENT_CAVE_ACTIVE } from './game_data.js';
 
 export const MAP_THEMES = {
     town:           { name: 'Town of Exonie',            type: 'town',    sky: 0x0f2036, fog: 0x0f2036, ground: 0x26332c, wall: 0x78909c, accent: 0x00e5ff },
@@ -627,7 +627,7 @@ export class World3D {
 
         if (mapName === 'town') {
             this.buildTown(theme);
-            if (targetX !== undefined && targetY !== undefined && (targetX !== 0 || targetY !== 0)) {
+            if (targetX !== undefined && targetY !== undefined) {
                 spawn.set(targetX, 0, targetY);
             } else {
                 spawn.set(0, 0, 22);
@@ -921,7 +921,11 @@ export class World3D {
         this.createPortal('BATTLE FIELD', 'Forest Fortress Co-Op Raid', 'battlefield', 0, 126, 0xff1744);
         this.createPortal('NEUTRAL ZONE', 'Wild Woods (PvP & World Boss)', 'neutralzone', 52, 122, 0xffea00);
         this.buildHauntedManorHouse(-78, -86);
-        this.createPortal('EVENT CAVE', 'Minotaur Labyrinth', 'event_cave', -96, -12, 0xff6d00);
+        if (EVENT_CAVE_ACTIVE) {
+            this.createPortal('EVENT CAVE', 'Minotaur Labyrinth', 'event_cave', -96, -12, 0xff6d00);
+        } else {
+            this.createPortal('EVENT CAVE [CLOSED]', 'No Active Event', 'event_cave', -96, -12, 0x546e7a);
+        }
     }
 
     buildLeaderboardMonument(x, z) {
@@ -2001,7 +2005,7 @@ export class World3D {
         // 5. AUTHENTIC 2D MAZE PORTALS & FLOOR-LOCATED DUNGEONS
         // Floor 1 has an exit doorway back out of the Spire Tower into Town; Floors 2-10 have NO town portal (just like 2D!)
         if (floorNum === 1) {
-            this.createPortal('EXIT SPIRE TO TOWN', 'Step Outside Spire Tower', 'town', 18, 112, 0x00e676);
+            this.createPortal('EXIT SPIRE TO TOWN', 'Step Outside Spire Tower', 'town', 18, 112, 0x00e676, 0, -108);
         }
         if (floorNum > 1) {
             this.createPortal(`FLOOR ${floorNum - 1}`, 'Descend Spire Maze', `floor${floorNum - 1}`, -18, 112, 0x29b6f6);
@@ -2230,8 +2234,10 @@ export class World3D {
             this.colliders.push({ x: bx, z: bz, r: 2.2 });
         });
 
-        // Return to Town Portal at South Forest Gate (0, 92)
-        this.createPortal('RETURN TO TOWN', 'Exit the Woods', 'town', 0, 92, 0x00e676);
+        // Return to Town Portal at South Forest Gate (Exits outside the respective portal in Town!)
+        const woodsExitX = mapName === 'neutralzone' ? 52 : 0;
+        const woodsExitZ = mapName === 'neutralzone' ? 114 : 118;
+        this.createPortal('RETURN TO TOWN', 'Exit the Woods', 'town', 0, 92, 0x00e676, woodsExitX, woodsExitZ);
 
         if (mapName === 'neutralzone') {
             // ================================================================
@@ -2382,35 +2388,23 @@ export class World3D {
     }
 
     buildSpecialRealm(mapName, theme, monsterSpawns) {
-        const bgMap = {
-            home: 'home.png',
-            guildbase: 'guildbase.png',
-            trainingtavern: 'trainingtavern.png',
-            hauntedhouse: 'hauntedhouse.png'
-        };
         const isCozyRoom = (mapName === 'home');
         const roomBound = isCozyRoom ? 24.0 : 34.0;
         this.mapBound = roomBound - 1.5;
 
-        if (bgMap[mapName]) {
-            const bgTex = this.get2DBackgroundTexture(bgMap[mapName]);
-            const artPlane = new THREE.Mesh(
-                new THREE.PlaneGeometry(roomBound * 2, roomBound * 2),
-                new THREE.MeshStandardMaterial({ map: bgTex, roughness: 0.58, metalness: 0.15 })
-            );
-            artPlane.rotation.x = -Math.PI / 2;
-            artPlane.position.y = 0.02;
-            artPlane.receiveShadow = true;
-            this.worldGroup.add(artPlane);
+        // HIGH-DETAIL PROCEDURAL THEMED 3D INDOOR FLOORS
+        const floorMesh = this.createThemedIndoorFloor(mapName, roomBound);
+        if (floorMesh) {
+            this.worldGroup.add(floorMesh);
         }
 
         this.buildEnclosedPerimeterWalls(roomBound, isCozyRoom ? 8.5 : 10.5, theme);
 
         let exitSpawnX = 0, exitSpawnZ = 22;
-        if (mapName === 'home') { exitSpawnX = -66; exitSpawnZ = 56; }
-        else if (mapName === 'guildbase') { exitSpawnX = 78; exitSpawnZ = -22; }
-        else if (mapName === 'trainingtavern') { exitSpawnX = 76; exitSpawnZ = -74; }
-        else if (mapName === 'hauntedhouse') { exitSpawnX = -78; exitSpawnZ = -74; }
+        if (mapName === 'home') { exitSpawnX = -70; exitSpawnZ = 52; }
+        else if (mapName === 'guildbase') { exitSpawnX = 80; exitSpawnZ = -22; }
+        else if (mapName === 'trainingtavern') { exitSpawnX = 70; exitSpawnZ = -82; }
+        else if (mapName === 'hauntedhouse') { exitSpawnX = -72; exitSpawnZ = -80; }
 
         this.createPortal('RETURN TO TOWN', 'Safe Haven', 'town', 0, isCozyRoom ? 19 : 27, 0x00e676, exitSpawnX, exitSpawnZ);
 
@@ -2934,6 +2928,189 @@ export class World3D {
 
         this.nzAltarTex.needsUpdate = true;
     }
-}
 
-window.World3D = World3D;
+    createThemedIndoorFloor(mapName, roomBound) {
+        const canvas = document.createElement('canvas');
+        canvas.width = 1024;
+        canvas.height = 1024;
+        const ctx = canvas.getContext('2d');
+
+        if (mapName === 'home') {
+            ctx.fillStyle = '#6d4c41';
+            ctx.fillRect(0, 0, 1024, 1024);
+
+            const plankW = 128;
+            const plankH = 32;
+            const shades = ['#795548', '#6d4c41', '#8d6e63', '#5d4037'];
+            for (let y = 0; y < 1024; y += plankH) {
+                const row = Math.floor(y / plankH);
+                const offset = (row % 2) * (plankW / 2);
+                for (let x = -offset; x < 1024; x += plankW) {
+                    ctx.fillStyle = shades[(Math.abs(row * 7 + Math.floor(x / plankW))) % shades.length];
+                    ctx.fillRect(x + 1, y + 1, plankW - 2, plankH - 2);
+                    ctx.fillStyle = 'rgba(0,0,0,0.18)';
+                    ctx.fillRect(x, y + plankH - 1, plankW, 1);
+                    ctx.fillRect(x + plankW - 1, y, 1, plankH);
+                }
+            }
+
+            const cx = 512, cy = 512;
+            const grad = ctx.createRadialGradient(cx, cy, 50, cx, cy, 260);
+            grad.addColorStop(0, '#c62828');
+            grad.addColorStop(0.7, '#8e0000');
+            grad.addColorStop(0.88, '#d4af37');
+            grad.addColorStop(1, '#5d4037');
+
+            ctx.save();
+            ctx.beginPath();
+            ctx.ellipse(cx, cy, 250, 200, 0, 0, Math.PI * 2);
+            ctx.fillStyle = grad;
+            ctx.fill();
+            ctx.lineWidth = 6;
+            ctx.strokeStyle = '#ffd700';
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.ellipse(cx, cy, 180, 140, 0, 0, Math.PI * 2);
+            ctx.lineWidth = 3;
+            ctx.strokeStyle = 'rgba(255, 215, 0, 0.6)';
+            ctx.stroke();
+            ctx.restore();
+
+        } else if (mapName === 'guildbase') {
+            ctx.fillStyle = '#eceff1';
+            ctx.fillRect(0, 0, 1024, 1024);
+
+            const tileSize = 64;
+            for (let y = 0; y < 1024; y += tileSize) {
+                for (let x = 0; x < 1024; x += tileSize) {
+                    const isAlt = ((x / tileSize) + (y / tileSize)) % 2 === 0;
+                    ctx.fillStyle = isAlt ? '#ffffff' : '#e0e0e0';
+                    ctx.fillRect(x + 1, y + 1, tileSize - 2, tileSize - 2);
+                    ctx.strokeStyle = '#b0bec5';
+                    ctx.lineWidth = 1;
+                    ctx.strokeRect(x, y, tileSize, tileSize);
+                }
+            }
+
+            ctx.strokeStyle = '#0d47a1';
+            ctx.lineWidth = 24;
+            ctx.strokeRect(120, 120, 784, 784);
+            ctx.strokeStyle = '#ffd700';
+            ctx.lineWidth = 6;
+            ctx.strokeRect(132, 132, 760, 760);
+
+            const cx = 512, cy = 512;
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(cx, cy, 180, 0, Math.PI * 2);
+            ctx.fillStyle = '#0d47a1';
+            ctx.fill();
+            ctx.lineWidth = 8;
+            ctx.strokeStyle = '#ffd700';
+            ctx.stroke();
+
+            ctx.fillStyle = '#ffd700';
+            ctx.beginPath();
+            for (let i = 0; i < 8; i++) {
+                const angle = (i * Math.PI) / 4;
+                const r = i % 2 === 0 ? 150 : 65;
+                const px = cx + Math.cos(angle) * r;
+                const py = cy + Math.sin(angle) * r;
+                if (i === 0) ctx.moveTo(px, py);
+                else ctx.lineTo(px, py);
+            }
+            ctx.closePath();
+            ctx.fill();
+
+            ctx.beginPath();
+            ctx.arc(cx, cy, 45, 0, Math.PI * 2);
+            ctx.fillStyle = '#ffffff';
+            ctx.fill();
+            ctx.lineWidth = 4;
+            ctx.strokeStyle = '#0d47a1';
+            ctx.stroke();
+            ctx.restore();
+
+        } else if (mapName === 'trainingtavern') {
+            ctx.fillStyle = '#3e2723';
+            ctx.fillRect(0, 0, 1024, 1024);
+
+            const plankH = 48;
+            const shades = ['#4e342e', '#3e2723', '#2e1c14', '#5d4037'];
+            for (let y = 0; y < 1024; y += plankH) {
+                const row = Math.floor(y / plankH);
+                ctx.fillStyle = shades[row % shades.length];
+                ctx.fillRect(0, y + 2, 1024, plankH - 4);
+                ctx.fillStyle = '#1b0000';
+                ctx.fillRect(0, y + plankH - 2, 1024, 2);
+
+                for (let x = 64; x < 1024; x += 128) {
+                    ctx.fillStyle = '#212121';
+                    ctx.beginPath();
+                    ctx.arc(x, y + 10, 3, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            }
+
+            ctx.strokeStyle = '#78909c';
+            ctx.lineWidth = 18;
+            ctx.strokeRect(140, 140, 744, 744);
+            ctx.strokeStyle = '#ffb300';
+            ctx.lineWidth = 4;
+            ctx.strokeRect(150, 150, 724, 724);
+
+        } else if (mapName === 'hauntedhouse') {
+            ctx.fillStyle = '#121214';
+            ctx.fillRect(0, 0, 1024, 1024);
+
+            const tileSize = 80;
+            for (let y = 0; y < 1024; y += tileSize) {
+                for (let x = 0; x < 1024; x += tileSize) {
+                    const row = Math.floor(y / tileSize);
+                    const col = Math.floor(x / tileSize);
+                    const shade = (row + col) % 3 === 0 ? '#1e1b2e' : ((row + col) % 3 === 1 ? '#181524' : '#14121c');
+                    ctx.fillStyle = shade;
+                    ctx.fillRect(x + 2, y + 2, tileSize - 4, tileSize - 4);
+
+                    ctx.strokeStyle = (row * 3 + col) % 2 === 0 ? '#4a148c' : '#261238';
+                    ctx.lineWidth = 2;
+                    ctx.strokeRect(x, y, tileSize, tileSize);
+                }
+            }
+
+            const cx = 512, cy = 512;
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(cx, cy, 220, 0, Math.PI * 2);
+            ctx.strokeStyle = 'rgba(156, 39, 176, 0.45)';
+            ctx.lineWidth = 6;
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.arc(cx, cy, 140, 0, Math.PI * 2);
+            ctx.strokeStyle = 'rgba(171, 71, 188, 0.35)';
+            ctx.lineWidth = 3;
+            ctx.stroke();
+            ctx.restore();
+        }
+
+        const floorTex = new THREE.CanvasTexture(canvas);
+        floorTex.wrapS = THREE.ClampToEdgeWrapping;
+        floorTex.wrapT = THREE.ClampToEdgeWrapping;
+
+        const mesh = new THREE.Mesh(
+            new THREE.PlaneGeometry(roomBound * 2, roomBound * 2),
+            new THREE.MeshStandardMaterial({
+                map: floorTex,
+                roughness: mapName === 'guildbase' ? 0.35 : 0.65,
+                metalness: mapName === 'guildbase' ? 0.25 : 0.10
+            })
+        );
+        mesh.rotation.x = -Math.PI / 2;
+        mesh.position.y = 0.02;
+        mesh.receiveShadow = true;
+        return mesh;
+    }
+
+}

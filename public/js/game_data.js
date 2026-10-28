@@ -584,6 +584,7 @@ export function generateLoot(mob) {
 
 // 👻 HAUNTED HOUSE LOOT GENERATOR (Wraith King Boss — Drops Power Gems!)
 export function generateHauntedLoot(level) {
+    if (Math.random() < 0.50) return []; // 50% No Drop per 2D rules
     const lvl = level || 25;
     const drops = [];
     const roll = Math.random();
@@ -764,3 +765,53 @@ export const CASH_SHOP_ITEMS = [
     { id: 'name_change', name: 'Name Change Ticket', type: 'ticket', sprite: 'ticket_name', rarity: 'Unique', color: '#38bdf8', desc: 'Permanently changes your character display name in Town.' },
     { id: 'edit_char', name: 'Appearance Reroll Ticket', type: 'ticket', sprite: 'ticket_char', rarity: 'Unique', color: '#38bdf8', desc: 'Re-open character styling to modify hair and skin appearance.' }
 ];
+
+// Event Cave Status (set to true when a special event is running)
+export const EVENT_CAVE_ACTIVE = false;
+
+
+// ==========================================
+// ⚔️ BATTLEFIELD RAID BOSS LOOT (2D EXONIE REPLICATED)
+// 90% null, 9% Huge Nugget (500,000 G), 1% Lv 150 Divine Gear
+// ==========================================
+export function generateBattlefieldLoot() {
+    const roll = Math.random();
+    if (roll < 0.90) return null; // 90% No Drop
+
+    // 9% Huge Nugget (500,000 Gold)
+    if (roll < 0.99) {
+        return {
+            id: `nugget_${Date.now()}_${Math.random()}`,
+            name: 'Huge Nugget',
+            type: 'material',
+            rarity: 'Divine',
+            level: 150,
+            color: '#ffea00',
+            sellPrice: 500000,
+            sellValue: 500000,
+            desc: 'A colossal solid gold nugget from the battlefield raid boss. Worth 500,000 Gold.',
+            quantity: 1
+        };
+    }
+
+    // 1% Level 150 Divine Equipment
+    const arch = WEAPON_ARCHETYPES[Math.floor(Math.random() * WEAPON_ARCHETYPES.length)];
+    const isHalfStat = ['gun', 'pendant'].includes(arch.kind);
+    const fixedVal = Math.floor(((getBaseStat(150) + 12) * 2) / (isHalfStat ? 2 : 1));
+
+    return {
+        id: `divine_wpn_${Date.now()}_${Math.random()}`,
+        name: `Divine ${arch.label}`,
+        type: 'weapon',
+        weaponType: arch.kind,
+        sprite: arch.sprite,
+        level: 150,
+        rarity: 'Divine',
+        color: '#ffea00',
+        fixedStat: { [arch.statKey]: fixedVal },
+        randomStats: generateRandomStats(150, 4),
+        sellPrice: 200000,
+        sellValue: 200000,
+        desc: 'Level 150 Divine Raid Trophy weapon of extraordinary power.'
+    };
+}

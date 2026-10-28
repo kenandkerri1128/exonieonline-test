@@ -738,6 +738,298 @@ export class UIManager {
 
         // Update Skill Cooldown Buttons Visuals
         this.updateSkillCooldowns();
+
+        // Update Persistent Daily Quest Tracker on HUD Right Side
+        this.updateQuestTracker(player.dailyMission);
+    }
+
+
+    // ==========================================
+    // 🗺️ MAZE GUIDE & FAST TRAVEL (2D REPLICATED)
+    // ==========================================
+    openMazeGuideModal() {
+        const game = window.game;
+        if (game && game.party && game.party.members && game.party.members.length > 1) {
+            if (game.party.leader !== game.player?.name && game.party.leaderId !== game.socket?.id) {
+                this.showToast("⚠️ Only the Party Leader can use the Maze Guide.");
+                return;
+            }
+        }
+
+        let modal = document.getElementById('maze-guide-modal');
+        if (!modal) {
+            modal = document.createElement('div');
+            modal.id = 'maze-guide-modal';
+            modal.className = 'game-modal-dialog';
+            modal.style.cssText = 'display:none; position:fixed; top:50%; left:50%; transform:translate(-50%, -50%); background:rgba(15,23,42,0.95); border:2px solid #00e5ff; padding:22px; z-index:99999; width:340px; border-radius:12px; box-shadow:0 0 25px rgba(0,229,255,0.4); color:white; text-align:center; backdrop-filter:blur(8px);';
+            document.body.appendChild(modal);
+        }
+
+        let html = '<h2 style="margin-top:0; color:#00e5ff; font-size:1.3rem;">🏰 Maze Guide</h2>';
+        html += '<p style="font-size:12px; color:#94a3b8; margin-bottom:18px;">Select your journey into the Spire Tower.</p>';
+        html += '<button class="btn" style="width:100%; margin-bottom:10px; padding:12px; font-weight:800; font-size:14px; background:#22c55e; color:#fff; border:none; border-radius:6px; cursor:pointer;" onclick="window.enterNormalFloor(1)">Enter Floor 1 (Slime Sanctum)</button>';
+        html += '<button class="btn" style="width:100%; margin-bottom:10px; padding:12px; font-weight:800; font-size:14px; background:#3b82f6; color:#fff; border:none; border-radius:6px; cursor:pointer;" onclick="window.openFastTravelUI()">🚀 Fast Travel (Conquered Floors)</button>';
+        html += '<button class="btn" style="width:100%; margin-bottom:16px; padding:12px; font-weight:800; font-size:14px; background:#9c27b0; color:#fff; border:none; border-radius:6px; cursor:pointer; box-shadow:0 0 12px rgba(156,39,176,0.5);" onclick="window.openMazeTrialsUI()">⚔️ Maze Trials (Floors 1 - 7)</button>';
+        html += '<button class="btn" style="background:#ef4444; width:100%; padding:9px; font-weight:bold; color:#fff; border:none; border-radius:6px; cursor:pointer;" onclick="document.getElementById(\'maze-guide-modal\').style.display=\'none\'">Close</button>';
+
+        modal.innerHTML = html;
+        modal.style.display = 'block';
+    }
+
+    openFastTravelUI() {
+        const game = window.game;
+        let maxFloor = 0;
+        let titleString = String(game?.player?.title || "").toUpperCase();
+        const match = titleString.match(/(?:FLOOR CONQUEROR|FLOOR DOMINATOR|FLOOR MASTER)\s+(\d+)/);
+        if (match) maxFloor = parseInt(match[1], 10);
+
+        let modal = document.getElementById('maze-guide-modal');
+        if (!modal) return;
+
+        let html = '<h2 style="margin-top:0; color:#22c55e; font-size:1.3rem;">🚀 Fast Travel</h2>';
+        html += '<p style="font-size:12px; color:#94a3b8; margin-bottom:12px;">Select a conquered floor to fast-travel.</p>';
+
+        if (maxFloor < 1) {
+            html += '<p style="color:#ef4444; font-size:13px; margin:20px 0;">You have not conquered any floors yet!<br><span style="color:#94a3b8; font-size:11px;">Defeat a Floor Boss to unlock Fast Travel.</span></p>';
+        } else {
+            html += '<div style="max-height:240px; overflow-y:auto; margin-bottom:15px; padding-right:5px;">';
+            for (let i = 1; i <= maxFloor; i++) {
+                html += `<button class="btn" style="width:100%; margin-bottom:6px; padding:10px; background:#1e293b; border:1px solid #334155; color:#fff; border-radius:6px; font-weight:bold; cursor:pointer; text-align:left;" onclick="window.requestMazeTeleport(${i})">🏛️ Floor ${i}</button>`;
+            }
+            html += '</div>';
+        }
+
+        html += '<button class="btn" style="background:#ef4444; width:100%; padding:9px; font-weight:bold; color:#fff; border:none; border-radius:6px; cursor:pointer;" onclick="window.game?.ui?.openMazeGuideModal()">Back</button>';
+        modal.innerHTML = html;
+        modal.style.display = 'block';
+    }
+
+    openMazeTrialsUI() {
+        let modal = document.getElementById('maze-guide-modal');
+        if (!modal) return;
+
+        let html = '<h2 style="margin-top:0; color:#e040fb; font-size:1.3rem;">⚔️ Maze Trials</h2>';
+        html += '<p style="font-size:12px; color:#94a3b8; margin-bottom:12px;">Private Boss Instance • 1 Entry per day (00:00 UTC)</p>';
+        html += '<div style="max-height:240px; overflow-y:auto; margin-bottom:15px; padding-right:5px;">';
+        for (let i = 1; i <= 7; i++) {
+            html += `<button class="btn" style="width:100%; margin-bottom:6px; padding:10px; background:linear-gradient(90deg, #6a1b9a, #4a148c); border:1px solid #ba68c8; color:#fff; border-radius:6px; font-weight:bold; cursor:pointer; text-align:left; display:flex; justify-content:space-between;" onclick="window.requestMazeTrial(${i})"><span>⚔️ Trial: Floor ${i}</span><span style="color:#ffd700; font-size:11px;">1/1 Today</span></button>`;
+        }
+        html += '</div>';
+        html += '<button class="btn" style="background:#ef4444; width:100%; padding:9px; font-weight:bold; color:#fff; border:none; border-radius:6px; cursor:pointer;" onclick="window.game?.ui?.openMazeGuideModal()">Back</button>';
+        modal.innerHTML = html;
+        modal.style.display = 'block';
+    }
+
+    // ==========================================
+    // 🏰 GUILD SYSTEM UI (2D REPLICATED)
+    // ==========================================
+    toggleGuildModal() {
+        let modal = document.getElementById('guild-modal');
+        if (!modal) {
+            modal = document.createElement('div');
+            modal.id = 'guild-modal';
+            modal.className = 'game-modal-dialog';
+            modal.style.cssText = 'display:none; position:fixed; top:50%; left:50%; transform:translate(-50%, -50%); background:rgba(15,23,42,0.96); border:2px solid #4CAF50; padding:20px; z-index:99999; width:360px; border-radius:12px; box-shadow:0 0 25px rgba(76,175,80,0.4); color:white; text-align:center; backdrop-filter:blur(8px);';
+            document.body.appendChild(modal);
+        }
+
+        if (modal.style.display === 'block') {
+            modal.style.display = 'none';
+        } else {
+            modal.style.display = 'block';
+            modal.innerHTML = '<h3 style="color:#4CAF50; margin-top:20px;">Loading Guild Data...</h3>';
+            if (window.game?.socket) {
+                window.game.socket.emit('requestGuildData');
+            }
+        }
+    }
+
+    isGuildModalOpen() {
+        const modal = document.getElementById('guild-modal');
+        return modal && modal.style.display === 'block';
+    }
+
+    renderGuildModal(data) {
+        const modal = document.getElementById('guild-modal');
+        if (!modal) return;
+        const game = window.game;
+
+        if (data.hasGuild) {
+            const d = data.details || {};
+            const myRole = data.myRole || 'Member';
+            const roleLevel = { 'Master': 4, 'Vice Master': 3, 'Captain': 2, 'Member': 1 };
+            const currentLevel = data.guildLevel || 0;
+            const statBoost = currentLevel * 2;
+            const expBoost = currentLevel * 2;
+            const maxMembers = 20 + (currentLevel * 5);
+
+            let html = `
+                <div style="cursor:grab; padding:10px; background:#1e293b; margin:-20px -20px 15px -20px; border-radius:10px 10px 0 0; border-bottom:2px solid #4CAF50;">
+                    <h2 style="margin:0; color:#4CAF50; font-size:1.15rem; display:flex; justify-content:space-between; align-items:center;">
+                        <span>🏰 ${d.name || 'Guild'} <span style="font-size:13px; color:#ffd700;">(Lv. ${currentLevel})</span></span>
+                        <span style="font-size:12px; color:#94a3b8;">${(data.members || []).length}/${maxMembers}</span>
+                    </h2>
+                </div>
+
+                <div style="display:flex; justify-content:space-between; margin:8px 0; font-size:13px; color:#94a3b8;">
+                    <span>Role: <strong style="color:#fff;">${myRole}</strong></span>
+                    <span>Funds: <strong style="color:#ffd700;">${(data.guildGold || 0).toLocaleString()} G</strong></span>
+                </div>
+
+                <div style="display:flex; justify-content:space-around; margin-bottom:10px; font-size:12px; background:#0f172a; padding:8px; border-radius:6px; border:1px solid #334155;">
+                    <span>🛡️ Stats: <strong style="color:#4CAF50;">+${statBoost}%</strong></span>
+                    <span>✨ EXP: <strong style="color:#38bdf8;">+${expBoost}%</strong></span>
+                </div>
+            `;
+
+            // Master level up
+            if (myRole === 'Master') {
+                if (currentLevel < 10) {
+                    html += `<button onclick="window.game?.socket?.emit('requestGuildLevelUp')" style="width:100%; padding:8px; margin-bottom:10px; background:linear-gradient(45deg, #f59e0b, #ef4444); color:white; border:none; border-radius:6px; font-weight:800; cursor:pointer;">⬆️ Level Up Guild (1,000,000 G)</button>`;
+                } else {
+                    html += `<div style="text-align:center; color:#ffd700; margin-bottom:10px; font-weight:bold; font-size:12px;">🌟 GUILD MAX LEVEL REACHED (10) 🌟</div>`;
+                }
+            }
+
+            // Member list
+            html += `<div style="background:#0f172a; padding:10px; border:1px solid #334155; border-radius:6px; height:120px; overflow-y:auto; margin-bottom:10px; text-align:left;">`;
+            (data.members || []).forEach(m => {
+                let actionHtml = `<span style="font-size:11px; color:#94a3b8;">${m.role}</span>`;
+                if (myRole === 'Master' && m.name !== game?.player?.name) {
+                    actionHtml = `<select onchange="window.game?.socket?.emit('guildUpdateRole', {targetName:'${m.name}', newRole:this.value})" style="background:#1e293b; color:#fff; font-size:10px; padding:2px; border:1px solid #475569; border-radius:4px; outline:none; cursor:pointer;">
+                        <option value="Member" ${m.role==='Member'?'selected':''}>Member</option>
+                        <option value="Captain" ${m.role==='Captain'?'selected':''}>Captain</option>
+                        <option value="Vice Master" ${m.role==='Vice Master'?'selected':''}>Vice Master</option>
+                    </select>`;
+                }
+
+                const targetLvl = roleLevel[m.role] || 1;
+                const canKick = (myRole === 'Master' && m.name !== game?.player?.name) || (myRole === 'Vice Master' && targetLvl <= 2);
+
+                html += `<div style="display:flex; justify-content:space-between; align-items:center; padding:5px 0; border-bottom:1px solid #1e293b;">
+                    <span style="font-size:12px; color:${m.online ? '#fff' : '#64748b'};">
+                        ${m.online ? '<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#4CAF50;margin-right:4px;"></span>' : '<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#ef4444;margin-right:4px;"></span>'} ${m.name}
+                    </span>
+                    <div style="display:flex; gap:5px; align-items:center;">
+                        ${actionHtml}
+                        ${canKick ? `<button onclick="window.guildKickMember('${m.name}')" style="background:#ef4444; color:white; border:none; padding:2px 6px; font-size:9px; cursor:pointer; border-radius:3px; font-weight:bold;">KICK</button>` : ''}
+                    </div>
+                </div>`;
+            });
+            html += `</div>`;
+
+            // Applicants (Master / Vice Master only)
+            if (roleLevel[myRole] >= 3) {
+                html += `<h4 style="margin:5px 0; font-size:12px; color:#94a3b8; text-align:left;">Pending Applicants</h4>
+                         <div style="background:#0f172a; padding:6px; border:1px solid #334155; border-radius:6px; height:55px; overflow-y:auto; margin-bottom:10px;">`;
+                if (data.applicants && data.applicants.length > 0) {
+                    data.applicants.forEach(name => {
+                        html += `<div style="display:flex; justify-content:space-between; align-items:center; font-size:12px; margin-bottom:3px;">
+                            <span>${name}</span>
+                            <div>
+                                <button onclick="window.game?.socket?.emit('guildHandleApplicant', {applicantName:'${name}', accept:true})" style="background:#22c55e; color:white; border:none; padding:2px 7px; cursor:pointer; border-radius:3px;">✅</button>
+                                <button onclick="window.game?.socket?.emit('guildHandleApplicant', {applicantName:'${name}', accept:false})" style="background:#ef4444; color:white; border:none; padding:2px 7px; cursor:pointer; border-radius:3px;">❌</button>
+                            </div>
+                        </div>`;
+                    });
+                } else {
+                    html += `<div style="color:#64748b; font-size:11px; margin-top:12px; text-align:center;">No pending applications</div>`;
+                }
+                html += `</div>`;
+            }
+
+            // Actions
+            html += `<div style="display:flex; gap:6px; margin-bottom:6px;">
+                <button style="background:#3b82f6; flex:1; font-size:12px; font-weight:bold; padding:8px; border:none; border-radius:6px; color:#fff; cursor:pointer;" onclick="window.donateGuildPrompt()">Donate Gold</button>
+                <button style="background:#ef4444; flex:1; font-size:12px; font-weight:bold; padding:8px; border:none; border-radius:6px; color:#fff; cursor:pointer;" onclick="window.guildLeaveConfirm()">Leave Guild</button>
+            </div>`;
+
+            if (roleLevel[myRole] >= 2) {
+                html += `<button style="background:#4f46e5; width:100%; margin-bottom:6px; padding:8px; font-size:12px; font-weight:bold; border:none; border-radius:6px; color:#fff; cursor:pointer;" onclick="window.guildInvitePrompt()">Invite Player</button>`;
+            }
+
+            if (data.hasBase) {
+                html += `<button style="background:#22c55e; width:100%; margin-bottom:6px; padding:8px; font-size:12px; font-weight:bold; border:none; border-radius:6px; color:#fff; cursor:pointer;" onclick="window.enterGuildBase()">🏰 Enter Guild Base</button>`;
+            } else if (myRole === 'Master') {
+                html += `<button style="background:#f59e0b; width:100%; margin-bottom:6px; padding:8px; font-size:12px; font-weight:800; border:none; border-radius:6px; color:#fff; cursor:pointer;" onclick="window.buyGuildBaseConfirm()">🏰 Purchase Guild Base (1,000,000 G)</button>`;
+            }
+
+            html += `<button style="background:#334155; width:100%; margin-top:4px; padding:8px; font-size:12px; font-weight:bold; border:none; border-radius:6px; color:#fff; cursor:pointer;" onclick="document.getElementById('guild-modal').style.display='none'">Close</button>`;
+            modal.innerHTML = html;
+        } else {
+            // Guild Registry (No Guild)
+            let html = `
+                <div style="cursor:grab; padding:10px; background:#1e293b; margin:-20px -20px 15px -20px; border-radius:10px 10px 0 0; border-bottom:2px solid #4CAF50;">
+                    <h2 style="margin:0; color:#4CAF50; font-size:1.15rem;">🏰 Guild Registry</h2>
+                </div>
+                <button style="background:linear-gradient(45deg, #f59e0b, #eab308); width:100%; margin-bottom:15px; font-weight:800; padding:12px; border:none; border-radius:6px; color:#000; font-size:13px; cursor:pointer;" onclick="window.createGuildPrompt()">Establish Guild (1,000,000 Gold)</button>
+                <h3 style="color:#94a3b8; font-size:13px; border-bottom:1px solid #334155; padding-bottom:5px; text-align:left; margin:0 0 8px 0;">Open Guilds</h3>
+                <div style="background:#0f172a; padding:10px; border:1px solid #334155; border-radius:6px; height:130px; overflow-y:auto; margin-bottom:15px; text-align:left;">
+            `;
+
+            if (data.openGuilds && data.openGuilds.length > 0) {
+                data.openGuilds.forEach(g => {
+                    html += `<div style="display:flex; justify-content:space-between; align-items:center; padding:6px 0; border-bottom:1px solid #1e293b;">
+                        <span style="font-size:12px;">${g.name} <span style="color:#94a3b8; font-size:11px;">(${g.members} members)</span></span>
+                        <button style="background:#22c55e; border:none; color:#fff; border-radius:4px; padding:3px 8px; font-size:11px; font-weight:bold; cursor:pointer;" onclick="window.applyToGuild('${g.name}')">Apply</button>
+                    </div>`;
+                });
+            } else {
+                html += '<div style="color:#64748b; text-align:center; margin-top:35px; font-size:12px;">No open guilds found.</div>';
+            }
+
+            html += `</div>
+                <button style="background:#ef4444; width:100%; padding:8px; font-weight:bold; border:none; border-radius:6px; color:#fff; cursor:pointer;" onclick="document.getElementById('guild-modal').style.display='none'">Close</button>
+            `;
+            modal.innerHTML = html;
+        }
+    }
+
+    showGuildInvite(data) {
+        let gModal = document.getElementById('guild-invite-dialog');
+        if (!gModal) {
+            gModal = document.createElement('div');
+            gModal.id = 'guild-invite-dialog';
+            gModal.style.cssText = 'display:none; position:fixed; top:50%; left:50%; transform:translate(-50%, -50%); background:rgba(15,23,42,0.96); border:2px solid #6366f1; padding:20px; z-index:99999; width:300px; border-radius:10px; box-shadow:0 0 25px rgba(99,102,241,0.5); color:white; text-align:center;';
+            document.body.appendChild(gModal);
+        }
+
+        window._pendingGuildInvite = data.guildName;
+        gModal.innerHTML = `
+            <h3 style="color:#a855f7; margin-top:0;">Guild Invitation</h3>
+            <p style="font-size:13px; color:#cbd5e1; margin-bottom:18px;"><strong>${data.from}</strong> invited you to join <strong>[${data.guildName}]</strong>.</p>
+            <div style="display:flex; gap:10px;">
+                <button style="background:#22c55e; color:#fff; border:none; border-radius:6px; padding:8px; font-weight:bold; flex:1; cursor:pointer;" onclick="window.respondGuildInvite(true)">Accept</button>
+                <button style="background:#ef4444; color:#fff; border:none; border-radius:6px; padding:8px; font-weight:bold; flex:1; cursor:pointer;" onclick="window.respondGuildInvite(false)">Decline</button>
+            </div>
+        `;
+        gModal.style.display = 'block';
+    }
+
+    updateQuestTracker(dm) {
+        const el = document.getElementById('daily-quest-tracker');
+        if (!el) return;
+        if (!dm || !dm.active) {
+            el.style.display = 'none';
+            return;
+        }
+        el.style.display = 'block';
+        const badge = document.getElementById('quest-tracker-badge');
+        if (badge) {
+            badge.textContent = dm.difficulty || dm.id || 'Active';
+            if (dm.id === 'hard') badge.style.background = '#dc2626';
+            else if (dm.id === 'medium') badge.style.background = '#eab308';
+            else badge.style.background = '#0284c7';
+        }
+        const targetEl = document.getElementById('quest-tracker-target');
+        if (targetEl) targetEl.textContent = `🎯 ${dm.targetName || 'Target'}: ${dm.progress || 0} / ${dm.targetCount || 1}`;
+        const fill = document.getElementById('quest-tracker-bar-fill');
+        if (fill) {
+            const pct = Math.min(100, Math.round(((dm.progress || 0) / (dm.targetCount || 1)) * 100));
+            fill.style.width = `${pct}%`;
+        }
+        const rew = document.getElementById('quest-tracker-reward');
+        if (rew) rew.textContent = `💰 Reward: +${(dm.reward || 0).toLocaleString()} G`;
     }
 
     formatKeyLabel(code) {
@@ -1022,13 +1314,11 @@ export class UIManager {
             const item = player.equips && player.equips[cfg.key];
 
             if (item) {
-                let statBonus = '';
-                if (item.fixedStat) {
-                    const firstStat = Object.entries(item.fixedStat)[0];
-                    if (firstStat) statBonus = ` (+${firstStat[1]} ${firstStat[0].toUpperCase()})`;
-                }
+                // 2D EXONIE REPLICATION: Show enhancement level (e.g. +1, +5) instead of raw stat bonus
+                const enh = item.enhanceLevel || item.refineLevel || 0;
+                const enhStr = enh > 0 ? ` +${enh}` : '';
                 if (viewEl) {
-                    viewEl.innerHTML = `<span style="color:${item.color || '#38bdf8'}; font-weight:800;">${cfg.icon} ${item.name}${statBonus}</span>`;
+                    viewEl.innerHTML = `<span style="color:${item.color || '#38bdf8'}; font-weight:800;">${cfg.icon} ${item.name}${enhStr}</span>`;
                 }
                 if (slotEl) {
                     slotEl.classList.add('filled');
@@ -2368,8 +2658,9 @@ export class UIManager {
         }
 
         this.tradeScreen.style.display = 'flex';
+        document.body.classList.add('trade-mode-active');
 
-        // Auto open inventory bag for smooth trading experience
+        // Auto open inventory bag side-by-side for smooth trading experience
         if (this.inventoryModal && this.inventoryModal.style.display !== 'flex') {
             this.toggleInventory();
         }
@@ -2379,6 +2670,7 @@ export class UIManager {
 
     closeTradeModal() {
         this.isTradeOpen = false;
+        document.body.classList.remove('trade-mode-active');
         if (this.tradeScreen) this.tradeScreen.style.display = 'none';
         this.renderInventory();
     }
@@ -3012,3 +3304,123 @@ setTimeout(() => {
         window.switchAhSubtab('my');
     });
 }, 1200);
+
+
+// ==========================================
+// 🗺️ MAZE GUIDE & GUILD WINDOW GLOBALS
+// ==========================================
+window.enterNormalFloor = function(floorNum) {
+    document.getElementById('maze-guide-modal').style.display = 'none';
+    window.game?.loadMap(`floor${floorNum}`, 0, 98);
+};
+
+window.openFastTravelUI = function() {
+    window.game?.ui?.openFastTravelUI();
+};
+
+window.openMazeTrialsUI = function() {
+    window.game?.ui?.openMazeTrialsUI();
+};
+
+window.requestMazeTeleport = function(floorNum) {
+    document.getElementById('maze-guide-modal').style.display = 'none';
+    if (window.game?.socket) {
+        window.game.socket.emit('requestMazeTeleport', { targetFloor: floorNum });
+    }
+};
+
+window.requestMazeTrial = function(floorNum) {
+    const game = window.game;
+    const isSolo = !game?.party || !game.party.members || game.party.members.length <= 1;
+    const isLowLevel = (game?.player?.level || 1) <= 45;
+
+    if (isSolo && isLowLevel) {
+        const modal = document.getElementById('maze-guide-modal');
+        if (modal) {
+            let html = '<h2 style="margin-top:0; color:#f59e0b; font-size:1.3rem;">⚠️ Warning</h2>';
+            html += '<div style="background:rgba(245,158,11,0.1); border:1px solid #f59e0b; border-radius:8px; padding:14px; margin-bottom:16px;">';
+            html += `<p style="font-size:13px; color:#fde68a; line-height:1.5; margin:0;">The Maze Trial is <b style="color:#ef4444;">extremely difficult</b> for solo players at your current level (<b style="color:#ffd700;">Lv.${game.player.level}</b>).</p>`;
+            html += '<p style="font-size:13px; color:#fde68a; line-height:1.5; margin:8px 0 0 0;">You will most likely <b style="color:#ef4444;">not be able to finish it</b>, wasting your <b style="color:#e040fb;">daily entry</b>.</p>';
+            html += '</div>';
+            html += '<p style="font-size:12px; color:#94a3b8; margin-bottom:15px;">Consider forming a party or leveling up first.</p>';
+            html += '<div style="display:flex; gap:10px;">';
+            html += '<button style="flex:1; background:#ef4444; border:none; border-radius:6px; color:#fff; padding:10px; font-weight:bold; cursor:pointer;" onclick="window.game?.ui?.openMazeTrialsUI()">Go Back</button>';
+            html += `<button style="flex:1; background:#f59e0b; border:none; border-radius:6px; color:#000; padding:10px; font-weight:bold; cursor:pointer;" onclick="window.confirmMazeTrial(${floorNum})">Enter Anyway</button>`;
+            html += '</div>';
+            modal.innerHTML = html;
+            return;
+        }
+    }
+
+    window.confirmMazeTrial(floorNum);
+};
+
+window.confirmMazeTrial = function(floorNum) {
+    const modal = document.getElementById('maze-guide-modal');
+    if (modal) modal.style.display = 'none';
+    if (window.game?.socket) {
+        window.game.socket.emit('requestMazeTrial', { targetFloor: floorNum });
+    }
+};
+
+window.createGuildPrompt = function() {
+    const name = prompt("Enter a name for your new Guild (3-15 chars):");
+    if (name && name.trim().length >= 3 && name.trim().length <= 15) {
+        window.game?.socket?.emit('createGuild', name.trim());
+    } else if (name) {
+        alert("Guild name must be between 3 and 15 characters.");
+    }
+};
+
+window.applyToGuild = function(gName) {
+    window.game?.socket?.emit('guildApply', gName);
+    window.game?.ui?.showToast(`Application sent to ${gName}...`);
+};
+
+window.donateGuildPrompt = function() {
+    const amt = prompt("How much Gold would you like to donate to Guild Funds?");
+    const parsed = parseInt(amt, 10);
+    if (!isNaN(parsed) && parsed > 0) {
+        window.game?.socket?.emit('donateGuildGold', parsed);
+    }
+};
+
+window.guildLeaveConfirm = function() {
+    if (confirm("Are you sure you want to leave the guild?")) {
+        window.game?.socket?.emit('guildLeave');
+    }
+};
+
+window.guildInvitePrompt = function() {
+    const pName = prompt("Enter character name to invite to your guild:");
+    if (pName && pName.trim()) {
+        window.game?.socket?.emit('guildInvitePlayer', pName.trim());
+    }
+};
+
+window.guildKickMember = function(mName) {
+    if (confirm(`Kick ${mName} from the guild?`)) {
+        window.game?.socket?.emit('guildKick', mName);
+    }
+};
+
+window.buyGuildBaseConfirm = function() {
+    if (confirm("Spend 1,000,000 Guild Funds to purchase a Guild Base? Only the Master can do this.")) {
+        window.game?.socket?.emit('requestBuyGuildBase');
+    }
+};
+
+window.enterGuildBase = function() {
+    const modal = document.getElementById('guild-modal');
+    if (modal) modal.style.display = 'none';
+    window.game?.loadMap('guildbase');
+};
+
+window.respondGuildInvite = function(accept) {
+    const gModal = document.getElementById('guild-invite-dialog');
+    if (gModal) gModal.style.display = 'none';
+    if (accept && window._pendingGuildInvite) {
+        window.game?.socket?.emit('joinGuild', window._pendingGuildInvite);
+    }
+    window._pendingGuildInvite = null;
+};

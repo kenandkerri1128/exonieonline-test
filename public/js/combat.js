@@ -242,6 +242,148 @@ export class CombatSystem {
         }, 65);
     }
 
+
+    broadcastAttackAnim(player, comboStep, weaponType) {
+        if (window.game && window.game.socket) {
+            window.game.socket.emit('playerAttackAnim', {
+                comboStep: comboStep || 1,
+                weaponType: weaponType || 'sword',
+                x: player.pos.x,
+                y: player.pos.y,
+                z: player.pos.z,
+                rotY: player.rotY
+            });
+        }
+    }
+
+    broadcastSkillAnim(player, pClass, skillSlot) {
+        if (window.game && window.game.socket) {
+            window.game.socket.emit('playerSkillAnim', {
+                pClass: pClass,
+                skillSlot: skillSlot,
+                x: player.pos.x,
+                y: player.pos.y,
+                z: player.pos.z,
+                rotY: player.rotY
+            });
+        }
+    }
+
+    checkPvPHit(player, damage, radius = 5.0) {
+        if (!window.game || String(window.game.currentMapId).toLowerCase() !== 'neutralzone') return;
+        const myParty = window.game.party;
+        for (const sid in window.game.remotePlayers) {
+            const rp = window.game.remotePlayers[sid];
+            if (!rp || !rp.char3D || rp.isGhost) continue;
+            // Anti-TK: Never damage party members
+            if (myParty && myParty.members && myParty.members.some(pm => (pm.name || pm.id) === (rp.name || rp.id))) {
+                continue;
+            }
+            const rpPos = rp.char3D.group.position;
+            if (player.pos.distanceTo(rpPos) <= radius) {
+                this.engine.spawnHitSparks(rpPos, 0xff1744, 18);
+                if (window.game.socket) {
+                    window.game.socket.emit('attackPlayer', { targetId: rp.name || rp.id, damage: damage });
+                }
+            }
+        }
+    }
+
+    spawnRemoteSkillVFX(pClass, skillSlot, pos, rotY = 0) {
+        if (!this.engine) return;
+        const pForward = new THREE.Vector3(Math.sin(rotY), 0, Math.cos(rotY));
+
+        if (pClass === 'Blademaster') {
+            if (skillSlot === 1) {
+                this.engine.spawnSlashArc(pos, rotY, 0x00e5ff, 3.5);
+                if (this.audio) this.audio.playSfx('clang');
+            } else {
+                this.engine.spawnSlashArc(pos, rotY, 0xff1744, 7.5);
+                this.engine.spawnGroundShockwave(pos, 0xff1744, 8.5);
+                if (this.audio) { this.audio.playSfx('slash'); this.audio.playSfx('explosion'); }
+            }
+        } else if (pClass === 'Berserker') {
+            if (skillSlot === 1) {
+                this.engine.spawnGroundShockwave(pos, 0xff1744, 4.5);
+                if (this.audio) this.audio.playSfx('bump');
+            } else {
+                this.engine.spawnSlashArc(pos, rotY, 0xd50000, 6.0);
+                this.engine.spawnGroundShockwave(pos, 0xd50000, 7.0);
+                if (this.audio) this.audio.playSfx('slash');
+            }
+        } else if (pClass === 'Healer') {
+            if (skillSlot === 1) {
+                this.engine.spawnLightPillar(pos, 0xffea00);
+                if (this.audio) this.audio.playSfx('levelup');
+            } else {
+                this.engine.spawnGroundShockwave(pos, 0x00e5ff, 6.5);
+                this.engine.spawnLightPillar(pos, 0x00e5ff);
+                if (this.audio) this.audio.playSfx('lightning');
+            }
+        } else if (pClass === 'Ice Master') {
+            if (skillSlot === 1) {
+                for (let i = 0; i < 6; i++) {
+                    const offset = new THREE.Vector3((Math.random() - 0.5) * 8, 0, (Math.random() - 0.5) * 8);
+                    this.engine.spawnFallingIcicle(pos.clone().add(offset));
+                }
+                if (this.audio) this.audio.playSfx('ice');
+            } else {
+                this.engine.spawnGroundShockwave(pos, 0x00e5ff, 8.0);
+                this.engine.spawnGroundShockwave(pos, 0x80d8ff, 4.5);
+                if (this.audio) this.audio.playSfx('ice');
+            }
+        } else if (pClass === 'Summoner') {
+            if (skillSlot === 1) {
+                this.engine.spawnLevelUpVFX(pos);
+                if (this.audio) this.audio.playSfx('magic');
+            } else {
+                this.engine.spawnGroundShockwave(pos, 0xba68c8, 6.5);
+                this.engine.spawnHitSparks(pos, 0xba68c8, 25);
+                if (this.audio) this.audio.playSfx('explosion');
+            }
+        } else if (pClass === 'Sniper') {
+            if (skillSlot === 1) {
+                const muzzle = pos.clone().add(new THREE.Vector3(0, 1.4, 0));
+                const target = muzzle.clone().add(pForward.clone().multiplyScalar(24));
+                this.engine.spawnSniperBeam(muzzle, target, 0xffea00);
+                if (this.audio) this.audio.playSfx('gunshot');
+            } else {
+                this.engine.spawnLightPillar(pos.clone().add(pForward.clone().multiplyScalar(10)), 0xff1744);
+                if (this.audio) this.audio.playSfx('explosion');
+            }
+        } else if (pClass === 'Explosives Expert') {
+            if (skillSlot === 1) {
+                this.engine.spawnThrownMolotov(pos.clone().add(new THREE.Vector3(0, 1.4, 0)), pos.clone().add(pForward.clone().multiplyScalar(6)));
+                if (this.audio) this.audio.playSfx('glass');
+            } else {
+                this.engine.spawnFirePillar(pos.clone().add(pForward.clone().multiplyScalar(5)));
+                if (this.audio) this.audio.playSfx('explosion');
+            }
+        } else if (pClass === 'Phantom Striker') {
+            if (skillSlot === 1) {
+                this.engine.spawnLevelUpVFX(pos);
+                if (this.audio) this.audio.playSfx('blink');
+            } else {
+                this.engine.spawnSlashArc(pos, rotY, 0x00e5ff, 5.0);
+                this.engine.spawnHitSparks(pos, 0x00e5ff, 20);
+                if (this.audio) this.audio.playSfx('slash');
+            }
+        } else if (pClass === 'Ninja Assassin') {
+            if (skillSlot === 1) {
+                this.engine.spawnSmokeCloud(pos, 10.0);
+                if (this.audio) this.audio.playSfx('bump');
+            } else {
+                this.engine.spawnLevelUpVFX(pos);
+                if (this.audio) this.audio.playSfx('blink');
+            }
+        } else if (pClass === 'Tech Genius') {
+            this.engine.spawnGroundShockwave(pos, 0x00e5ff, 6.0);
+            if (this.audio) this.audio.playSfx('explosion');
+        } else {
+            this.engine.spawnGroundShockwave(pos, 0x00e5ff, 4.0);
+        }
+    }
+
     // Execute Primary Attack (Left Click) — Auto-Aims at nearest monster & uses exact 2D Exonie formulas!
     executePrimaryAttack(player, monsters, onMonsterKilled) {
         // Disallow attack during dodge roll (prevents animation breaking/floating)
@@ -280,6 +422,8 @@ export class CombatSystem {
             const target = this.autoAimNearestMonster(player, monsters, range);
 
             if (player.char3D) player.char3D.triggerAttack(1, 'gun');
+            this.broadcastAttackAnim(player, 1, 'gun');
+            this.checkPvPHit(player, Math.floor((player.atk || 12) * cloneMult), range);
             if (this.audio) this.audio.playSfx('gunshot');
 
             const muzzlePos = player.pos.clone().add(new THREE.Vector3(Math.sin(player.rotY) * 1.15, 1.38, Math.cos(player.rotY) * 1.15));
@@ -287,7 +431,7 @@ export class CombatSystem {
                 ? target.group.position.clone().add(new THREE.Vector3(0, 1.0, 0))
                 : player.pos.clone().add(new THREE.Vector3(Math.sin(player.rotY) * range, 1.38, Math.cos(player.rotY) * range));
 
-            this.engine.addScreenshake(0.20);
+            // Camera shake removed for normal gun attack per player request
             this.engine.spawnBulletProjectile(muzzlePos, targetPos, () => {
                 if (target && target.isAlive) {
                     const trueDmg = Math.floor((player.atk || 12) * (0.9 + Math.random() * 0.2) * cloneMult);
@@ -313,6 +457,8 @@ export class CombatSystem {
             const target = this.autoAimNearestMonster(player, monsters, 17);
 
             if (player.char3D) player.char3D.triggerAttack(1, 'staff');
+            this.broadcastAttackAnim(player, 1, 'staff');
+            this.checkPvPHit(player, Math.floor((player.mag || 13) * cloneMult), 17);
             if (this.audio) this.audio.playSfx('magic');
 
             const castPos = player.pos.clone().add(new THREE.Vector3(Math.sin(player.rotY) * 1.0, 1.6, Math.cos(player.rotY) * 1.0));
@@ -346,6 +492,8 @@ export class CombatSystem {
             const target = this.autoAimNearestMonster(player, monsters, 16);
 
             if (player.char3D) player.char3D.triggerAttack(1, 'pendant');
+            this.broadcastAttackAnim(player, 1, 'pendant');
+            this.checkPvPHit(player, Math.floor((player.mag || 12) * cloneMult), 16);
             if (this.audio) this.audio.playSfx('holy');
 
             const prayerPos = player.pos.clone().add(new THREE.Vector3(Math.sin(player.rotY) * 0.8, 1.4, Math.cos(player.rotY) * 0.8));
@@ -394,6 +542,8 @@ export class CombatSystem {
         this.autoAimNearestMonster(player, monsters, 12.0);
 
         player.char3D.triggerAttack(this.currentComboStep, isDagger ? 'dagger' : 'sword');
+        this.broadcastAttackAnim(player, this.currentComboStep, isDagger ? 'dagger' : 'sword');
+        this.checkPvPHit(player, Math.floor((player.atk || 13) * cloneMult), hitRadius);
         if (this.audio) this.audio.playSfx('slash');
 
         const slashColors = isDagger ? [0xd500f9, 0x00e5ff, 0xffea00] : [0x00e5ff, 0xffea00, 0xff1744];
@@ -449,7 +599,9 @@ export class CombatSystem {
         if (now - this.lastAttackTime < 800) return;
         this.lastAttackTime = now;
 
-        if (player.char3D) player.char3D.triggerAttack(1, 'sword');
+        if (player.char3D) player.char3D.triggerAttack(1, 'unarmed');
+        this.broadcastAttackAnim(player, 1, 'unarmed');
+        this.checkPvPHit(player, 10, 2.6);
         if (this.audio) this.audio.playSfx('bump');
 
         const punchPos = player.pos.clone().add(new THREE.Vector3(Math.sin(player.rotY) * 1.2, 1.0, Math.cos(player.rotY) * 1.2));
@@ -543,6 +695,8 @@ export class CombatSystem {
         if (player.char3D && player.char3D.triggerSkillCast) {
             player.char3D.triggerSkillCast(0x00e5ff);
         }
+        this.broadcastSkillAnim(player, pClass, skillSlot);
+        this.checkPvPHit(player, Math.floor((player.atk || 20) * 2.0), 6.0);
 
         const playerForward = new THREE.Vector3(Math.sin(player.rotY), 0, Math.cos(player.rotY));
         const intVal = (player.baseStats && player.baseStats.int) || 10;
