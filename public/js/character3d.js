@@ -505,6 +505,7 @@ export class Character3D {
         this.auraRing = new THREE.Mesh(auraRingGeo, auraRingMat);
         this.auraRing.rotation.x = -Math.PI / 2;
         this.auraRing.position.y = 0.03;
+        if (savedAura) this.auraRing.visible = false; // 🛡️ Hide floor ring when cosmetic aura is equipped
         this.group.add(this.auraRing);
 
         // Root Pelvis / Hips Pivot (Raised so boots sit cleanly on top of floor & carpets)
@@ -1875,7 +1876,7 @@ export class Character3D {
     }
 
         // ==========================================
-    // ✨ PROCEDURAL AURA & WING TEXTURE ENGINE
+    // ✨ PROCEDURAL AURA TEXTURE ENGINE
     // Creates soft, glowing, additive-blended textures (NO solid polygons!)
     // ==========================================
     static getRadialGlowTexture(innerCol = '#ffffff', outerCol = '#ffea00') {
@@ -1898,29 +1899,102 @@ export class Character3D {
         return tex;
     }
 
-    static getAuraShroudTexture(coreCol = '#ffffff', glowCol = '#ffea00') {
+    // 🍃 NATURE AURA: Delicate Emerald Green Leaf Texture
+    static getLeafTexture() {
         Character3D.auraTexCache = Character3D.auraTexCache || {};
-        const key = `shroud_${coreCol}_${glowCol}`;
+        const key = 'nature_leaf';
         if (Character3D.auraTexCache[key]) return Character3D.auraTexCache[key];
         const canvas = document.createElement('canvas');
-        canvas.width = 128;
-        canvas.height = 256;
+        canvas.width = 64;
+        canvas.height = 64;
         const ctx = canvas.getContext('2d');
-        const grad = ctx.createLinearGradient(0, 0, 0, 256);
-        grad.addColorStop(0, 'rgba(0,0,0,0)');
-        grad.addColorStop(0.18, glowCol + '44');
-        grad.addColorStop(0.45, glowCol + 'bb');
-        grad.addColorStop(0.55, coreCol);
-        grad.addColorStop(0.65, glowCol + 'bb');
-        grad.addColorStop(0.85, glowCol + '44');
-        grad.addColorStop(1, 'rgba(0,0,0,0)');
-        ctx.fillStyle = grad;
-        ctx.fillRect(0, 0, 128, 256);
+        ctx.clearRect(0, 0, 64, 64);
+        ctx.save();
+        ctx.translate(32, 32);
+        ctx.rotate(0.35);
+
+        // Soft green ambient glow behind the leaf
+        const glow = ctx.createRadialGradient(0, 0, 4, 0, 0, 26);
+        glow.addColorStop(0, 'rgba(0, 230, 118, 0.65)');
+        glow.addColorStop(1, 'rgba(0, 230, 118, 0)');
+        ctx.fillStyle = glow;
+        ctx.beginPath();
+        ctx.arc(0, 0, 26, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Curved emerald leaf blade
+        ctx.beginPath();
+        ctx.moveTo(0, -22);
+        ctx.bezierCurveTo(15, -14, 18, 10, 0, 24);
+        ctx.bezierCurveTo(-18, 10, -15, -14, 0, -22);
+        const leafGrad = ctx.createLinearGradient(0, -22, 0, 24);
+        leafGrad.addColorStop(0, '#a7f3d0');
+        leafGrad.addColorStop(0.35, '#10b981');
+        leafGrad.addColorStop(1, '#047857');
+        ctx.fillStyle = leafGrad;
+        ctx.fill();
+
+        // Central vein
+        ctx.strokeStyle = '#d1fae5';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(0, -18);
+        ctx.lineTo(0, 20);
+        ctx.stroke();
+
+        ctx.restore();
         const tex = new THREE.CanvasTexture(canvas);
         Character3D.auraTexCache[key] = tex;
         return tex;
     }
 
+    // 🌸 EASTER AURA: Translucent Flat Stardust Ring Texture (NOT a solid object!)
+    static getGlowingRingTexture() {
+        Character3D.auraTexCache = Character3D.auraTexCache || {};
+        const key = 'easter_stardust_ring';
+        if (Character3D.auraTexCache[key]) return Character3D.auraTexCache[key];
+        const canvas = document.createElement('canvas');
+        canvas.width = 256;
+        canvas.height = 256;
+        const ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, 256, 256);
+
+        const rad = 95;
+        const width = 18;
+
+        // Soft outer pastel bloom
+        ctx.strokeStyle = 'rgba(255, 128, 171, 0.45)';
+        ctx.lineWidth = width * 2;
+        ctx.beginPath();
+        ctx.arc(128, 128, rad, 0, Math.PI * 2);
+        ctx.stroke();
+
+        // Bright white core stardust trail
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.85)';
+        ctx.lineWidth = width * 0.45;
+        ctx.beginPath();
+        ctx.arc(128, 128, rad, 0, Math.PI * 2);
+        ctx.stroke();
+
+        // Colorful pastel gradient overlay
+        const ringGrad = ctx.createConicGradient(0, 128, 128);
+        ringGrad.addColorStop(0, '#ff80ab');
+        ringGrad.addColorStop(0.25, '#80d8ff');
+        ringGrad.addColorStop(0.5, '#b9f6ca');
+        ringGrad.addColorStop(0.75, '#ffd180');
+        ringGrad.addColorStop(1, '#ff80ab');
+        ctx.strokeStyle = ringGrad;
+        ctx.lineWidth = width;
+        ctx.beginPath();
+        ctx.arc(128, 128, rad, 0, Math.PI * 2);
+        ctx.stroke();
+
+        const tex = new THREE.CanvasTexture(canvas);
+        Character3D.auraTexCache[key] = tex;
+        return tex;
+    }
+
+    // 🕊️ DIVINE AURA: Luminous Feathered Wings of Holy Light
     static getCelestialWingTexture(isLeft = true) {
         Character3D.auraTexCache = Character3D.auraTexCache || {};
         const key = `divine_wing_${isLeft ? 'L' : 'R'}`;
@@ -1994,11 +2068,12 @@ export class Character3D {
     }
 
     // ==========================================
-    // ✨ 3D INSIDE-OUT COSMETIC AURA ENGINE
-    // Base of the glow is the character body (NOT the ground!)
-    // Radiates inside-out from the core with Fresnel silhouette rim glow
+    // ✨ 3D BODY BORDER AURA ENGINE
+    // Glows directly around the borders of the character body (NO solid oblongs/spheres/cylinders!)
+    // Nature = Green (with leaves), Liquid = Blue, Void = Violet, Easter = Translucent Stardust Ring
     // ==========================================
     setCosmeticAura(auraId) {
+        // Clean up previous aura effects and body border outlines
         if (this.cosmeticAuraGroup) {
             this.group.remove(this.cosmeticAuraGroup);
             this.cosmeticAuraGroup.traverse(child => {
@@ -2011,13 +2086,27 @@ export class Character3D {
             this.cosmeticAuraGroup = null;
         }
 
+        if (this.bodyBorderOutlines) {
+            this.bodyBorderOutlines.forEach(m => {
+                if (m.parent) m.parent.remove(m);
+                if (m.geometry) m.geometry.dispose();
+                if (m.material) m.material.dispose();
+            });
+            this.bodyBorderOutlines = [];
+        } else {
+            this.bodyBorderOutlines = [];
+        }
+
         const id = String(auraId || '').toLowerCase().trim();
         if (!id || id === 'none' || id === 'null') {
             this.currentAuraId = null;
+            if (this.auraRing) this.auraRing.visible = true;
             return;
         }
 
         this.currentAuraId = id;
+        if (this.auraRing) this.auraRing.visible = false;
+
         const ag = new THREE.Group();
         ag.name = 'cosmeticAuraGroup';
         this.cosmeticAuraGroup = ag;
@@ -2026,11 +2115,11 @@ export class Character3D {
         const configs = {
             divine:    { hex: '#ffea00', coreHex: '#ffffff', glowHex: '#ff9800' },
             blaze:     { hex: '#ff3d00', coreHex: '#fff3e0', glowHex: '#ff6d00' },
-            liquid:    { hex: '#00e5ff', coreHex: '#e0f7fa', glowHex: '#0091ea' },
-            nature:    { hex: '#4caf50', coreHex: '#f1f8e9', glowHex: '#2e7d32' },
+            liquid:    { hex: '#0066ff', coreHex: '#e0f2fe', glowHex: '#007aff' }, // 💧 BLUE
+            nature:    { hex: '#00e676', coreHex: '#d1fae5', glowHex: '#10b981' }, // 🌿 GREEN
             lightning: { hex: '#00f0ff', coreHex: '#ffffff', glowHex: '#2979ff' },
             easter:    { hex: '#ff80ab', coreHex: '#fff9c4', glowHex: '#80d8ff' },
-            void:      { hex: '#7c4dff', coreHex: '#ede7f6', glowHex: '#311b92' }
+            void:      { hex: '#8a2be2', coreHex: '#f3e8ff', glowHex: '#9400d3' }  // 🌌 VIOLET
         };
 
         let activeKey = 'divine';
@@ -2042,139 +2131,168 @@ export class Character3D {
         ag.auraKey = activeKey;
 
         // ==========================================
-        // 1. 🌟 INSIDE-OUT FRESNEL BODY AURA SHELL
-        // Origin: Character Torso/Spine (y = 1.08) - NOT touching the ground!
+        // 1. 🌟 DIRECT BODY BORDER GLOW (NOT a solid object!)
+        // Inverted hull attached to the character's torso, hips, and head
+        // Renders strictly the outer glowing silhouette fringe of the character body
         // ==========================================
-        const bodyGeo = new THREE.SphereGeometry(0.70, 32, 24);
-
-        const bodyAuraMat = new THREE.ShaderMaterial({
-            uniforms: {
-                auraColor: { value: new THREE.Color(cfg.hex) },
-                coreColor: { value: new THREE.Color(cfg.coreHex) },
-                glowIntensity: { value: 1.35 },
-                time: { value: 0.0 }
-            },
-            vertexShader: `
-                varying vec3 vNormal;
-                varying vec3 vViewPosition;
-                void main() {
-                    vNormal = normalize(normalMatrix * normal);
-                    vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
-                    vViewPosition = -mvPosition.xyz;
-                    gl_Position = projectionMatrix * mvPosition;
-                }
-            `,
-            fragmentShader: `
-                uniform vec3 auraColor;
-                uniform vec3 coreColor;
-                uniform float glowIntensity;
-                uniform float time;
-                varying vec3 vNormal;
-                varying vec3 vViewPosition;
-                void main() {
-                    vec3 normal = normalize(vNormal);
-                    vec3 viewDir = normalize(vViewPosition);
-                    // Inside-out silhouette rim glow (brightest along outer perimeter)
-                    float rim = 1.0 - max(0.0, dot(normal, viewDir));
-                    float factor = pow(rim, 2.2);
-                    float pulse = 0.85 + 0.15 * sin(time * 3.5);
-                    vec3 finalColor = mix(auraColor, coreColor, pow(rim, 3.8));
-                    gl_FragColor = vec4(finalColor, factor * glowIntensity * pulse);
-                }
-            `,
-            transparent: true,
-            blending: THREE.AdditiveBlending,
-            depthWrite: false,
-            side: THREE.BackSide
-        });
-
-        const bodyAuraMesh = new THREE.Mesh(bodyGeo, bodyAuraMat);
-        bodyAuraMesh.position.set(0, 1.08, 0); // Centered on torso/spine
-        bodyAuraMesh.scale.set(1.0, 1.42, 0.88); // Envelops head, torso, hips, and legs organically
-        ag.add(bodyAuraMesh);
-        ag.bodyAuraMesh = bodyAuraMesh;
-        ag.bodyAuraMat = bodyAuraMat;
-
-        // ==========================================
-        // 2. 🌟 INNER VOLUMETRIC RADIANCE CORE
-        // A second tight layer right on the chest & torso for deep luminescence
-        // ==========================================
-        const innerGeo = new THREE.SphereGeometry(0.60, 24, 18);
-        const innerAuraMat = new THREE.ShaderMaterial({
-            uniforms: {
-                auraColor: { value: new THREE.Color(cfg.glowHex) },
-                coreColor: { value: new THREE.Color('#ffffff') },
-                glowIntensity: { value: 0.95 },
-                time: { value: 0.0 }
-            },
-            vertexShader: `
-                varying vec3 vNormal;
-                varying vec3 vViewPosition;
-                void main() {
-                    vNormal = normalize(normalMatrix * normal);
-                    vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
-                    vViewPosition = -mvPosition.xyz;
-                    gl_Position = projectionMatrix * mvPosition;
-                }
-            `,
-            fragmentShader: `
-                uniform vec3 auraColor;
-                uniform vec3 coreColor;
-                uniform float glowIntensity;
-                uniform float time;
-                varying vec3 vNormal;
-                varying vec3 vViewPosition;
-                void main() {
-                    vec3 normal = normalize(vNormal);
-                    vec3 viewDir = normalize(vViewPosition);
-                    float rim = 1.0 - max(0.0, dot(normal, viewDir));
-                    float factor = pow(rim, 1.6);
-                    float pulse = 0.88 + 0.12 * cos(time * 4.0);
-                    vec3 finalColor = mix(auraColor, coreColor, pow(rim, 2.5));
-                    gl_FragColor = vec4(finalColor, factor * glowIntensity * pulse);
-                }
-            `,
-            transparent: true,
-            blending: THREE.AdditiveBlending,
-            depthWrite: false,
-            side: THREE.DoubleSide
-        });
-
-        const innerAuraMesh = new THREE.Mesh(innerGeo, innerAuraMat);
-        innerAuraMesh.position.set(0, 1.08, 0);
-        innerAuraMesh.scale.set(0.85, 1.30, 0.75);
-        ag.add(innerAuraMesh);
-        ag.innerAuraMesh = innerAuraMesh;
-        ag.innerAuraMat = innerAuraMat;
-
-        // ==========================================
-        // 3. 🌟 INSIDE-OUT BURSTING ENERGY WISPS
-        // Spawns from the character's spine/chest and radiates OUTWARD into space
-        // ==========================================
-        ag.burstWisps = [];
-        const wispTex = Character3D.getRadialGlowTexture('#ffffff', cfg.hex);
-        const wispMat = new THREE.MeshBasicMaterial({
-            map: wispTex,
+        const borderMat = new THREE.MeshBasicMaterial({
+            color: new THREE.Color(cfg.hex),
+            side: THREE.BackSide,
             transparent: true,
             blending: THREE.AdditiveBlending,
             depthWrite: false,
             opacity: 0.85
         });
-        for (let w = 0; w < 10; w++) {
-            const wPlane = new THREE.Mesh(new THREE.PlaneGeometry(0.18, 0.18), wispMat);
-            ag.add(wPlane);
-            ag.burstWisps.push({
-                mesh: wPlane,
-                seed: Math.random() * Math.PI * 2,
-                speed: 0.75 + Math.random() * 0.55,
-                rotSpeed: (Math.random() - 0.5) * 1.5
-            });
+        ag.borderMat = borderMat;
+
+        if (this.parts) {
+            const isFemale = this.gender === 'female';
+            const torsoH = 0.58;
+
+            // Torso Border Glow
+            if (this.parts.torso) {
+                const tBorder = new THREE.Mesh(sculptedTorsoGeo(isFemale, torsoH), borderMat);
+                tBorder.position.y = torsoH * 0.5;
+                tBorder.scale.setScalar(1.085);
+                this.parts.torso.add(tBorder);
+                this.bodyBorderOutlines.push(tBorder);
+            }
+
+            // Hips/Pelvis Border Glow
+            if (this.parts.hips) {
+                const pBorder = new THREE.Mesh(chamferBox(0.48, 0.24, 0.32, 0.04), borderMat);
+                pBorder.scale.setScalar(1.085);
+                this.parts.hips.add(pBorder);
+                this.bodyBorderOutlines.push(pBorder);
+            }
+
+            // Head Border Glow
+            if (this.parts.head) {
+                const hBorder = new THREE.Mesh(new THREE.SphereGeometry(0.24, 16, 16), borderMat);
+                hBorder.scale.set(1.08, 1.15, 1.08);
+                this.parts.head.add(hBorder);
+                this.bodyBorderOutlines.push(hBorder);
+            }
         }
 
         // ==========================================
-        // 4. 👑 ADDITIONAL SPECIAL EFFECTS (PER AURA TYPE)
+        // 2. 👑 AURA-SPECIFIC PARTICLES & SPECIAL EFFECTS
         // ==========================================
-        if (activeKey === 'divine') {
+        if (activeKey === 'nature') {
+            // 🌿 NATURE AURA: Swirling Emerald Green LEAVES (Procedural Leaf Sprites)
+            ag.natureLeaves = [];
+            const leafTex = Character3D.getLeafTexture();
+            const leafMat = new THREE.MeshBasicMaterial({
+                map: leafTex,
+                transparent: true,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false,
+                side: THREE.DoubleSide,
+                opacity: 0.90
+            });
+            for (let l = 0; l < 12; l++) {
+                const leaf = new THREE.Mesh(new THREE.PlaneGeometry(0.20, 0.20), leafMat);
+                ag.add(leaf);
+                ag.natureLeaves.push({
+                    mesh: leaf,
+                    ang: (l / 12) * Math.PI * 2,
+                    speed: 1.5 + (l % 3) * 0.4,
+                    rad: 0.45 + (l % 3) * 0.12,
+                    helix: l % 2 === 0 ? 1 : -1,
+                    rotSpeedZ: 2.0 + Math.random() * 2.0,
+                    rotSpeedX: 1.2 + Math.random() * 1.5
+                });
+            }
+
+        } else if (activeKey === 'liquid') {
+            // 💧 LIQUID AURA: Vibrant Blue Water Droplets & Bubbles
+            ag.liquidDrops = [];
+            const dropTex = Character3D.getRadialGlowTexture('#ffffff', '#0066ff');
+            const dropMat = new THREE.MeshBasicMaterial({
+                map: dropTex,
+                transparent: true,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false,
+                opacity: 0.85
+            });
+            for (let d = 0; d < 8; d++) {
+                const drop = new THREE.Mesh(new THREE.PlaneGeometry(0.18, 0.18), dropMat);
+                ag.add(drop);
+                ag.liquidDrops.push({
+                    mesh: drop,
+                    phase: d * 0.45,
+                    speed: 0.65 + Math.random() * 0.35,
+                    rad: 0.42 + Math.random() * 0.18,
+                    ang: (d / 8) * Math.PI * 2
+                });
+            }
+
+        } else if (activeKey === 'void') {
+            // 🌌 VOID AURA: Deep Violet Cosmic Stardust Particles
+            ag.voidWisps = [];
+            const vTex = Character3D.getRadialGlowTexture('#f3e8ff', '#8a2be2');
+            const vMat = new THREE.MeshBasicMaterial({
+                map: vTex,
+                transparent: true,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false,
+                opacity: 0.90
+            });
+            for (let w = 0; w < 8; w++) {
+                const wisp = new THREE.Mesh(new THREE.PlaneGeometry(0.22, 0.22), vMat);
+                ag.add(wisp);
+                ag.voidWisps.push({
+                    mesh: wisp,
+                    ang: (w / 8) * Math.PI * 2,
+                    speed: 1.4 + (w % 3) * 0.3,
+                    rad: 0.48 + (w % 2) * 0.15
+                });
+            }
+
+        } else if (activeKey === 'easter') {
+            // 🌸 EASTER AURA: Translucent Weightless Stardust Ring (NOT a solid object!)
+            const ringPlane = new THREE.Mesh(
+                new THREE.PlaneGeometry(1.65, 1.65),
+                new THREE.MeshBasicMaterial({
+                    map: Character3D.getGlowingRingTexture(),
+                    transparent: true,
+                    blending: THREE.AdditiveBlending,
+                    depthWrite: false,
+                    side: THREE.DoubleSide,
+                    opacity: 0.85
+                })
+            );
+            ringPlane.position.set(0, 1.05, 0); // Elevated to waist level
+            ringPlane.rotation.x = -Math.PI / 2.3;
+            ag.add(ringPlane);
+            ag.easterRing = ringPlane;
+
+            // Bubbling pastel orbs (matching 2D bunnyBubble)
+            ag.bunnyBubbles = [];
+            const pastelCols = [0xff80ab, 0x80d8ff, 0xb9f6ca, 0xffd180, 0xe040fb];
+            for (let b = 0; b < 6; b++) {
+                const col = pastelCols[b % pastelCols.length];
+                const bub = new THREE.Mesh(
+                    new THREE.PlaneGeometry(0.14, 0.14),
+                    new THREE.MeshBasicMaterial({
+                        map: Character3D.getRadialGlowTexture('#ffffff', '#' + col.toString(16).padStart(6, '0')),
+                        transparent: true,
+                        blending: THREE.AdditiveBlending,
+                        depthWrite: false,
+                        opacity: 0.80
+                    })
+                );
+                ag.add(bub);
+                ag.bunnyBubbles.push({
+                    mesh: bub,
+                    phase: b * 0.55,
+                    speed: 0.65 + Math.random() * 0.35,
+                    x: (Math.random() - 0.5) * 0.6,
+                    z: (Math.random() - 0.5) * 0.6
+                });
+            }
+
+        } else if (activeKey === 'divine') {
             // 🕊️ DIVINE AURA: Ethereal Flapping Angel Wings of Light + Holy Halo
             const wingsGroup = new THREE.Group();
             wingsGroup.position.set(0, 1.38, -0.15); // Attached cleanly to upper back
@@ -2235,67 +2353,23 @@ export class Character3D {
             ag.add(haloRing);
             ag.divineHalo = haloRing;
 
-        } else if (activeKey === 'easter') {
-            // 🐰 EASTER AURA: Elevated Tilted Spinning Ring at Waist + Bubbling Pastel Orbs
-            const ringGroup = new THREE.Group();
-            ringGroup.position.set(0, 1.10, 0); // Elevated to waist/chest!
-            ringGroup.rotation.x = 0.24;
-            ringGroup.rotation.z = 0.12;
-            ag.add(ringGroup);
-            ag.easterRingGroup = ringGroup;
-
-            const ringMesh = new THREE.Mesh(
-                new THREE.TorusGeometry(0.72, 0.024, 8, 36),
-                new THREE.MeshBasicMaterial({
-                    color: 0xff80ab,
-                    transparent: true,
-                    blending: THREE.AdditiveBlending,
-                    depthWrite: false,
-                    opacity: 0.85
-                })
-            );
-            ringGroup.add(ringMesh);
-            ag.easterRing = ringMesh;
-
-            // Orbiting pastel stardust motes around the ring
-            ag.easterMotes = [];
-            const pastelCols = [0xff80ab, 0x80d8ff, 0xb9f6ca, 0xffd180, 0xe040fb];
+            // Rising Holy Golden Stardust Sparkles
+            ag.sparkles = [];
+            const spkTex = Character3D.getRadialGlowTexture('#ffffff', '#ffea00');
+            const spkMat = new THREE.MeshBasicMaterial({
+                map: spkTex,
+                transparent: true,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false
+            });
             for (let s = 0; s < 6; s++) {
-                const col = pastelCols[s % pastelCols.length];
-                const sPlane = new THREE.Mesh(
-                    new THREE.PlaneGeometry(0.12, 0.12),
-                    new THREE.MeshBasicMaterial({
-                        map: Character3D.getRadialGlowTexture('#ffffff', '#' + col.toString(16).padStart(6, '0')),
-                        transparent: true,
-                        blending: THREE.AdditiveBlending,
-                        depthWrite: false
-                    })
-                );
-                ringGroup.add(sPlane);
-                ag.easterMotes.push({ mesh: sPlane, ang: (s / 6) * Math.PI * 2, rad: 0.72 });
-            }
-
-            // Bubbling pastel orbs (matching 2D bunnyBubble)
-            ag.bunnyBubbles = [];
-            for (let b = 0; b < 6; b++) {
-                const col = pastelCols[b % pastelCols.length];
-                const bub = new THREE.Mesh(
-                    new THREE.PlaneGeometry(0.14, 0.14),
-                    new THREE.MeshBasicMaterial({
-                        map: Character3D.getRadialGlowTexture('#ffffff', '#' + col.toString(16).padStart(6, '0')),
-                        transparent: true,
-                        blending: THREE.AdditiveBlending,
-                        depthWrite: false,
-                        opacity: 0.80
-                    })
-                );
-                ag.add(bub);
-                ag.bunnyBubbles.push({
-                    mesh: bub,
-                    phase: b * 0.55,
-                    speed: 0.65 + Math.random() * 0.35,
-                    x: (Math.random() - 0.5) * 0.7,
-                    z: (Math.random() - 0.5) * 0.7
+                const spk = new THREE.Mesh(new THREE.PlaneGeometry(0.14, 0.14), spkMat);
+                ag.add(spk);
+                ag.sparkles.push({
+                    mesh: spk,
+                    ang: (s / 6) * Math.PI * 2,
+                    speed: 0.8 + Math.random() * 0.4,
+                    rad: 0.45 + Math.random() * 0.15
                 });
             }
 
@@ -2322,51 +2396,6 @@ export class Character3D {
                 });
             }
 
-        } else if (activeKey === 'liquid') {
-            // 💧 LIQUID AURA: Floating Water Droplets & Torso Swirl
-            ag.liquidDrops = [];
-            const dTex = Character3D.getRadialGlowTexture('#ffffff', '#00e5ff');
-            const dMat = new THREE.MeshBasicMaterial({
-                map: dTex,
-                transparent: true,
-                blending: THREE.AdditiveBlending,
-                depthWrite: false,
-                opacity: 0.85
-            });
-            for (let d = 0; d < 8; d++) {
-                const drop = new THREE.Mesh(new THREE.PlaneGeometry(0.16, 0.16), dMat);
-                ag.add(drop);
-                ag.liquidDrops.push({
-                    mesh: drop,
-                    phase: d * 0.45,
-                    speed: 0.6 + Math.random() * 0.4,
-                    rad: 0.42 + Math.random() * 0.20,
-                    ang: (d / 8) * Math.PI * 2
-                });
-            }
-
-        } else if (activeKey === 'nature') {
-            // 🌿 NATURE AURA: Double-Helix Swirling Leaf Petals
-            ag.natureLeaves = [];
-            const leafTex = Character3D.getRadialGlowTexture('#f1f8e9', '#4caf50');
-            const leafMat = new THREE.MeshBasicMaterial({
-                map: leafTex,
-                transparent: true,
-                blending: THREE.AdditiveBlending,
-                depthWrite: false,
-                opacity: 0.85
-            });
-            for (let l = 0; l < 8; l++) {
-                const leaf = new THREE.Mesh(new THREE.PlaneGeometry(0.18, 0.18), leafMat);
-                ag.add(leaf);
-                ag.natureLeaves.push({
-                    mesh: leaf,
-                    ang: (l / 8) * Math.PI * 2,
-                    speed: 1.8 + (l % 2) * 0.5,
-                    helix: l % 2 === 0 ? 1 : -1
-                });
-            }
-
         } else if (activeKey === 'lightning') {
             // ⚡ LIGHTNING AURA: Dynamic Crackling Electric Discharge Arcs
             ag.lightningArcs = [];
@@ -2386,28 +2415,6 @@ export class Character3D {
                 ag.add(arcLine);
                 ag.lightningArcs.push({ line: arcLine, pts, timer: Math.random() * 0.2 });
             }
-
-        } else if (activeKey === 'void') {
-            // 🌌 VOID AURA: Orbiting Cosmic Dark Matter Wisps
-            ag.voidWisps = [];
-            const vTex = Character3D.getRadialGlowTexture('#ede7f6', '#7c4dff');
-            const vMat = new THREE.MeshBasicMaterial({
-                map: vTex,
-                transparent: true,
-                blending: THREE.AdditiveBlending,
-                depthWrite: false,
-                opacity: 0.90
-            });
-            for (let w = 0; w < 6; w++) {
-                const wisp = new THREE.Mesh(new THREE.PlaneGeometry(0.20, 0.20), vMat);
-                ag.add(wisp);
-                ag.voidWisps.push({
-                    mesh: wisp,
-                    ang: (w / 6) * Math.PI * 2,
-                    speed: 1.4 + (w % 3) * 0.3,
-                    rad: 0.52 + (w % 2) * 0.12
-                });
-            }
         }
     }
 
@@ -2416,41 +2423,55 @@ export class Character3D {
         if (!ag || !this.currentAuraId) return;
         const t = this.animTime;
 
-        // 1. Inside-Out Body Aura Shell Pulsation & Time Uniform
-        if (ag.bodyAuraMat && ag.bodyAuraMat.uniforms) {
-            ag.bodyAuraMat.uniforms.time.value = t;
-        }
-        if (ag.bodyAuraMesh) {
-            ag.bodyAuraMesh.rotation.y += dt * 0.55;
-            const bPulse = 1.0 + Math.sin(t * 3.2) * 0.04;
-            ag.bodyAuraMesh.scale.set(1.0 * bPulse, 1.42 * (1.0 + Math.sin(t * 2.5) * 0.02), 0.88 * bPulse);
-        }
-        if (ag.innerAuraMat && ag.innerAuraMat.uniforms) {
-            ag.innerAuraMat.uniforms.time.value = t;
-        }
-        if (ag.innerAuraMesh) {
-            ag.innerAuraMesh.rotation.y -= dt * 0.75;
-            const iPulse = 1.0 + Math.cos(t * 3.5) * 0.035;
-            ag.innerAuraMesh.scale.set(0.85 * iPulse, 1.30 * (1.0 + Math.cos(t * 2.8) * 0.02), 0.75 * iPulse);
+        // 1. Pulsate the Body Border Glow (Breathing with life)
+        if (ag.borderMat) {
+            ag.borderMat.opacity = 0.70 + Math.sin(t * 3.5) * 0.25;
         }
 
-        // 2. Inside-Out Bursting Energy Wisps (Expanding outward from chest/spine)
-        if (ag.burstWisps) {
-            ag.burstWisps.forEach(w => {
-                const prog = ((t * w.speed + w.seed) % 1.6) / 1.6; // 0 to 1
-                const curRad = 0.18 + prog * 0.48; // Radiates OUTWARD from body core!
-                const curY = 0.75 + prog * 0.95; // Drifts upward
-                const curAng = w.seed + t * w.rotSpeed;
-                w.mesh.position.set(Math.cos(curAng) * curRad, curY, Math.sin(curAng) * curRad);
-                const fade = Math.sin(prog * Math.PI);
-                w.mesh.scale.setScalar(0.08 + fade * 0.14);
-                if (w.mesh.material) w.mesh.material.opacity = fade * 0.85;
+        // 2. Nature Aura: Tumble, Pitch, and Spiral Real Emerald Green Leaves!
+        if (ag.natureLeaves) {
+            ag.natureLeaves.forEach(l => {
+                const ang = l.ang + t * l.speed * l.helix;
+                const y = 0.55 + ((t * 0.8 + l.ang) % 1.5);
+                l.mesh.position.set(Math.cos(ang) * l.rad, y, Math.sin(ang) * l.rad);
+                l.mesh.rotation.z += dt * l.rotSpeedZ;
+                l.mesh.rotation.x += dt * l.rotSpeedX;
             });
         }
 
-        // 3. Aura-Specific Animation Logic
+        // 3. Liquid Aura: Floating Blue Water Droplets
+        if (ag.liquidDrops) {
+            ag.liquidDrops.forEach(d => {
+                const y = 0.55 + ((t * d.speed + d.phase) % 1.4);
+                d.mesh.position.set(Math.cos(d.ang) * d.rad, y, Math.sin(d.ang) * d.rad);
+            });
+        }
+
+        // 4. Void Aura: Orbiting Violet Cosmic Wisps
+        if (ag.voidWisps) {
+            ag.voidWisps.forEach(w => {
+                const ang = w.ang + t * w.speed;
+                const y = 0.85 + Math.sin(t * 2.2 + w.ang) * 0.42;
+                w.mesh.position.set(Math.cos(ang) * w.rad, y, Math.sin(ang) * w.rad);
+            });
+        }
+
+        // 5. Easter Aura: Translucent Flat Stardust Ring Rotation & Bubbles
+        if (ag.easterRing) {
+            ag.easterRing.rotation.z += dt * 1.1; // Smooth rotation of the flat stardust ring
+            ag.easterRing.position.y = 1.05 + Math.sin(t * 2.4) * 0.035;
+        }
+        if (ag.bunnyBubbles) {
+            ag.bunnyBubbles.forEach(b => {
+                const prog = ((t * b.speed + b.phase) % 2.2);
+                b.mesh.position.set(b.x + Math.sin(t * 3.0 + b.phase) * 0.08, 0.5 + prog, b.z + Math.cos(t * 3.0 + b.phase) * 0.08);
+                const fade = Math.sin((prog / 2.2) * Math.PI);
+                b.mesh.scale.setScalar(0.6 + fade * 0.6);
+            });
+        }
+
+        // 6. Divine Aura: Angelic Wing Flapping & Halo Float
         if (ag.auraKey === 'divine') {
-            // Ethereal Angel Wing Flapping (Natural sinusoidal motion matching 2D Exonie)
             const flap = Math.sin(t * 2.6);
             if (ag.lWingPivot) {
                 ag.lWingPivot.rotation.y = 0.35 + flap * 0.42;
@@ -2466,61 +2487,28 @@ export class Character3D {
                 ag.divineHalo.rotation.z = t * 0.55;
                 ag.divineHalo.position.y = 2.06 + Math.sin(t * 2.2) * 0.035;
             }
-
-        } else if (ag.auraKey === 'easter') {
-            // Elevated Waist Spinning Ring Rotation & Tilt
-            if (ag.easterRingGroup) {
-                ag.easterRingGroup.rotation.y += dt * 1.4;
-            }
-            // Orbiting Stardust Motes
-            if (ag.easterMotes) {
-                ag.easterMotes.forEach(m => {
-                    const ang = m.ang + t * 2.0;
-                    m.mesh.position.set(Math.cos(ang) * m.rad, 0, Math.sin(ang) * m.rad);
+            if (ag.sparkles) {
+                ag.sparkles.forEach(s => {
+                    const ang = s.ang + t * s.speed;
+                    const y = 0.8 + Math.sin(t * 2.5 + s.ang) * 0.5;
+                    s.mesh.position.set(Math.cos(ang) * s.rad, y, Math.sin(ang) * s.rad);
                 });
             }
-            // Bubbling pastel orbs ascending (matching 2D bunnyBubble)
-            if (ag.bunnyBubbles) {
-                ag.bunnyBubbles.forEach(b => {
-                    const prog = ((t * b.speed + b.phase) % 2.2);
-                    b.mesh.position.set(b.x + Math.sin(t * 3.0 + b.phase) * 0.08, 0.5 + prog, b.z + Math.cos(t * 3.0 + b.phase) * 0.08);
-                    const fade = Math.sin((prog / 2.2) * Math.PI);
-                    b.mesh.scale.setScalar(0.6 + fade * 0.6);
-                });
-            }
+        }
 
-        } else if (ag.auraKey === 'blaze') {
-            // Swirling dancing flame tongues around torso
-            if (ag.blazeFlames) {
-                ag.blazeFlames.forEach(f => {
-                    const ang = f.ang + t * f.speed;
-                    const y = 0.55 + ((t * 1.4 + f.yOffset) % 1.3);
-                    f.mesh.position.set(Math.cos(ang) * f.rad, y, Math.sin(ang) * f.rad);
-                    f.mesh.rotation.y = -ang;
-                    f.mesh.scale.setScalar(0.7 + Math.sin(y * 2.0) * 0.5);
-                });
-            }
-
-        } else if (ag.auraKey === 'liquid') {
-            // Ascending water bubbles around torso
-            if (ag.liquidDrops) {
-                ag.liquidDrops.forEach(d => {
-                    const y = 0.55 + ((t * d.speed + d.phase) % 1.4);
-                    d.mesh.position.set(Math.cos(d.ang) * d.rad, y, Math.sin(d.ang) * d.rad);
-                });
-            }
-
-        } else if (ag.natureLeaves) {
-            // Double-helix ascending leaf petals
-            ag.natureLeaves.forEach(l => {
-                const ang = l.ang + t * l.speed * l.helix;
-                const y = 0.55 + ((t * 0.9 + l.ang) % 1.5);
-                l.mesh.position.set(Math.cos(ang) * 0.48, y, Math.sin(ang) * 0.48);
-                l.mesh.rotation.z = t * 2.0;
+        // 7. Blaze Aura: Swirling Dancing Flames
+        if (ag.blazeFlames) {
+            ag.blazeFlames.forEach(f => {
+                const ang = f.ang + t * f.speed;
+                const y = 0.55 + ((t * 1.4 + f.yOffset) % 1.3);
+                f.mesh.position.set(Math.cos(ang) * f.rad, y, Math.sin(ang) * f.rad);
+                f.mesh.rotation.y = -ang;
+                f.mesh.scale.setScalar(0.7 + Math.sin(y * 2.0) * 0.5);
             });
+        }
 
-        } else if (ag.lightningArcs) {
-            // Dynamic crackling discharge arcs across shoulders and torso
+        // 8. Lightning Aura: Dynamic Crackling Arcs
+        if (ag.lightningArcs) {
             ag.lightningArcs.forEach(arc => {
                 arc.timer -= dt;
                 if (arc.timer <= 0) {
@@ -2538,14 +2526,6 @@ export class Character3D {
                     }
                     arc.line.geometry.setFromPoints(arc.pts);
                 }
-            });
-
-        } else if (ag.voidWisps) {
-            // Orbiting cosmic wisps
-            ag.voidWisps.forEach(w => {
-                const ang = w.ang + t * w.speed;
-                const y = 0.85 + Math.sin(t * 2.2 + w.ang) * 0.42;
-                w.mesh.position.set(Math.cos(ang) * w.rad, y, Math.sin(ang) * w.rad);
             });
         }
     }
@@ -2678,19 +2658,7 @@ export class Character3D {
             tailTip.position.set(0, 0.30, -0.26);
             tailPivot.add(tailTip);
 
-            // Ethereal Fox Fire Spirit Glow surrounding the spirit fox
-            const foxAuraTex = Character3D.getRadialGlowTexture('#fff3e0', '#ff6d00');
-            const foxAuraMat = new THREE.MeshBasicMaterial({
-                map: foxAuraTex,
-                transparent: true,
-                blending: THREE.AdditiveBlending,
-                depthWrite: false,
-                opacity: 0.70
-            });
-            const foxAuraMesh = new THREE.Mesh(new THREE.PlaneGeometry(0.85, 0.85), foxAuraMat);
-            foxAuraMesh.position.set(0, 0.05, 0);
-            pg.add(foxAuraMesh);
-            pg.foxAuraMesh = foxAuraMesh;
+
 
         } else if (id.includes('owl')) {
             // 🦉 NIGHT OWL PET: Elevated Hover ABOVE HEAD (y = 2.25)
@@ -2865,10 +2833,7 @@ export class Character3D {
                 pg.position.z = damp(pg.position.z, -0.85, 3.0, dt);
                 pg.position.y = 0.72 + Math.sin(t * 3.0) * 0.035;
             }
-            if (pg.foxAuraMesh) {
-                pg.foxAuraMesh.rotation.z = t * 1.2;
-                pg.foxAuraMesh.scale.setScalar(0.95 + Math.sin(t * 4.0) * 0.08);
-            }
+
         } else if (this.currentPetId.includes('owl')) {
             // Hover bob ABOVE HEAD (y = 2.25)
             const flap = Math.sin(t * 8.5) * 0.55;
