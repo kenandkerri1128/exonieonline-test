@@ -235,7 +235,7 @@ export class Character3D {
             depthTest: false
         });
         this.overheadSprite = new THREE.Sprite(spriteMat);
-        this.overheadSprite.position.set(0, 2.32, 0);
+        this.overheadSprite.position.set(0, 2.95, 0);
         this.overheadSprite.scale.set(2.8, 0.78, 1);
         this.overheadSprite.renderOrder = 997;
         this.overheadGroup.add(this.overheadSprite);
@@ -1994,8 +1994,9 @@ export class Character3D {
     }
 
     // ==========================================
-    // ✨ 3D COSMETIC AURA ENGINE (AUTHENTIC 2D EXONIE REMASTERED)
-    // Pure glowing energy shroud connected to its color + additional special effects!
+    // ✨ 3D INSIDE-OUT COSMETIC AURA ENGINE
+    // Base of the glow is the character body (NOT the ground!)
+    // Radiates inside-out from the core with Fresnel silhouette rim glow
     // ==========================================
     setCosmeticAura(auraId) {
         if (this.cosmeticAuraGroup) {
@@ -2023,13 +2024,13 @@ export class Character3D {
         this.group.add(ag);
 
         const configs = {
-            divine:    { hex: '#ffea00', coreHex: '#ffffff', glowHex: '#ff9800', groundR: 2.2 },
-            blaze:     { hex: '#ff3d00', coreHex: '#fff3e0', glowHex: '#ff6d00', groundR: 1.8 },
-            liquid:    { hex: '#00e5ff', coreHex: '#e0f7fa', glowHex: '#0091ea', groundR: 1.8 },
-            nature:    { hex: '#4caf50', coreHex: '#f1f8e9', glowHex: '#2e7d32', groundR: 1.8 },
-            lightning: { hex: '#00f0ff', coreHex: '#ffffff', glowHex: '#2979ff', groundR: 1.9 },
-            easter:    { hex: '#ff80ab', coreHex: '#fff9c4', glowHex: '#80d8ff', groundR: 1.8 },
-            void:      { hex: '#7c4dff', coreHex: '#ede7f6', glowHex: '#311b92', groundR: 1.8 }
+            divine:    { hex: '#ffea00', coreHex: '#ffffff', glowHex: '#ff9800' },
+            blaze:     { hex: '#ff3d00', coreHex: '#fff3e0', glowHex: '#ff6d00' },
+            liquid:    { hex: '#00e5ff', coreHex: '#e0f7fa', glowHex: '#0091ea' },
+            nature:    { hex: '#4caf50', coreHex: '#f1f8e9', glowHex: '#2e7d32' },
+            lightning: { hex: '#00f0ff', coreHex: '#ffffff', glowHex: '#2979ff' },
+            easter:    { hex: '#ff80ab', coreHex: '#fff9c4', glowHex: '#80d8ff' },
+            void:      { hex: '#7c4dff', coreHex: '#ede7f6', glowHex: '#311b92' }
         };
 
         let activeKey = 'divine';
@@ -2040,77 +2041,138 @@ export class Character3D {
         ag.cfg = cfg;
         ag.auraKey = activeKey;
 
-        // 1. 🌟 PRIMARY BODY AURA SHROUD (Envelops character in its radiant color)
-        const shroudGeo = new THREE.CylinderGeometry(0.56, 0.46, 1.88, 24, 1, true);
-        const shroudMat = new THREE.MeshBasicMaterial({
-            map: Character3D.getAuraShroudTexture(cfg.coreHex, cfg.hex),
+        // ==========================================
+        // 1. 🌟 INSIDE-OUT FRESNEL BODY AURA SHELL
+        // Origin: Character Torso/Spine (y = 1.08) - NOT touching the ground!
+        // ==========================================
+        const bodyGeo = new THREE.SphereGeometry(0.70, 32, 24);
+
+        const bodyAuraMat = new THREE.ShaderMaterial({
+            uniforms: {
+                auraColor: { value: new THREE.Color(cfg.hex) },
+                coreColor: { value: new THREE.Color(cfg.coreHex) },
+                glowIntensity: { value: 1.35 },
+                time: { value: 0.0 }
+            },
+            vertexShader: `
+                varying vec3 vNormal;
+                varying vec3 vViewPosition;
+                void main() {
+                    vNormal = normalize(normalMatrix * normal);
+                    vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+                    vViewPosition = -mvPosition.xyz;
+                    gl_Position = projectionMatrix * mvPosition;
+                }
+            `,
+            fragmentShader: `
+                uniform vec3 auraColor;
+                uniform vec3 coreColor;
+                uniform float glowIntensity;
+                uniform float time;
+                varying vec3 vNormal;
+                varying vec3 vViewPosition;
+                void main() {
+                    vec3 normal = normalize(vNormal);
+                    vec3 viewDir = normalize(vViewPosition);
+                    // Inside-out silhouette rim glow (brightest along outer perimeter)
+                    float rim = 1.0 - max(0.0, dot(normal, viewDir));
+                    float factor = pow(rim, 2.2);
+                    float pulse = 0.85 + 0.15 * sin(time * 3.5);
+                    vec3 finalColor = mix(auraColor, coreColor, pow(rim, 3.8));
+                    gl_FragColor = vec4(finalColor, factor * glowIntensity * pulse);
+                }
+            `,
             transparent: true,
             blending: THREE.AdditiveBlending,
             depthWrite: false,
-            side: THREE.DoubleSide,
-            opacity: 0.65
+            side: THREE.BackSide
         });
-        const shroud = new THREE.Mesh(shroudGeo, shroudMat);
-        shroud.position.y = 0.95;
-        ag.add(shroud);
-        ag.bodyShroud = shroud;
-        ag.shroudMat = shroudMat;
 
-        // 2. 🌟 INNER COUNTER-ROTATING CORE SHROUD (Volumetric depth)
-        const innerGeo = new THREE.CylinderGeometry(0.46, 0.38, 1.72, 20, 1, true);
-        const innerMat = new THREE.MeshBasicMaterial({
-            map: Character3D.getAuraShroudTexture('#ffffff', cfg.glowHex),
+        const bodyAuraMesh = new THREE.Mesh(bodyGeo, bodyAuraMat);
+        bodyAuraMesh.position.set(0, 1.08, 0); // Centered on torso/spine
+        bodyAuraMesh.scale.set(1.0, 1.42, 0.88); // Envelops head, torso, hips, and legs organically
+        ag.add(bodyAuraMesh);
+        ag.bodyAuraMesh = bodyAuraMesh;
+        ag.bodyAuraMat = bodyAuraMat;
+
+        // ==========================================
+        // 2. 🌟 INNER VOLUMETRIC RADIANCE CORE
+        // A second tight layer right on the chest & torso for deep luminescence
+        // ==========================================
+        const innerGeo = new THREE.SphereGeometry(0.60, 24, 18);
+        const innerAuraMat = new THREE.ShaderMaterial({
+            uniforms: {
+                auraColor: { value: new THREE.Color(cfg.glowHex) },
+                coreColor: { value: new THREE.Color('#ffffff') },
+                glowIntensity: { value: 0.95 },
+                time: { value: 0.0 }
+            },
+            vertexShader: `
+                varying vec3 vNormal;
+                varying vec3 vViewPosition;
+                void main() {
+                    vNormal = normalize(normalMatrix * normal);
+                    vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+                    vViewPosition = -mvPosition.xyz;
+                    gl_Position = projectionMatrix * mvPosition;
+                }
+            `,
+            fragmentShader: `
+                uniform vec3 auraColor;
+                uniform vec3 coreColor;
+                uniform float glowIntensity;
+                uniform float time;
+                varying vec3 vNormal;
+                varying vec3 vViewPosition;
+                void main() {
+                    vec3 normal = normalize(vNormal);
+                    vec3 viewDir = normalize(vViewPosition);
+                    float rim = 1.0 - max(0.0, dot(normal, viewDir));
+                    float factor = pow(rim, 1.6);
+                    float pulse = 0.88 + 0.12 * cos(time * 4.0);
+                    vec3 finalColor = mix(auraColor, coreColor, pow(rim, 2.5));
+                    gl_FragColor = vec4(finalColor, factor * glowIntensity * pulse);
+                }
+            `,
             transparent: true,
             blending: THREE.AdditiveBlending,
             depthWrite: false,
-            side: THREE.DoubleSide,
-            opacity: 0.45
+            side: THREE.DoubleSide
         });
-        const innerShroud = new THREE.Mesh(innerGeo, innerMat);
-        innerShroud.position.y = 0.95;
-        ag.add(innerShroud);
-        ag.innerShroud = innerShroud;
-        ag.innerMat = innerMat;
 
-        // 3. 🌟 LUMINOUS GROUND AURA POOL (Soft blurred radial disc, zero hard lines)
-        const gGeo = new THREE.PlaneGeometry(cfg.groundR * 2, cfg.groundR * 2);
-        gGeo.rotateX(-Math.PI / 2);
-        const gMat = new THREE.MeshBasicMaterial({
-            map: Character3D.getRadialGlowTexture('#ffffff', cfg.hex),
-            transparent: true,
-            blending: THREE.AdditiveBlending,
-            depthWrite: false,
-            opacity: 0.60
-        });
-        const groundDisc = new THREE.Mesh(gGeo, gMat);
-        groundDisc.position.y = 0.03;
-        ag.add(groundDisc);
-        ag.groundDisc = groundDisc;
-        ag.groundMat = gMat;
+        const innerAuraMesh = new THREE.Mesh(innerGeo, innerAuraMat);
+        innerAuraMesh.position.set(0, 1.08, 0);
+        innerAuraMesh.scale.set(0.85, 1.30, 0.75);
+        ag.add(innerAuraMesh);
+        ag.innerAuraMesh = innerAuraMesh;
+        ag.innerAuraMat = innerAuraMat;
 
-        // 4. 🌟 AMBIENT RISING ENERGY MOTES
-        ag.ambientMotes = [];
-        const moteTex = Character3D.getRadialGlowTexture('#ffffff', cfg.hex);
-        const moteMat = new THREE.MeshBasicMaterial({
-            map: moteTex,
+        // ==========================================
+        // 3. 🌟 INSIDE-OUT BURSTING ENERGY WISPS
+        // Spawns from the character's spine/chest and radiates OUTWARD into space
+        // ==========================================
+        ag.burstWisps = [];
+        const wispTex = Character3D.getRadialGlowTexture('#ffffff', cfg.hex);
+        const wispMat = new THREE.MeshBasicMaterial({
+            map: wispTex,
             transparent: true,
             blending: THREE.AdditiveBlending,
             depthWrite: false,
             opacity: 0.85
         });
-        for (let m = 0; m < 8; m++) {
-            const mPlane = new THREE.Mesh(new THREE.PlaneGeometry(0.12, 0.12), moteMat);
-            ag.add(mPlane);
-            ag.ambientMotes.push({
-                mesh: mPlane,
+        for (let w = 0; w < 10; w++) {
+            const wPlane = new THREE.Mesh(new THREE.PlaneGeometry(0.18, 0.18), wispMat);
+            ag.add(wPlane);
+            ag.burstWisps.push({
+                mesh: wPlane,
                 seed: Math.random() * Math.PI * 2,
-                speed: 0.8 + Math.random() * 0.6,
-                radius: 0.35 + Math.random() * 0.25
+                speed: 0.75 + Math.random() * 0.55,
+                rotSpeed: (Math.random() - 0.5) * 1.5
             });
         }
 
         // ==========================================
-        // 5. 👑 ADDITIONAL SPECIAL EFFECTS (PER AURA TYPE)
+        // 4. 👑 ADDITIONAL SPECIAL EFFECTS (PER AURA TYPE)
         // ==========================================
         if (activeKey === 'divine') {
             // 🕊️ DIVINE AURA: Ethereal Flapping Angel Wings of Light + Holy Halo
@@ -2238,7 +2300,7 @@ export class Character3D {
             }
 
         } else if (activeKey === 'blaze') {
-            // 🔥 BLAZE AURA: Swirling Luminous Dancing Flame Wisps
+            // 🔥 BLAZE AURA: Swirling Luminous Dancing Flame Wisps around Torso
             ag.blazeFlames = [];
             const fTex = Character3D.getRadialGlowTexture('#fff3e0', '#ff3d00');
             const fMat = new THREE.MeshBasicMaterial({
@@ -2255,13 +2317,13 @@ export class Character3D {
                     mesh: flame,
                     ang: (f / 6) * Math.PI * 2,
                     speed: 2.2 + (f % 3) * 0.4,
-                    rad: 0.52 + (f % 2) * 0.12,
+                    rad: 0.45 + (f % 2) * 0.12,
                     yOffset: f * 0.25
                 });
             }
 
         } else if (activeKey === 'liquid') {
-            // 💧 LIQUID AURA: Floating Water Droplets & Concentric Ripple Ring
+            // 💧 LIQUID AURA: Floating Water Droplets & Torso Swirl
             ag.liquidDrops = [];
             const dTex = Character3D.getRadialGlowTexture('#ffffff', '#00e5ff');
             const dMat = new THREE.MeshBasicMaterial({
@@ -2278,21 +2340,10 @@ export class Character3D {
                     mesh: drop,
                     phase: d * 0.45,
                     speed: 0.6 + Math.random() * 0.4,
-                    rad: 0.45 + Math.random() * 0.25,
+                    rad: 0.42 + Math.random() * 0.20,
                     ang: (d / 8) * Math.PI * 2
                 });
             }
-            const rippleGeo = new THREE.RingGeometry(0.65, 0.72, 32);
-            rippleGeo.rotateX(-Math.PI / 2);
-            ag.liquidRipple = new THREE.Mesh(rippleGeo, new THREE.MeshBasicMaterial({
-                color: 0x00e5ff,
-                transparent: true,
-                blending: THREE.AdditiveBlending,
-                depthWrite: false,
-                opacity: 0.65
-            }));
-            ag.liquidRipple.position.y = 0.04;
-            ag.add(ag.liquidRipple);
 
         } else if (activeKey === 'nature') {
             // 🌿 NATURE AURA: Double-Helix Swirling Leaf Petals
@@ -2354,7 +2405,7 @@ export class Character3D {
                     mesh: wisp,
                     ang: (w / 6) * Math.PI * 2,
                     speed: 1.4 + (w % 3) * 0.3,
-                    rad: 0.58 + (w % 2) * 0.15
+                    rad: 0.52 + (w % 2) * 0.12
                 });
             }
         }
@@ -2365,39 +2416,39 @@ export class Character3D {
         if (!ag || !this.currentAuraId) return;
         const t = this.animTime;
 
-        // 1. Shroud Pulsation, Breathing, and Rotation
-        if (ag.bodyShroud) {
-            ag.bodyShroud.rotation.y += dt * 0.85;
-            const pulse = 1.0 + Math.sin(t * 3.2) * 0.05;
-            ag.bodyShroud.scale.set(pulse, 1.0 + Math.sin(t * 2.5) * 0.02, pulse);
-            if (ag.shroudMat) ag.shroudMat.opacity = 0.55 + Math.sin(t * 3.2) * 0.18;
+        // 1. Inside-Out Body Aura Shell Pulsation & Time Uniform
+        if (ag.bodyAuraMat && ag.bodyAuraMat.uniforms) {
+            ag.bodyAuraMat.uniforms.time.value = t;
         }
-        if (ag.innerShroud) {
-            ag.innerShroud.rotation.y -= dt * 1.15;
-            const iPulse = 1.0 + Math.cos(t * 3.5) * 0.04;
-            ag.innerShroud.scale.set(iPulse, 1.0 + Math.cos(t * 2.8) * 0.02, iPulse);
-            if (ag.innerMat) ag.innerMat.opacity = 0.40 + Math.cos(t * 3.5) * 0.15;
+        if (ag.bodyAuraMesh) {
+            ag.bodyAuraMesh.rotation.y += dt * 0.55;
+            const bPulse = 1.0 + Math.sin(t * 3.2) * 0.04;
+            ag.bodyAuraMesh.scale.set(1.0 * bPulse, 1.42 * (1.0 + Math.sin(t * 2.5) * 0.02), 0.88 * bPulse);
         }
-
-        // 2. Ground Energy Pool Breathing
-        if (ag.groundDisc) {
-            const gScale = 1.0 + Math.sin(t * 2.8) * 0.06;
-            ag.groundDisc.scale.set(gScale, gScale, gScale);
-            if (ag.groundMat) ag.groundMat.opacity = 0.55 + Math.sin(t * 2.8) * 0.18;
+        if (ag.innerAuraMat && ag.innerAuraMat.uniforms) {
+            ag.innerAuraMat.uniforms.time.value = t;
+        }
+        if (ag.innerAuraMesh) {
+            ag.innerAuraMesh.rotation.y -= dt * 0.75;
+            const iPulse = 1.0 + Math.cos(t * 3.5) * 0.035;
+            ag.innerAuraMesh.scale.set(0.85 * iPulse, 1.30 * (1.0 + Math.cos(t * 2.8) * 0.02), 0.75 * iPulse);
         }
 
-        // 3. Ambient Rising Energy Motes
-        if (ag.ambientMotes) {
-            ag.ambientMotes.forEach(m => {
-                const yPos = ((t * m.speed + m.seed) % 2.0);
-                const curAng = t * m.speed * 0.8 + m.seed;
-                m.mesh.position.set(Math.cos(curAng) * m.radius, yPos, Math.sin(curAng) * m.radius);
-                const alpha = Math.sin((yPos / 2.0) * Math.PI);
-                m.mesh.scale.setScalar(0.7 + alpha * 0.5);
+        // 2. Inside-Out Bursting Energy Wisps (Expanding outward from chest/spine)
+        if (ag.burstWisps) {
+            ag.burstWisps.forEach(w => {
+                const prog = ((t * w.speed + w.seed) % 1.6) / 1.6; // 0 to 1
+                const curRad = 0.18 + prog * 0.48; // Radiates OUTWARD from body core!
+                const curY = 0.75 + prog * 0.95; // Drifts upward
+                const curAng = w.seed + t * w.rotSpeed;
+                w.mesh.position.set(Math.cos(curAng) * curRad, curY, Math.sin(curAng) * curRad);
+                const fade = Math.sin(prog * Math.PI);
+                w.mesh.scale.setScalar(0.08 + fade * 0.14);
+                if (w.mesh.material) w.mesh.material.opacity = fade * 0.85;
             });
         }
 
-        // 4. Aura-Specific Animation Logic
+        // 3. Aura-Specific Animation Logic
         if (ag.auraKey === 'divine') {
             // Ethereal Angel Wing Flapping (Natural sinusoidal motion matching 2D Exonie)
             const flap = Math.sin(t * 2.6);
@@ -2432,18 +2483,18 @@ export class Character3D {
             if (ag.bunnyBubbles) {
                 ag.bunnyBubbles.forEach(b => {
                     const prog = ((t * b.speed + b.phase) % 2.2);
-                    b.mesh.position.set(b.x + Math.sin(t * 3.0 + b.phase) * 0.08, 0.3 + prog, b.z + Math.cos(t * 3.0 + b.phase) * 0.08);
+                    b.mesh.position.set(b.x + Math.sin(t * 3.0 + b.phase) * 0.08, 0.5 + prog, b.z + Math.cos(t * 3.0 + b.phase) * 0.08);
                     const fade = Math.sin((prog / 2.2) * Math.PI);
                     b.mesh.scale.setScalar(0.6 + fade * 0.6);
                 });
             }
 
         } else if (ag.auraKey === 'blaze') {
-            // Swirling dancing flame tongues
+            // Swirling dancing flame tongues around torso
             if (ag.blazeFlames) {
                 ag.blazeFlames.forEach(f => {
                     const ang = f.ang + t * f.speed;
-                    const y = 0.35 + ((t * 1.4 + f.yOffset) % 1.5);
+                    const y = 0.55 + ((t * 1.4 + f.yOffset) % 1.3);
                     f.mesh.position.set(Math.cos(ang) * f.rad, y, Math.sin(ang) * f.rad);
                     f.mesh.rotation.y = -ang;
                     f.mesh.scale.setScalar(0.7 + Math.sin(y * 2.0) * 0.5);
@@ -2451,62 +2502,51 @@ export class Character3D {
             }
 
         } else if (ag.auraKey === 'liquid') {
-            // Ascending water bubbles & expanding concentric ripple
+            // Ascending water bubbles around torso
             if (ag.liquidDrops) {
                 ag.liquidDrops.forEach(d => {
-                    const y = 0.2 + ((t * d.speed + d.phase) % 1.7);
+                    const y = 0.55 + ((t * d.speed + d.phase) % 1.4);
                     d.mesh.position.set(Math.cos(d.ang) * d.rad, y, Math.sin(d.ang) * d.rad);
                 });
             }
-            if (ag.liquidRipple) {
-                const rProg = (t * 0.8) % 1.0;
-                ag.liquidRipple.scale.setScalar(1.0 + rProg * 1.2);
-                ag.liquidRipple.material.opacity = (1.0 - rProg) * 0.65;
-            }
 
-        } else if (ag.auraKey === 'nature') {
+        } else if (ag.natureLeaves) {
             // Double-helix ascending leaf petals
-            if (ag.natureLeaves) {
-                ag.natureLeaves.forEach(l => {
-                    const ang = l.ang + t * l.speed * l.helix;
-                    const y = 0.2 + ((t * 0.9 + l.ang) % 1.8);
-                    l.mesh.position.set(Math.cos(ang) * 0.52, y, Math.sin(ang) * 0.52);
-                    l.mesh.rotation.z = t * 2.0;
-                });
-            }
+            ag.natureLeaves.forEach(l => {
+                const ang = l.ang + t * l.speed * l.helix;
+                const y = 0.55 + ((t * 0.9 + l.ang) % 1.5);
+                l.mesh.position.set(Math.cos(ang) * 0.48, y, Math.sin(ang) * 0.48);
+                l.mesh.rotation.z = t * 2.0;
+            });
 
-        } else if (ag.auraKey === 'lightning') {
-            // Dynamic crackling discharge arcs
-            if (ag.lightningArcs) {
-                ag.lightningArcs.forEach(arc => {
-                    arc.timer -= dt;
-                    if (arc.timer <= 0) {
-                        arc.timer = 0.06 + Math.random() * 0.08;
-                        const startY = 0.7 + Math.random() * 0.8;
-                        const startAng = Math.random() * Math.PI * 2;
-                        let cx = Math.cos(startAng) * 0.45;
-                        let cy = startY;
-                        let cz = Math.sin(startAng) * 0.45;
-                        for (let p = 0; p < arc.pts.length; p++) {
-                            arc.pts[p].set(cx, cy, cz);
-                            cx += (Math.random() - 0.5) * 0.25;
-                            cy += (Math.random() - 0.4) * 0.22;
-                            cz += (Math.random() - 0.5) * 0.25;
-                        }
-                        arc.line.geometry.setFromPoints(arc.pts);
+        } else if (ag.lightningArcs) {
+            // Dynamic crackling discharge arcs across shoulders and torso
+            ag.lightningArcs.forEach(arc => {
+                arc.timer -= dt;
+                if (arc.timer <= 0) {
+                    arc.timer = 0.06 + Math.random() * 0.08;
+                    const startY = 0.8 + Math.random() * 0.7;
+                    const startAng = Math.random() * Math.PI * 2;
+                    let cx = Math.cos(startAng) * 0.42;
+                    let cy = startY;
+                    let cz = Math.sin(startAng) * 0.42;
+                    for (let p = 0; p < arc.pts.length; p++) {
+                        arc.pts[p].set(cx, cy, cz);
+                        cx += (Math.random() - 0.5) * 0.22;
+                        cy += (Math.random() - 0.4) * 0.20;
+                        cz += (Math.random() - 0.5) * 0.22;
                     }
-                });
-            }
+                    arc.line.geometry.setFromPoints(arc.pts);
+                }
+            });
 
-        } else if (ag.auraKey === 'void') {
+        } else if (ag.voidWisps) {
             // Orbiting cosmic wisps
-            if (ag.voidWisps) {
-                ag.voidWisps.forEach(w => {
-                    const ang = w.ang + t * w.speed;
-                    const y = 0.75 + Math.sin(t * 2.2 + w.ang) * 0.45;
-                    w.mesh.position.set(Math.cos(ang) * w.rad, y, Math.sin(ang) * w.rad);
-                });
-            }
+            ag.voidWisps.forEach(w => {
+                const ang = w.ang + t * w.speed;
+                const y = 0.85 + Math.sin(t * 2.2 + w.ang) * 0.42;
+                w.mesh.position.set(Math.cos(ang) * w.rad, y, Math.sin(ang) * w.rad);
+            });
         }
     }
 
