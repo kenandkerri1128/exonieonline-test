@@ -1856,6 +1856,10 @@ export class UIManager {
         this.storageModal.style.display = 'flex';
     }
 
+    renderStorageUI() {
+        this.renderStorage();
+    }
+
     closeStorageUI() {
         window.isStorageOpen = false;
         if (this.storageModal) this.storageModal.style.display = 'none';

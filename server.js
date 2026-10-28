@@ -599,6 +599,10 @@ function convert2DRowToSlot(row, slotIndex = 0) {
             tavernEntries: 5, dungeonEntries: 7
         };
     }
+    let hStorage = (baseStats && Array.isArray(baseStats.homeStorage)) ? baseStats.homeStorage.slice(0, 15)
+        : (Array.isArray(row.storage) ? row.storage.slice(0, 15) : []);
+    while (hStorage.length < 15) hStorage.push(null);
+    baseStats.homeStorage = hStorage;
 
     let equips = safeParseJson(row.equips, null);
     if (!equips || typeof equips !== 'object' || Array.isArray(equips)) {
@@ -639,6 +643,7 @@ function convert2DRowToSlot(row, slotIndex = 0) {
         exp: xp,
         equips: equips,
         inventory: inventory,
+        storage: hStorage,
         base_stats: baseStats,
         baseStats: baseStats,
         playerClass: baseStats.playerClass || null,
@@ -689,6 +694,10 @@ function parseAccountSlots(userRow) {
 
         if (name && !name.toLowerCase().startsWith('none') && !name.toLowerCase().startsWith('__empty') && name !== 'null' && name !== 'undefined') {
             const slotStats = statsSlots[i] || { hp: 100, attack: 5, str: 10, int: 10, playerClass: null };
+            let hStorage = (slotStats && Array.isArray(slotStats.homeStorage)) ? slotStats.homeStorage.slice(0, 15) : [];
+            while (hStorage.length < 15) hStorage.push(null);
+            slotStats.homeStorage = hStorage;
+
             const lvl = (slotStats && slotStats.level) ? Number(slotStats.level) : (Number(levelParts[i]) || Number(levelParts[0]) || 1);
             const gld = (slotStats && slotStats.gold !== undefined) ? Number(slotStats.gold) : (Number(goldParts[i]) || Number(goldParts[0]) || 500);
             const xp = (slotStats && slotStats.exp !== undefined) ? Number(slotStats.exp) : (Number(expParts[i]) || Number(expParts[0]) || 0);
@@ -715,6 +724,7 @@ function parseAccountSlots(userRow) {
                 exp: xp,
                 equips: equipsSlots[i] || getStarterItems().starterEquips,
                 inventory: inventorySlots[i] || getStarterItems().starterInventory,
+                storage: hStorage,
                 base_stats: slotStats,
                 baseStats: slotStats,
                 playerClass: (slotStats && slotStats.playerClass) || null,
@@ -795,6 +805,10 @@ function serializeSlotsToRow(slots, existingRow = {}) {
                 skinColor: c.skin_color || c.skinColor || '#f5c6a5',
                 title: c.title || (c.base_stats && c.base_stats.title) || null
             });
+            const finalStorage = (c && Array.isArray(c.storage)) ? c.storage.slice(0, 15)
+                : (slotStats && Array.isArray(slotStats.homeStorage)) ? slotStats.homeStorage.slice(0, 15) : [];
+            while (finalStorage.length < 15) finalStorage.push(null);
+            slotStats.homeStorage = finalStorage;
             statsArr.push(slotStats);
         } else {
             names.push('none');
@@ -1764,6 +1778,58 @@ io.on('connection', (socket) => {
         }
     });
 
+    // 🧰 BULLETPROOF MULTI-SLOT PLAYER PERSISTENCE HELPER (HOME STORAGE & PROGRESS)
+    async function savePlayerSlotData(socket, p) {
+        if (!p) return;
+        const identifier = socket.accountIdentifier || socket.email || p.email || p.name;
+        const slotIdx = Math.max(0, Math.min(2, Number(p.slotIndex) || 0));
+        if (!identifier) return;
+
+        try {
+            const dbRows = await findAccountRows(identifier);
+            if (!dbRows || dbRows.length === 0) return;
+
+            const slots = parseRowsToSlots(dbRows);
+            if (!slots[slotIdx]) slots[slotIdx] = {};
+
+            slots[slotIdx].inventory = p.inventory;
+            if (!slots[slotIdx].base_stats) slots[slotIdx].base_stats = {};
+            if (!p.baseStats) p.baseStats = {};
+            if (!Array.isArray(p.baseStats.homeStorage)) p.baseStats.homeStorage = Array(15).fill(null);
+            while (p.baseStats.homeStorage.length < 15) p.baseStats.homeStorage.push(null);
+
+            slots[slotIdx].base_stats.homeStorage = p.baseStats.homeStorage;
+            slots[slotIdx].baseStats = slots[slotIdx].base_stats;
+            slots[slotIdx].storage = p.baseStats.homeStorage;
+
+            if (supabase) {
+                if (dbRows.length > 1) {
+                    const rowToUpdate = dbRows[slotIdx] || dbRows.find(r => r.character_name === slots[slotIdx].name);
+                    if (rowToUpdate) {
+                        await supabase.from('Exonians').update({
+                            inventory: slots[slotIdx].inventory,
+                            base_stats: slots[slotIdx].base_stats
+                        }).eq('character_name', rowToUpdate.character_name);
+                    }
+                } else {
+                    const updatePayload = serializeSlotsToRow(slots, dbRows[0]);
+                    let q = supabase.from('Exonians').update(updatePayload);
+                    if (dbRows[0].id) q = q.eq('id', dbRows[0].id);
+                    else if (dbRows[0].email) q = q.eq('email', dbRows[0].email);
+                    else q = q.eq('character_name', dbRows[0].character_name);
+                    await q;
+                }
+            } else {
+                const updatePayload = serializeSlotsToRow(slots, dbRows[0]);
+                const key = String(identifier).toLowerCase();
+                if (memoryDb.users[key]) Object.assign(memoryDb.users[key], updatePayload);
+                saveLocalDb();
+            }
+        } catch (err) {
+            console.error('[SAVE PLAYER SLOT DATA ERROR]', err.message);
+        }
+    }
+
     // 6. SAVE CHARACTER PROGRESS (SEGREGATED PER SLOT)
     socket.on('saveCharacter', async (payload) => {
         try {
@@ -1791,6 +1857,16 @@ io.on('connection', (socket) => {
             updatedBaseStats.hairColor = charState.hairColor || slots[slotIdx].hair_color || '#111111';
             updatedBaseStats.skinColor = charState.skinColor || slots[slotIdx].skin_color || '#f5c6a5';
 
+            const incomingStorage = (charState && Array.isArray(charState.storage)) ? charState.storage
+                : (charState && charState.baseStats && Array.isArray(charState.baseStats.homeStorage)) ? charState.baseStats.homeStorage
+                : (charState && charState.base_stats && Array.isArray(charState.base_stats.homeStorage)) ? charState.base_stats.homeStorage
+                : (slots[slotIdx] && Array.isArray(slots[slotIdx].storage)) ? slots[slotIdx].storage
+                : (slots[slotIdx] && slots[slotIdx].base_stats && Array.isArray(slots[slotIdx].base_stats.homeStorage)) ? slots[slotIdx].base_stats.homeStorage
+                : Array(15).fill(null);
+            const safeStorage = incomingStorage.slice(0, 15);
+            while (safeStorage.length < 15) safeStorage.push(null);
+            updatedBaseStats.homeStorage = safeStorage;
+
             Object.assign(slots[slotIdx], {
                 name: charState.name || slots[slotIdx].name,
                 character_name: charState.name || slots[slotIdx].name,
@@ -1799,6 +1875,7 @@ io.on('connection', (socket) => {
                 gold: charState.gold !== undefined ? charState.gold : slots[slotIdx].gold,
                 equips: charState.equips || slots[slotIdx].equips,
                 inventory: charState.inventory || slots[slotIdx].inventory,
+                storage: safeStorage,
                 base_stats: updatedBaseStats,
                 baseStats: updatedBaseStats,
                 skin_color: charState.skinColor || slots[slotIdx].skin_color,
@@ -1806,6 +1883,13 @@ io.on('connection', (socket) => {
                 hair_style: safeStyle,
                 title: charState.title || updatedBaseStats.title || slots[slotIdx].title || null
             });
+
+            if (onlinePlayers[socket.id]) {
+                if (charState.inventory) onlinePlayers[socket.id].inventory = charState.inventory;
+                if (!onlinePlayers[socket.id].baseStats) onlinePlayers[socket.id].baseStats = {};
+                onlinePlayers[socket.id].baseStats.homeStorage = safeStorage;
+                onlinePlayers[socket.id].storage = safeStorage;
+            }
 
             if (supabase) {
                 if (dbRows.length > 1) {
@@ -1913,6 +1997,15 @@ io.on('connection', (socket) => {
             socket.accountIdentifier = userEmail || finalName;
             socket.characterName = finalName;
 
+            const resolvedBaseStats = pData.base_stats || pData.baseStats || {};
+            const initialStorage = (pData && Array.isArray(pData.storage)) ? pData.storage
+                : (resolvedBaseStats && Array.isArray(resolvedBaseStats.homeStorage)) ? resolvedBaseStats.homeStorage
+                : (data && Array.isArray(data.storage)) ? data.storage
+                : Array(15).fill(null);
+            const safeStorage = initialStorage.slice(0, 15);
+            while (safeStorage.length < 15) safeStorage.push(null);
+            resolvedBaseStats.homeStorage = safeStorage;
+
             onlinePlayers[socket.id] = {
                 socketId: socket.id,
                 email: userEmail,
@@ -1932,7 +2025,8 @@ io.on('connection', (socket) => {
                 equips: equips,
                 weapon: weapon,
                 inventory: data.inventory || pData.inventory || [],
-                baseStats: pData.base_stats || pData.baseStats || {},
+                storage: safeStorage,
+                baseStats: resolvedBaseStats,
                 hp: hp,
                 maxHp: maxHp,
                 mp: 200,
@@ -2225,65 +2319,84 @@ io.on('connection', (socket) => {
     });
 
     // ==========================================
-    // 🧰 HOME STORAGE ENGINE (AUTHENTIC 2D EXONIE - PERSISTED TO SUPABASE)
+    // 🧰 HOME STORAGE ENGINE (AUTHENTIC 2D EXONIE - PERSISTED TO SUPABASE & SLOTS)
     // ==========================================
-    socket.on('requestOpenStorage', () => {
+    socket.on('requestOpenStorage', async () => {
         const p = onlinePlayers[socket.id];
         if (!p) return;
         if (!p.baseStats) p.baseStats = {};
+        if (!Array.isArray(p.baseStats.homeStorage) || p.baseStats.homeStorage.length < 15) {
+            const identifier = socket.accountIdentifier || socket.email || p.email || p.name;
+            const slotIdx = Math.max(0, Math.min(2, Number(p.slotIndex) || 0));
+            if (identifier) {
+                const dbRows = await findAccountRows(identifier);
+                if (dbRows && dbRows.length > 0) {
+                    const slots = parseRowsToSlots(dbRows);
+                    if (slots[slotIdx] && (slots[slotIdx].storage || (slots[slotIdx].base_stats && slots[slotIdx].base_stats.homeStorage))) {
+                        p.baseStats.homeStorage = (slots[slotIdx].storage || slots[slotIdx].base_stats.homeStorage).slice(0, 15);
+                    }
+                }
+            }
+        }
         if (!Array.isArray(p.baseStats.homeStorage)) p.baseStats.homeStorage = Array(15).fill(null);
         while (p.baseStats.homeStorage.length < 15) p.baseStats.homeStorage.push(null);
+        p.storage = p.baseStats.homeStorage;
         socket.emit('openStorageUI', p.baseStats.homeStorage);
     });
 
-    socket.on('transferToStorage', async (invIndex) => {
+    socket.on('transferToStorage', async (payload) => {
         const p = onlinePlayers[socket.id];
-        if (!p || !p.inventory || !p.inventory[invIndex]) return;
+        if (!p) return;
+        const invIndex = (typeof payload === 'object' && payload !== null) ? payload.invIndex : payload;
+        const providedItem = (typeof payload === 'object' && payload !== null) ? payload.item : null;
+        const targetVaultIdx = (typeof payload === 'object' && payload !== null && payload.storageIndex !== undefined) ? payload.storageIndex : -1;
+
         if (!p.baseStats) p.baseStats = {};
         if (!Array.isArray(p.baseStats.homeStorage)) p.baseStats.homeStorage = Array(15).fill(null);
         while (p.baseStats.homeStorage.length < 15) p.baseStats.homeStorage.push(null);
+        if (!Array.isArray(p.inventory)) p.inventory = Array(30).fill(null);
 
-        const emptySlot = p.baseStats.homeStorage.findIndex(i => i === null);
+        const item = providedItem || p.inventory[invIndex];
+        if (!item) return;
+
+        let emptySlot = (targetVaultIdx >= 0 && targetVaultIdx < 15 && !p.baseStats.homeStorage[targetVaultIdx])
+            ? targetVaultIdx
+            : p.baseStats.homeStorage.findIndex(i => i === null);
+
         if (emptySlot === -1) return socket.emit('systemMessage', 'Storage Vault is full!');
 
-        p.baseStats.homeStorage[emptySlot] = p.inventory[invIndex];
-        p.inventory[invIndex] = null;
-
-        if (supabase) {
-            try {
-                await supabase.from('Exonians').update({
-                    inventory: p.inventory,
-                    base_stats: p.baseStats
-                }).eq('character_name', p.name);
-            } catch (e) {
-                console.error('[STORAGE SAVE ERROR]', e);
-            }
+        p.baseStats.homeStorage[emptySlot] = item;
+        p.storage = p.baseStats.homeStorage;
+        if (invIndex !== undefined && invIndex !== null && invIndex >= 0 && invIndex < p.inventory.length) {
+            p.inventory[invIndex] = null;
         }
+
+        await savePlayerSlotData(socket, p);
         socket.emit('syncInventory', p.inventory);
         socket.emit('syncStorage', p.baseStats.homeStorage);
     });
 
-    socket.on('transferFromStorage', async (storageIndex) => {
+    socket.on('transferFromStorage', async (payload) => {
         const p = onlinePlayers[socket.id];
-        if (!p || !p.baseStats || !Array.isArray(p.baseStats.homeStorage) || !p.baseStats.homeStorage[storageIndex]) return;
+        if (!p) return;
+        const storageIndex = (typeof payload === 'object' && payload !== null) ? payload.storageIndex : payload;
+        const targetBagIdx = (typeof payload === 'object' && payload !== null && payload.emptyBagIdx !== undefined) ? payload.emptyBagIdx : -1;
 
+        if (!p.baseStats || !Array.isArray(p.baseStats.homeStorage) || !p.baseStats.homeStorage[storageIndex]) return;
         if (!Array.isArray(p.inventory)) p.inventory = Array(30).fill(null);
-        const emptySlot = p.inventory.findIndex(i => i === null);
+
+        const item = p.baseStats.homeStorage[storageIndex];
+        let emptySlot = (targetBagIdx >= 0 && targetBagIdx < 30 && !p.inventory[targetBagIdx])
+            ? targetBagIdx
+            : p.inventory.findIndex(i => i === null);
+
         if (emptySlot === -1) return socket.emit('systemMessage', 'Inventory is full!');
 
-        p.inventory[emptySlot] = p.baseStats.homeStorage[storageIndex];
+        p.inventory[emptySlot] = item;
         p.baseStats.homeStorage[storageIndex] = null;
+        p.storage = p.baseStats.homeStorage;
 
-        if (supabase) {
-            try {
-                await supabase.from('Exonians').update({
-                    inventory: p.inventory,
-                    base_stats: p.baseStats
-                }).eq('character_name', p.name);
-            } catch (e) {
-                console.error('[STORAGE SAVE ERROR]', e);
-            }
-        }
+        await savePlayerSlotData(socket, p);
         socket.emit('syncInventory', p.inventory);
         socket.emit('syncStorage', p.baseStats.homeStorage);
     });

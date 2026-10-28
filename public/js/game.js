@@ -819,8 +819,8 @@ export class GameApp {
                         if (!this.player.baseStats) this.player.baseStats = {};
                         this.player.baseStats.homeStorage = storageData;
                         this.saveCharacterToAccountSlot();
-                        if (this.ui && this.ui.renderStorageUI && this.ui.storageModal && this.ui.storageModal.style.display === 'flex') {
-                            this.ui.renderStorageUI();
+                        if (this.ui && this.ui.renderStorage && this.ui.storageModal && this.ui.storageModal.style.display === 'flex') {
+                            this.ui.renderStorage();
                         }
                     }
                 });
@@ -1750,9 +1750,24 @@ export class GameApp {
             this.player.maxExp = Number(charData.maxExp) || getExpForNextLevel(this.player.level) || 100;
             this.player.gold = Number(charData.gold !== undefined ? charData.gold : (baseStats.gold !== undefined ? baseStats.gold : 500)) || 0;
 
-            this.player.storage = Array.isArray(charData.storage) && charData.storage.length === 15
-                ? JSON.parse(JSON.stringify(charData.storage))
-                : Array(15).fill(null);
+            // 🧰 Ensure storage is loaded from charData.storage OR baseStats.homeStorage reliably
+            let loadedStorage = null;
+            if (Array.isArray(charData.storage) && charData.storage.length === 15) {
+                loadedStorage = charData.storage;
+            } else if (baseStats && Array.isArray(baseStats.homeStorage) && baseStats.homeStorage.length === 15) {
+                loadedStorage = baseStats.homeStorage;
+            } else if (charData.base_stats && Array.isArray(charData.base_stats.homeStorage) && charData.base_stats.homeStorage.length === 15) {
+                loadedStorage = charData.base_stats.homeStorage;
+            }
+            if (!loadedStorage) {
+                let sArr = (baseStats && Array.isArray(baseStats.homeStorage)) ? baseStats.homeStorage.slice(0, 15)
+                    : (charData && Array.isArray(charData.storage)) ? charData.storage.slice(0, 15) : [];
+                while (sArr.length < 15) sArr.push(null);
+                loadedStorage = sArr;
+            }
+            this.player.storage = JSON.parse(JSON.stringify(loadedStorage));
+            if (!this.player.baseStats) this.player.baseStats = {};
+            this.player.baseStats.homeStorage = this.player.storage;
             this.player.dailyMission = charData.dailyMission || null;
             this.player.tavernEntries = charData.tavernEntries !== undefined ? Number(charData.tavernEntries) || 5 : 5;
             this.player.dungeonEntries = charData.dungeonEntries !== undefined ? Number(charData.dungeonEntries) || 7 : 7;
@@ -1863,6 +1878,10 @@ export class GameApp {
 
     saveCharacterToAccountSlot() {
         if (!window.ExonieFlow || !window.ExonieFlow.saveActiveCharacterState) return;
+        if (!this.player.baseStats) this.player.baseStats = {};
+        if (Array.isArray(this.player.storage)) {
+            this.player.baseStats.homeStorage = this.player.storage;
+        }
         window.ExonieFlow.saveActiveCharacterState({
             name: this.player.name,
             slotIndex: this.player.slotIndex !== undefined ? this.player.slotIndex : (window.ExonieFlow.activeSlotIndex || 0),
@@ -1895,7 +1914,7 @@ export class GameApp {
         }
         if (!this.player.baseStats) this.player.baseStats = {};
         if (!Array.isArray(this.player.baseStats.homeStorage)) {
-            this.player.baseStats.homeStorage = Array(15).fill(null);
+            this.player.baseStats.homeStorage = this.player.storage;
         }
         const item = this.player.inventory[bagIdx];
         if (!item) return;
@@ -1918,13 +1937,13 @@ export class GameApp {
         this.player.inventory[bagIdx] = null;
 
         if (this.socket && this.socket.connected) {
-            this.socket.emit('transferToStorage', bagIdx);
+            this.socket.emit('transferToStorage', { invIndex: bagIdx, item: item, storageIndex: emptyVaultIdx });
         }
         this.saveCharacterToAccountSlot();
         this.audio.playSfx('splash');
         this.ui.showToast(`📥 Stored ${item.name} in Home Vault (Slot ${emptyVaultIdx + 1})!`);
         if (this.ui) {
-            this.ui.renderStorageUI();
+            this.ui.renderStorage();
             this.ui.renderInventory();
         }
     }
@@ -1941,19 +1960,21 @@ export class GameApp {
         }
 
         this.player.storage[vaultIdx] = null;
-        if (this.player.baseStats && Array.isArray(this.player.baseStats.homeStorage)) {
-            this.player.baseStats.homeStorage[vaultIdx] = null;
+        if (!this.player.baseStats) this.player.baseStats = {};
+        if (!Array.isArray(this.player.baseStats.homeStorage)) {
+            this.player.baseStats.homeStorage = Array(15).fill(null);
         }
+        this.player.baseStats.homeStorage[vaultIdx] = null;
 
         if (this.socket && this.socket.connected) {
-            this.socket.emit('transferFromStorage', vaultIdx);
+            this.socket.emit('transferFromStorage', { storageIndex: vaultIdx });
         }
         this.saveCharacterToAccountSlot();
         this.audio.playSfx('splash');
         this.ui.showToast(`📤 Withdrew ${item.name} from Home Vault to Bag!`);
         this.ui.updatePlayerHUD(this.player);
         if (this.ui) {
-            this.ui.renderStorageUI();
+            this.ui.renderStorage();
             this.ui.renderInventory();
         }
     }
@@ -3341,6 +3362,33 @@ export class GameApp {
             return; // 🛡️ CRITICAL: Never proceed to onFloorBossDefeated! Haunted House has NO boss cooldown.
         }
 
+        // ============================================================
+        // 2D DUNGEON VICTORY & AUTO-RETURN TO TOWN (NO ESCAPE PORTAL)
+        // ============================================================
+        if (this.currentMapId === 'dungeon1' && (mob.key === 'd1_boss' || mob.category === 'floor_boss')) {
+            this.audio.playSfx('lightning');
+            this.engine.addScreenshake(1.2);
+            this.ui.showToast('🏆 Crystal Dungeon 1 Cleared! Slime King Defeated!');
+            setTimeout(() => {
+                if (this.currentMapId === 'dungeon1') {
+                    this.loadMap('town');
+                }
+            }, 4200);
+            return;
+        }
+
+        if (this.currentMapId === 'dungeon2c' && (mob.key === 'd2c_boss' || mob.category === 'floor_boss')) {
+            this.audio.playSfx('lightning');
+            this.engine.addScreenshake(1.5);
+            this.ui.showToast('🏆 Ancient Cave Core Cleared! Ignis Dragon Defeated!');
+            setTimeout(() => {
+                if (this.currentMapId === 'dungeon2c') {
+                    this.loadMap('town');
+                }
+            }, 4200);
+            return;
+        }
+
         // Boss defeat check
         if (mob.category === 'floor_boss') {
             this.onFloorBossDefeated(mob);
@@ -3560,6 +3608,13 @@ export class GameApp {
         const triggeredPortal = this.world.checkPortalTrigger(this.player.pos.x, this.player.pos.z);
         if (triggeredPortal) {
             const tid = triggeredPortal.targetMapId;
+
+            // 🛡️ NO ESCAPE: Haunted House, Training Tavern, and Dungeons have NO return / escape portals ("There's no escape in these places")
+            if (tid === 'town' || tid.startsWith('floor')) {
+                if (this.currentMapId === 'trainingtavern' || this.currentMapId === 'hauntedhouse' || this.currentMapId.startsWith('dungeon')) {
+                    return;
+                }
+            }
 
             // ⚔️ AUTHENTIC 2D PARTY PORTAL GATING: All party members must be on the portal pad
             const isCoopZone = tid.startsWith('dungeon') || tid.startsWith('floor') || tid === 'battlefield' || tid === 'neutralzone' || tid === 'neutral_zone' || tid === 'maze_guide' || tid === 'hauntedhouse';

@@ -2335,15 +2335,9 @@ export class World3D {
             this.worldGroup.add(crystal);
         }
 
-        // Return portal leads back to the Spire Floor where the Dungeon resides (or Town)
-        if (mapName === 'dungeon1') {
-            this.createPortal('EXIT TO FLOOR 3', 'Return to Shadow Cavern', 'floor3', 0, 39, 0x00e676);
-        } else if (mapName.startsWith('dungeon2')) {
-            this.createPortal('EXIT TO FLOOR 9', 'Return to Astral Nexus', 'floor9', 0, 39, 0x00e676);
-        } else {
-            const exitX = mapName === 'event_cave' ? -86 : 0;
-            const exitZ = mapName === 'event_cave' ? -12 : 22;
-            this.createPortal('EXIT TO TOWN', 'Return to Safe Haven', 'town', 0, 39, 0x00e676, exitX, exitZ);
+        // 🛡️ NO ESCAPE: Dungeons have NO return/escape portals per authentic 2D Exonie rules ("There's no escape in these places")
+        if (mapName === 'event_cave') {
+            this.createPortal('EXIT TO TOWN', 'Return to Safe Haven', 'town', 0, 39, 0x00e676, -86, -12);
         }
 
         // Scale monster levels by selected Dungeon Difficulty (Easy 1x, Medium 1.4x, Hard 1.9x, Extreme 2.5x)
@@ -2400,13 +2394,12 @@ export class World3D {
 
         this.buildEnclosedPerimeterWalls(roomBound, isCozyRoom ? 8.5 : 10.5, theme);
 
-        let exitSpawnX = 0, exitSpawnZ = 22;
-        if (mapName === 'home') { exitSpawnX = -70; exitSpawnZ = 52; }
-        else if (mapName === 'guildbase') { exitSpawnX = 80; exitSpawnZ = -22; }
-        else if (mapName === 'trainingtavern') { exitSpawnX = 70; exitSpawnZ = -82; }
-        else if (mapName === 'hauntedhouse') { exitSpawnX = -72; exitSpawnZ = -80; }
-
-        this.createPortal('RETURN TO TOWN', 'Safe Haven', 'town', 0, isCozyRoom ? 19 : 27, 0x00e676, exitSpawnX, exitSpawnZ);
+        // 🛡️ NO ESCAPE: Haunted House and Training Tavern have NO return portal ("There's no escape in these places")
+        if (mapName === 'home' || mapName === 'guildbase') {
+            const exitSpawnX = (mapName === 'home') ? -70 : 80;
+            const exitSpawnZ = (mapName === 'home') ? 52 : -22;
+            this.createPortal('RETURN TO TOWN', 'Safe Haven', 'town', 0, isCozyRoom ? 19 : 27, 0x00e676, exitSpawnX, exitSpawnZ);
+        }
 
         const woodMat = new THREE.MeshStandardMaterial({ color: 0x5d4037, roughness: 0.65 });
         const darkWoodMat = new THREE.MeshStandardMaterial({ color: 0x3e2723, roughness: 0.7 });
