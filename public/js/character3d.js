@@ -343,6 +343,21 @@ export class Character3D {
         return this.state === 'dodge';
     }
 
+    setHoverHighlight(active) {
+        if (this.isHoverHighlighted === !!active) return;
+        this.isHoverHighlighted = !!active;
+        if (this.auraRing && this.auraRing.material) {
+            this.auraRing.material.opacity = active ? 0.95 : ((this.jobClass && this.jobClass !== 'None') ? 0.58 : 0.22);
+            this.auraRing.scale.setScalar(active ? 1.25 : 1.0);
+            if (active) {
+                this.auraRing.material.color.setHex(0xffd700);
+            } else {
+                const theme = RARITY_THEMES[this.armorRarity] || RARITY_THEMES['Starter'];
+                this.auraRing.material.color.setHex(theme.glow);
+            }
+        }
+    }
+
     setEquipVisuals(opts = {}) {
         this.setCustomization(opts);
     }

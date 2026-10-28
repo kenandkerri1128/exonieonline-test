@@ -3544,6 +3544,114 @@ html, body {
     max-width: 100%;
 }
 
+/* ============================================================
+   👤 PLAYER INTERACTION POINTER CURSOR & HOVER INDICATOR
+   ============================================================ */
+
+/* High-contrast Golden Fantasy Interaction Cursor with Speech Bubble badge */
+.cursor-player-interact,
+.cursor-player-interact canvas,
+.cursor-player-interact #canvas-3d {
+    cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='36' height='36' viewBox='0 0 36 36'%3E%3Cpath d='M4 2 L4 26 L10 20 L16 31 L20 29 L14 18 L22 18 Z' fill='rgba(0,0,0,0.6)' transform='translate(1.5, 1.5)'/%3E%3Cpath d='M4 2 L4 26 L10 20 L16 31 L20 29 L14 18 L22 18 Z' fill='%23ffd700' stroke='%230f172a' stroke-width='2' stroke-linejoin='round'/%3E%3Ccircle cx='25' cy='11' r='9' fill='%230284c7' stroke='%23ffffff' stroke-width='2' filter='drop-shadow(0 2px 4px rgba(0,0,0,0.5))'/%3E%3Cpath d='M21 9 h8 v4 h-4 l-3 3 v-3 h-1 z' fill='%23ffffff'/%3E%3C/svg%3E") 4 2, pointer !important;
+}
+
+/* Floating Player Hover Badge following mouse */
+.player-hover-indicator {
+    position: fixed;
+    pointer-events: none;
+    z-index: 9999;
+    background: rgba(15, 23, 42, 0.94);
+    border: 1.5px solid #38bdf8;
+    box-shadow: 0 0 20px rgba(56, 189, 248, 0.45), 0 6px 16px rgba(0, 0, 0, 0.8);
+    border-radius: 8px;
+    padding: 7px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    backdrop-filter: blur(6px);
+    transform: translate(16px, 16px);
+    transition: opacity 0.12s ease;
+    font-family: inherit;
+    animation: hoverIndicatorFade 0.15s ease-out;
+}
+
+@keyframes hoverIndicatorFade {
+    from { opacity: 0; transform: translate(16px, 20px) scale(0.96); }
+    to { opacity: 1; transform: translate(16px, 16px) scale(1); }
+}
+
+.hover-player-title {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.9rem;
+    font-weight: 800;
+    color: #fff;
+}
+
+.hover-player-icon {
+    font-size: 1rem;
+    filter: drop-shadow(0 0 4px #38bdf8);
+}
+
+.hover-player-name {
+    color: #38bdf8;
+    text-shadow: 0 0 8px rgba(56, 189, 248, 0.5);
+}
+
+.hover-player-meta {
+    color: #ffd700;
+    font-size: 0.78rem;
+    font-weight: 700;
+    margin-left: 4px;
+}
+
+.hover-player-prompt {
+    font-size: 0.74rem;
+    color: #94a3b8;
+    letter-spacing: 0.5px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+/* Crosshair Center Highlight when aiming at another player in Pointer Lock */
+#crosshair-center.target-interact .crosshair-dot {
+    background: #ffd700;
+    box-shadow: 0 0 10px #ffd700, 0 0 22px rgba(255, 215, 0, 0.95);
+    transform: scale(1.4);
+}
+
+#crosshair-center.target-interact .crosshair-ring {
+    border-color: #ffd700;
+    box-shadow: 0 0 14px rgba(255, 215, 0, 0.75);
+    transform: scale(1.25);
+    transition: transform 0.15s ease;
+}
+
+.crosshair-interact-badge {
+    position: absolute;
+    top: 34px;
+    left: 50%;
+    transform: translateX(-50%);
+    white-space: nowrap;
+    background: rgba(15, 23, 42, 0.92);
+    border: 1px solid #ffd700;
+    color: #ffd700;
+    border-radius: 12px;
+    padding: 3px 12px;
+    font-size: 0.75rem;
+    font-weight: 800;
+    box-shadow: 0 0 14px rgba(255, 215, 0, 0.45);
+    pointer-events: none;
+    animation: crosshairBadgePulse 1.2s infinite alternate ease-in-out;
+}
+
+@keyframes crosshairBadgePulse {
+    0% { opacity: 0.85; transform: translateX(-50%) scale(1); }
+    100% { opacity: 1; transform: translateX(-50%) scale(1.06); }
+}
+
 
 
 

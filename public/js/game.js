@@ -442,6 +442,13 @@ export class GameApp {
         this.bossCooldowns = {};
         this.playerShieldMesh = null;
 
+        // Remote Player Hover & Interaction State
+        this.hoveredPlayer = null;
+        this._lastHoverCheck = 0;
+        this._lastAimCheck = 0;
+        this._hoverRaycaster = new THREE.Raycaster();
+        this._hoverMouse = new THREE.Vector2();
+
         // Jump & Vertical Physics
         this.gravity = 26.0;
         this.jumpForce = 9.5;
@@ -1186,6 +1193,9 @@ export class GameApp {
     removeRemotePlayer(id) {
         const rp = this.remotePlayers[id];
         if (rp) {
+            if (this.hoveredPlayer === rp) {
+                this.clearHoveredPlayer();
+            }
             if (rp.char3D && rp.char3D.group) {
                 this.engine.scene.remove(rp.char3D.group);
             }
@@ -2180,12 +2190,12 @@ export class GameApp {
         const rect = this.engine.renderer.domElement.getBoundingClientRect();
         if (clientX < rect.left || clientX > rect.right || clientY < rect.top || clientY > rect.bottom) return null;
 
-        const mouse = new THREE.Vector2(
-            ((clientX - rect.left) / rect.width) * 2 - 1,
-            -((clientY - rect.top) / rect.height) * 2 + 1
-        );
-        const raycaster = new THREE.Raycaster();
-        raycaster.setFromCamera(mouse, this.engine.camera);
+        if (!this._hoverRaycaster) this._hoverRaycaster = new THREE.Raycaster();
+        if (!this._hoverMouse) this._hoverMouse = new THREE.Vector2();
+
+        this._hoverMouse.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+        this._hoverMouse.y = -((clientY - rect.top) / rect.height) * 2 + 1;
+        this._hoverRaycaster.setFromCamera(this._hoverMouse, this.engine.camera);
 
         const targetCandidates = [];
         const objToPlayer = new Map();
@@ -2203,7 +2213,7 @@ export class GameApp {
                     targetCandidates.push(rp.char3D.overheadSprite);
                     objToPlayer.set(rp.char3D.overheadSprite, rp);
                 }
-                // Priority 3: all mesh parts
+                // Priority 3: all mesh and sprite parts
                 rp.char3D.group.traverse((child) => {
                     if (child.isMesh || child.isSprite) {
                         targetCandidates.push(child);
@@ -2213,11 +2223,88 @@ export class GameApp {
             }
         }
 
-        const hits = raycaster.intersectObjects(targetCandidates, false);
+        if (targetCandidates.length === 0) return null;
+        const hits = this._hoverRaycaster.intersectObjects(targetCandidates, false);
         if (hits.length > 0) {
             return objToPlayer.get(hits[0].object) || null;
         }
         return null;
+    }
+
+    setHoveredPlayer(hitPlayer, clientX, clientY, isAimMode = false) {
+        if (!hitPlayer) {
+            this.clearHoveredPlayer();
+            return;
+        }
+
+        if (this.hoveredPlayer !== hitPlayer) {
+            if (this.hoveredPlayer && this.hoveredPlayer.char3D && this.hoveredPlayer.char3D.setHoverHighlight) {
+                this.hoveredPlayer.char3D.setHoverHighlight(false);
+            }
+            this.hoveredPlayer = hitPlayer;
+            if (hitPlayer.char3D && hitPlayer.char3D.setHoverHighlight) {
+                hitPlayer.char3D.setHoverHighlight(true);
+            }
+        }
+
+        const indicator = document.getElementById('player-hover-indicator');
+        const crosshair = document.getElementById('crosshair-center');
+        const crosshairBadge = document.getElementById('crosshair-interact-badge');
+
+        if (isAimMode) {
+            // Pointer lock aim mode: reticle glows golden and shows interact prompt badge
+            if (crosshair) crosshair.classList.add('target-interact');
+            if (crosshairBadge) crosshairBadge.style.display = 'block';
+            if (indicator) indicator.style.display = 'none';
+            document.body.classList.remove('cursor-player-interact');
+            const canvas = document.getElementById('canvas-3d');
+            if (canvas) canvas.classList.remove('cursor-player-interact');
+        } else {
+            // Free mouse mode: change cursor to custom golden interaction pointer & show floating player badge
+            document.body.classList.add('cursor-player-interact');
+            const canvas = document.getElementById('canvas-3d');
+            if (canvas) canvas.classList.add('cursor-player-interact');
+
+            if (crosshair) crosshair.classList.remove('target-interact');
+            if (crosshairBadge) crosshairBadge.style.display = 'none';
+
+            if (indicator) {
+                const nameEl = document.getElementById('hover-player-name');
+                const metaEl = document.getElementById('hover-player-meta');
+                if (nameEl) nameEl.textContent = hitPlayer.name || 'Hero';
+                if (metaEl) {
+                    const guildStr = hitPlayer.guild ? `[${hitPlayer.guild}] ` : '';
+                    metaEl.textContent = `${guildStr}Lv.${hitPlayer.level || 1} ${hitPlayer.job || 'Novice'}`;
+                }
+                if (clientX !== undefined && clientY !== undefined) {
+                    indicator.style.left = `${clientX}px`;
+                    indicator.style.top = `${clientY}px`;
+                }
+                indicator.style.display = 'flex';
+            }
+        }
+    }
+
+    clearHoveredPlayer() {
+        if (this.hoveredPlayer) {
+            if (this.hoveredPlayer.char3D && this.hoveredPlayer.char3D.setHoverHighlight) {
+                this.hoveredPlayer.char3D.setHoverHighlight(false);
+            }
+            this.hoveredPlayer = null;
+        }
+
+        document.body.classList.remove('cursor-player-interact');
+        const canvas = document.getElementById('canvas-3d');
+        if (canvas) canvas.classList.remove('cursor-player-interact');
+
+        const indicator = document.getElementById('player-hover-indicator');
+        if (indicator) indicator.style.display = 'none';
+
+        const crosshair = document.getElementById('crosshair-center');
+        if (crosshair) crosshair.classList.remove('target-interact');
+
+        const crosshairBadge = document.getElementById('crosshair-interact-badge');
+        if (crosshairBadge) crosshairBadge.style.display = 'none';
     }
 
     // Player Stun system (Minotaur Bull Rush Charge & status effects)
@@ -2414,23 +2501,70 @@ export class GameApp {
             this.keys[e.code] = false;
         });
 
-        // Desktop mouse left-click: ALWAYS Primary Attack combo (Never opens player menus during combat/aim mode)
+        // Mouse Move Hover System: Changes cursor and displays hover badge when cursor is over another player
+        window.addEventListener('mousemove', (e) => {
+            if (this.engine && this.engine.isPointerLocked) return;
+
+            const now = performance.now();
+            if (now - (this._lastHoverCheck || 0) < 25) {
+                if (this.hoveredPlayer) {
+                    const indicator = document.getElementById('player-hover-indicator');
+                    if (indicator && indicator.style.display !== 'none') {
+                        indicator.style.left = `${e.clientX}px`;
+                        indicator.style.top = `${e.clientY}px`;
+                    }
+                }
+                return;
+            }
+            this._lastHoverCheck = now;
+
+            const hitPlayer = this.checkPlayerRaycast(e.clientX, e.clientY);
+            if (hitPlayer) {
+                this.setHoveredPlayer(hitPlayer, e.clientX, e.clientY, false);
+            } else if (this.hoveredPlayer) {
+                this.clearHoveredPlayer();
+            }
+        });
+
+        window.addEventListener('mouseleave', () => {
+            this.clearHoveredPlayer();
+        });
+
+        document.addEventListener('pointerlockchange', () => {
+            this.clearHoveredPlayer();
+        });
+
+        // Desktop mouse left-click: Primary Attack combo OR Player Interaction
         window.addEventListener('mousedown', (e) => {
             if (e.target && e.target.id === 'canvas-3d') {
-                if (this.ui) this.ui.closePlayerInteractionMenu();
                 if (e.button === 0) {
+                    // If clicking directly on a hovered remote player while in free mouse mode, open interaction menu
+                    if (!this.engine.isPointerLocked && this.hoveredPlayer) {
+                        if (this.ui) this.ui.openPlayerInteractionMenu(this.hoveredPlayer, e.clientX, e.clientY);
+                        return;
+                    }
+                    if (this.ui) this.ui.closePlayerInteractionMenu();
                     this.onAttackTrigger();
                 }
             }
         });
 
-        // Right-click: Player Interaction Context Menu (ONLY when not aiming with pointer lock)
+        // Right-click: Player Interaction Context Menu (Both in free cursor and Dragon Nest aim modes)
         window.addEventListener('contextmenu', (e) => {
             if (e.target && e.target.id === 'canvas-3d') {
                 e.preventDefault();
-                // When in active Dragon Nest pointer lock aim mode, right click should not interrupt aiming
-                if (this.engine && this.engine.isPointerLocked) return;
-                const hitPlayer = this.checkPlayerRaycast(e.clientX, e.clientY);
+                // When in active Dragon Nest pointer lock aim mode, allow right-clicking an aimed target to interact
+                if (this.engine && this.engine.isPointerLocked) {
+                    if (this.hoveredPlayer) {
+                        const targetPlayer = this.hoveredPlayer;
+                        document.exitPointerLock?.();
+                        setTimeout(() => {
+                            if (this.ui) this.ui.openPlayerInteractionMenu(targetPlayer, window.innerWidth / 2, window.innerHeight / 2);
+                        }, 50);
+                    }
+                    return;
+                }
+                const hitPlayer = this.hoveredPlayer || this.checkPlayerRaycast(e.clientX, e.clientY);
                 if (hitPlayer) {
                     if (this.ui) this.ui.openPlayerInteractionMenu(hitPlayer, e.clientX, e.clientY);
                 } else if (this.ui) {
@@ -3780,6 +3914,22 @@ export class GameApp {
         });
         this.engine.updateParticles(delta);
         this.engine.updateCamera(this.player.pos, delta);
+
+        // Pointer Lock Reticle Interaction: Raycast center of screen when in aim mode
+        if (this.engine && this.engine.isPointerLocked) {
+            const now = performance.now();
+            if (now - (this._lastAimCheck || 0) >= 50) {
+                this._lastAimCheck = now;
+                const centerX = window.innerWidth / 2;
+                const centerY = window.innerHeight / 2;
+                const hitPlayer = this.checkPlayerRaycast(centerX, centerY);
+                if (hitPlayer) {
+                    this.setHoveredPlayer(hitPlayer, centerX, centerY, true);
+                } else if (this.hoveredPlayer) {
+                    this.clearHoveredPlayer();
+                }
+            }
+        }
 
         // 8. Render Minimap
         this.ui.renderMinimap(this.player.pos, this.player.rotY, this.monsters, this.world.portals);
