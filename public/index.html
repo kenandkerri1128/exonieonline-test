@@ -432,7 +432,7 @@
     </div>
 
     <!-- Dragon Nest Aim Crosshair (Centered for Pointer Lock) -->
-    <div id="crosshair-center">
+    <div id="crosshair-center" style="display:none;">
         <div class="crosshair-dot"></div>
         <div class="crosshair-ring"></div>
         <div id="crosshair-interact-badge" class="crosshair-interact-badge" style="display:none;">💬 [Right-Click] Interact</div>
@@ -1257,7 +1257,7 @@
     <!-- ============================================================
          AUTHENTIC 2D EXONIE PERSISTENT CHAT BOX & INPUT (LOCAL + WORLD)
          ============================================================ -->
-    <div id="persistent-chat-box">
+    <div id="persistent-chat-box" style="display:none !important;">
         <div id="chat-tab-bar">
             <button id="chat-tab-local" class="chat-tab active" onclick="window.switchChatTab && window.switchChatTab('local')">Local</button>
             <button id="chat-tab-world" class="chat-tab" onclick="window.switchChatTab && window.switchChatTab('world')">World <span id="world-unread-dot" class="unread-dot" style="display:none;"></span></button>
@@ -1279,15 +1279,15 @@
     </div>
 
     <!-- System Message Toast -->
-    <div id="system-toast"></div>
+    <div id="system-toast" style="display:none;"></div>
 
     <!-- Floor Cleared Notification Banner -->
-    <div id="floor-cleared-banner">
+    <div id="floor-cleared-banner" style="display:none;">
         <span class="banner-title" id="banner-title">FLOOR CLEARED!</span>
         <span class="banner-subtitle" id="banner-sub">Ascension Gate is Now Open!</span>
     </div>
 
     <!-- Main Game Orchestrator Script -->
-    <script type="module" src="./js/game.js?v=3.0"></script>
+    <script type="module" src="./js/game.js?v=3.1"></script>
 </body>
 </html>

@@ -240,12 +240,38 @@ window.ExonieFlow = {
     // 1. CIRCUIT SIEGE INTRO CREDITS SPLASH SCREEN (100% IDENTICAL)
     // ============================================================
     hidePreGameChat() {
+        this.hideAllGameUI();
+    },
+
+    hideAllGameUI() {
+        const hud = document.getElementById('game-hud');
+        if (hud) hud.style.display = 'none';
+        const mobile = document.getElementById('mobile-controls');
+        if (mobile) mobile.style.display = 'none';
+        const crosshair = document.getElementById('crosshair-center');
+        if (crosshair) crosshair.style.display = 'none';
+        const hoverInd = document.getElementById('player-hover-indicator');
+        if (hoverInd) hoverInd.style.display = 'none';
+        const banner = document.getElementById('floor-cleared-banner');
+        if (banner) banner.style.display = 'none';
+        const toast = document.getElementById('system-toast');
+        if (toast) toast.style.display = 'none';
         const chatBox = document.getElementById('persistent-chat-box');
-        if (chatBox) chatBox.classList.remove('in-game');
+        if (chatBox) {
+            chatBox.classList.remove('in-game');
+            chatBox.style.display = 'none';
+        }
         const chatInput = document.getElementById('chat-input-container');
         if (chatInput) {
             chatInput.classList.remove('in-game', 'open');
             chatInput.style.display = 'none';
+        }
+        document.querySelectorAll('.game-modal').forEach(m => { m.style.display = 'none'; });
+        const ctxMenu = document.getElementById('player-interaction-menu');
+        if (ctxMenu) ctxMenu.style.display = 'none';
+        if (window.game) {
+            window.game.hasEnteredWorld = false;
+            window.game.clearHoveredPlayer?.();
         }
     },
 

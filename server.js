@@ -834,6 +834,36 @@ async function sendFriendsUpdateTo(username) {
 // ==========================================
 // SOCKET.IO REALTIME ENGINE
 // ==========================================
+// ==========================================
+// 🛡️ AUTHENTIC 2D EXONIE MAP INSTANCE ROUTER
+// Public maps: town, neutralzone, battlefield.
+// Private maps: home (personal solo or party), dungeons, guildbase.
+// ==========================================
+function getInstanceId(socketId, mapId) {
+    const rawMap = String(mapId || 'town').toLowerCase();
+    if (rawMap === 'town' || rawMap === 'neutralzone' || rawMap === 'battlefield') {
+        return rawMap;
+    }
+    const p = onlinePlayers[socketId];
+    const pName = (p && p.name) || socketId;
+    const partyId = playerParty[pName];
+    const raidId = partyId ? partyRaid[partyId] : null;
+
+    if (rawMap === 'guildbase') {
+        if (p && p.guild) {
+            return `guildbase_${p.guild}`;
+        }
+        return 'town';
+    }
+
+    if (rawMap === 'home') {
+        // Home is strictly private to the player or their party!
+        return partyId ? `home_party_${partyId}` : `home_solo_${pName}`;
+    }
+
+    return raidId ? `${rawMap}_raid_${raidId}` : (partyId ? `${rawMap}_${partyId}` : `${rawMap}_solo_${pName}`);
+}
+
 io.on('connection', (socket) => {
     console.log(`[Socket] Connection established: ${socket.id}`);
 
@@ -1437,8 +1467,21 @@ io.on('connection', (socket) => {
                 title: pData.title || (pData.base_stats && pData.base_stats.title) || data.title || null
             };
 
-            socket.emit('gameState', { self: onlinePlayers[socket.id], players: onlinePlayers });
-            socket.broadcast.emit('playerJoined', onlinePlayers[socket.id]);
+            const mapId = data.mapId || pData.map_id || 'town';
+            const instId = getInstanceId(socket.id, mapId);
+            socket.join(instId);
+            onlinePlayers[socket.id].mapId = mapId;
+            onlinePlayers[socket.id].instanceId = instId;
+
+            // Send players strictly belonging to THIS instance
+            const playersInInstance = {};
+            for (const sid in onlinePlayers) {
+                if (onlinePlayers[sid].instanceId === instId) {
+                    playersInInstance[sid] = onlinePlayers[sid];
+                }
+            }
+            socket.emit('gameState', { self: onlinePlayers[socket.id], players: playersInInstance });
+            socket.to(instId).emit('playerJoined', onlinePlayers[socket.id]);
 
             // Sync Friends List on world enter
             sendFriendsUpdateTo(finalName);
@@ -1535,9 +1578,46 @@ io.on('connection', (socket) => {
     });
 
     socket.on('joinGame', (playerData) => {
-        onlinePlayers[socket.id] = Object.assign({ id: socket.id, x: 0, y: 0, z: 0, rotY: 0 }, playerData);
-        socket.emit('gameState', { self: onlinePlayers[socket.id], players: onlinePlayers });
-        socket.broadcast.emit('playerJoined', onlinePlayers[socket.id]);
+        const mapId = playerData.mapId || 'town';
+        const instId = getInstanceId(socket.id, mapId);
+        socket.join(instId);
+        onlinePlayers[socket.id] = Object.assign({ id: socket.id, mapId, instanceId: instId, x: 0, y: 0, z: 0, rotY: 0 }, playerData);
+        const playersInInstance = {};
+        for (const sid in onlinePlayers) {
+            if (onlinePlayers[sid].instanceId === instId) {
+                playersInInstance[sid] = onlinePlayers[sid];
+            }
+        }
+        socket.emit('gameState', { self: onlinePlayers[socket.id], players: playersInInstance });
+        socket.to(instId).emit('playerJoined', onlinePlayers[socket.id]);
+    });
+
+    socket.on('changeMap', (data) => {
+        if (!onlinePlayers[socket.id]) return;
+        const oldInst = onlinePlayers[socket.id].instanceId;
+        if (oldInst) {
+            socket.leave(oldInst);
+            socket.to(oldInst).emit('playerLeft', socket.id);
+        }
+        const newMapId = data.mapId || 'town';
+        const newInst = getInstanceId(socket.id, newMapId);
+        socket.join(newInst);
+        onlinePlayers[socket.id].mapId = newMapId;
+        onlinePlayers[socket.id].instanceId = newInst;
+        if (data.x !== undefined) onlinePlayers[socket.id].x = data.x;
+        if (data.y !== undefined) onlinePlayers[socket.id].y = data.y;
+        if (data.z !== undefined) onlinePlayers[socket.id].z = data.z;
+        if (data.rotY !== undefined) onlinePlayers[socket.id].rotY = data.rotY;
+
+        const playersInInstance = {};
+        for (const sid in onlinePlayers) {
+            if (onlinePlayers[sid].instanceId === newInst) {
+                playersInInstance[sid] = onlinePlayers[sid];
+            }
+        }
+        socket.emit('gameState', { self: onlinePlayers[socket.id], players: playersInInstance });
+        socket.to(newInst).emit('playerJoined', onlinePlayers[socket.id]);
+        console.log(`[MAP CHANGE] ${onlinePlayers[socket.id].name} moved to ${newMapId} (Instance: ${newInst})`);
     });
 
     socket.on('playerMove', (data) => {
@@ -1560,19 +1640,85 @@ io.on('connection', (socket) => {
         if (data.maxHp !== undefined) onlinePlayers[socket.id].maxHp = data.maxHp;
         if (data.weapon !== undefined) onlinePlayers[socket.id].weapon = data.weapon;
         if (data.equips !== undefined) onlinePlayers[socket.id].equips = data.equips;
-        socket.broadcast.emit('playerMoved', onlinePlayers[socket.id]);
+        const instId = onlinePlayers[socket.id].instanceId || 'town';
+        socket.to(instId).emit('playerMoved', onlinePlayers[socket.id]);
     });
 
     socket.on('playerEquipUpdate', (data) => {
         if (!onlinePlayers[socket.id] || !data) return;
         if (data.equips) onlinePlayers[socket.id].equips = data.equips;
         if (data.weapon !== undefined) onlinePlayers[socket.id].weapon = data.weapon;
-        socket.broadcast.emit('playerEquipsChanged', {
+        const instId = onlinePlayers[socket.id].instanceId || 'town';
+        socket.to(instId).emit('playerEquipsChanged', {
             socketId: socket.id,
             name: onlinePlayers[socket.id].name,
             equips: onlinePlayers[socket.id].equips,
             weapon: onlinePlayers[socket.id].weapon
         });
+    });
+
+    // ==========================================
+    // 🧰 HOME STORAGE ENGINE (AUTHENTIC 2D EXONIE - PERSISTED TO SUPABASE)
+    // ==========================================
+    socket.on('requestOpenStorage', () => {
+        const p = onlinePlayers[socket.id];
+        if (!p) return;
+        if (!p.baseStats) p.baseStats = {};
+        if (!Array.isArray(p.baseStats.homeStorage)) p.baseStats.homeStorage = Array(15).fill(null);
+        while (p.baseStats.homeStorage.length < 15) p.baseStats.homeStorage.push(null);
+        socket.emit('openStorageUI', p.baseStats.homeStorage);
+    });
+
+    socket.on('transferToStorage', async (invIndex) => {
+        const p = onlinePlayers[socket.id];
+        if (!p || !p.inventory || !p.inventory[invIndex]) return;
+        if (!p.baseStats) p.baseStats = {};
+        if (!Array.isArray(p.baseStats.homeStorage)) p.baseStats.homeStorage = Array(15).fill(null);
+        while (p.baseStats.homeStorage.length < 15) p.baseStats.homeStorage.push(null);
+
+        const emptySlot = p.baseStats.homeStorage.findIndex(i => i === null);
+        if (emptySlot === -1) return socket.emit('systemMessage', 'Storage Vault is full!');
+
+        p.baseStats.homeStorage[emptySlot] = p.inventory[invIndex];
+        p.inventory[invIndex] = null;
+
+        if (supabase) {
+            try {
+                await supabase.from('Exonians').update({
+                    inventory: p.inventory,
+                    base_stats: p.baseStats
+                }).eq('character_name', p.name);
+            } catch (e) {
+                console.error('[STORAGE SAVE ERROR]', e);
+            }
+        }
+        socket.emit('syncInventory', p.inventory);
+        socket.emit('syncStorage', p.baseStats.homeStorage);
+    });
+
+    socket.on('transferFromStorage', async (storageIndex) => {
+        const p = onlinePlayers[socket.id];
+        if (!p || !p.baseStats || !Array.isArray(p.baseStats.homeStorage) || !p.baseStats.homeStorage[storageIndex]) return;
+
+        if (!Array.isArray(p.inventory)) p.inventory = Array(30).fill(null);
+        const emptySlot = p.inventory.findIndex(i => i === null);
+        if (emptySlot === -1) return socket.emit('systemMessage', 'Inventory is full!');
+
+        p.inventory[emptySlot] = p.baseStats.homeStorage[storageIndex];
+        p.baseStats.homeStorage[storageIndex] = null;
+
+        if (supabase) {
+            try {
+                await supabase.from('Exonians').update({
+                    inventory: p.inventory,
+                    base_stats: p.baseStats
+                }).eq('character_name', p.name);
+            } catch (e) {
+                console.error('[STORAGE SAVE ERROR]', e);
+            }
+        }
+        socket.emit('syncInventory', p.inventory);
+        socket.emit('syncStorage', p.baseStats.homeStorage);
     });
 
     socket.on('monsterKill', (data) => {
@@ -2439,8 +2585,13 @@ io.on('connection', (socket) => {
             }
             if (targetSid) io.to(targetSid).emit('tradeCancelled');
         }
+        if (me && me.instanceId) {
+            socket.leave(me.instanceId);
+            socket.to(me.instanceId).emit('playerLeft', socket.id);
+        } else {
+            io.emit('playerLeft', socket.id);
+        }
         delete onlinePlayers[socket.id];
-        io.emit('playerLeft', socket.id);
     });
 });
 

@@ -396,11 +396,19 @@ export class Character3D {
 
     buildMesh() {
         const savedOverhead = this.overheadGroup;
+        const savedAura = this.cosmeticAuraGroup;
+        const savedPet = this.petCompanionGroup;
         while (this.group.children.length > 0) {
             this.group.remove(this.group.children[0]);
         }
         if (savedOverhead) {
             this.group.add(savedOverhead);
+        }
+        if (savedAura) {
+            this.group.add(savedAura);
+        }
+        if (savedPet) {
+            this.group.add(savedPet);
         }
         this.parts = {};
         this.droneGroup = null;
@@ -1895,242 +1903,285 @@ export class Character3D {
         this.group.add(ag);
 
         if (id.includes('divine')) {
-            // 🕊️ AURA OF THE DIVINE: Angelic Wings + Celestial Halo + Golden Particles
-            const wingMat = new THREE.MeshStandardMaterial({
-                color: 0xffea00,
-                emissive: 0xffb300,
-                emissiveIntensity: 0.95,
-                roughness: 0.25,
-                metalness: 0.5,
-                transparent: true,
-                opacity: 0.92,
-                side: THREE.DoubleSide
-            });
+            // 🕊️ AURA OF THE DIVINE (PATTERND FROM 2D EXONIE):
+            // Flapping Angelic Wings Attached to Upper Back + Celestial Sun Halo + Holy Light Shafts + Sacred Golden Ground Seal
 
-            // Wings Root Groups attached behind the torso
+            // 1. Angelic Wings Root attached to upper back between shoulder blades
             const wingsGroup = new THREE.Group();
-            wingsGroup.position.set(0, 1.35, -0.22);
+            wingsGroup.position.set(0, 1.42, -0.20);
             ag.add(wingsGroup);
             ag.wingsGroup = wingsGroup;
 
             const lWing = new THREE.Group();
-            lWing.position.set(-0.12, 0, 0);
+            lWing.position.set(-0.10, 0, 0);
             wingsGroup.add(lWing);
             ag.lWing = lWing;
 
             const rWing = new THREE.Group();
-            rWing.position.set(0.12, 0, 0);
+            rWing.position.set(0.10, 0, 0);
             wingsGroup.add(rWing);
             ag.rWing = rWing;
 
-            // Feathers layered outward
-            for (let f = 0; f < 5; f++) {
-                const fLength = 0.55 + f * 0.12;
-                const fGeo = new THREE.ConeGeometry(0.09, fLength, 5);
-                fGeo.rotateZ(Math.PI / 2);
+            // Celestial Wing Feather Material (Pure white core with golden incandescent glow)
+            const wingCoreMat = new THREE.MeshStandardMaterial({
+                color: 0xffffff,
+                emissive: 0xffea00,
+                emissiveIntensity: 1.15,
+                roughness: 0.15,
+                metalness: 0.25,
+                transparent: true,
+                opacity: 0.95,
+                side: THREE.DoubleSide
+            });
+            const wingGlowMat = new THREE.MeshBasicMaterial({
+                color: 0xffd700,
+                transparent: true,
+                opacity: 0.75,
+                blending: THREE.AdditiveBlending,
+                side: THREE.DoubleSide
+            });
 
-                const lfMesh = new THREE.Mesh(fGeo, wingMat);
-                lfMesh.position.set(-0.2 - f * 0.14, 0.15 + f * 0.11, -f * 0.04);
-                lfMesh.rotation.set(0.1, -0.25, 0.35 + f * 0.18);
-                lWing.add(lfMesh);
+            // 5 Layered Curved Feather Blades per wing for a full majestic angel wing span
+            const featherConfigs = [
+                { length: 1.10, width: 0.18, rx: 0.08, ry: -0.22, rz: 0.45, x: -0.15, y: 0.35, z: 0.00 },
+                { length: 0.95, width: 0.16, rx: 0.10, ry: -0.25, rz: 0.70, x: -0.28, y: 0.25, z: -0.02 },
+                { length: 0.80, width: 0.15, rx: 0.12, ry: -0.28, rz: 0.95, x: -0.38, y: 0.12, z: -0.04 },
+                { length: 0.65, width: 0.14, rx: 0.14, ry: -0.30, rz: 1.20, x: -0.44, y: -0.02, z: -0.06 },
+                { length: 0.50, width: 0.12, rx: 0.16, ry: -0.32, rz: 1.45, x: -0.46, y: -0.16, z: -0.08 }
+            ];
 
-                const rfMesh = new THREE.Mesh(fGeo, wingMat);
-                rfMesh.position.set(0.2 + f * 0.14, 0.15 + f * 0.11, -f * 0.04);
-                rfMesh.rotation.set(0.1, 0.25, -0.35 - f * 0.18);
-                rWing.add(rfMesh);
+            featherConfigs.forEach(cfg => {
+                // Left Wing Feather
+                const lGeo = new THREE.ConeGeometry(cfg.width, cfg.length, 6);
+                lGeo.rotateZ(Math.PI / 2);
+                lGeo.scale(1.0, 0.25, 1.0);
+                const lMesh = new THREE.Mesh(lGeo, wingCoreMat);
+                lMesh.position.set(cfg.x, cfg.y, cfg.z);
+                lMesh.rotation.set(cfg.rx, cfg.ry, cfg.rz);
+                lWing.add(lMesh);
+
+                const lGlow = new THREE.Mesh(lGeo, wingGlowMat);
+                lGlow.scale.set(1.08, 1.2, 1.08);
+                lGlow.position.copy(lMesh.position);
+                lGlow.rotation.copy(lMesh.rotation);
+                lWing.add(lGlow);
+
+                // Right Wing Feather (Symmetrical mirror)
+                const rMesh = new THREE.Mesh(lGeo, wingCoreMat);
+                rMesh.position.set(-cfg.x, cfg.y, cfg.z);
+                rMesh.rotation.set(cfg.rx, -cfg.ry, -cfg.rz);
+                rWing.add(rMesh);
+
+                const rGlow = new THREE.Mesh(lGeo, wingGlowMat);
+                rGlow.scale.set(1.08, 1.2, 1.08);
+                rGlow.position.copy(rMesh.position);
+                rGlow.rotation.copy(rMesh.rotation);
+                rWing.add(rGlow);
+            });
+
+            // 2. Celestial Sunburst Halo with radiant spikes floating above head
+            const haloGroup = new THREE.Group();
+            haloGroup.position.set(0, 2.08, 0);
+            ag.add(haloGroup);
+            ag.haloGroup = haloGroup;
+
+            const haloRingMat = new THREE.MeshBasicMaterial({ color: 0xffea00, transparent: true, opacity: 0.95 });
+            const haloRing = new THREE.Mesh(new THREE.TorusGeometry(0.38, 0.035, 8, 32), haloRingMat);
+            haloRing.rotation.x = Math.PI / 2.3;
+            haloGroup.add(haloRing);
+
+            // 8 Celestial Sun Rays on the halo
+            const spikeGeo = new THREE.ConeGeometry(0.025, 0.18, 4);
+            spikeGeo.rotateX(Math.PI / 2);
+            for (let i = 0; i < 8; i++) {
+                const ray = new THREE.Mesh(spikeGeo, haloRingMat);
+                const rayAng = (i / 8) * Math.PI * 2;
+                ray.position.set(Math.cos(rayAng) * 0.44, 0, Math.sin(rayAng) * 0.44);
+                ray.rotation.y = -rayAng;
+                haloGroup.add(ray);
             }
 
-            // Celestial Halo
-            const haloGeo = new THREE.TorusGeometry(0.35, 0.035, 8, 28);
-            const haloMat = new THREE.MeshBasicMaterial({ color: 0xffea00, transparent: true, opacity: 0.9 });
-            const halo = new THREE.Mesh(haloGeo, haloMat);
-            halo.position.set(0, 2.05, 0);
-            halo.rotation.x = Math.PI / 2.3;
-            ag.add(halo);
-            ag.halo = halo;
+            // 3. Multi-layer Sacred Golden Ground Glyphs
+            const floorGroup = new THREE.Group();
+            floorGroup.position.set(0, 0.05, 0);
+            ag.add(floorGroup);
+            ag.floorGroup = floorGroup;
 
-            // Floor Radiant Ring
-            const ringGeo = new THREE.TorusGeometry(0.85, 0.025, 8, 32);
-            const ringMat = new THREE.MeshBasicMaterial({ color: 0xffea00, transparent: true, opacity: 0.65 });
-            const floorRing = new THREE.Mesh(ringGeo, ringMat);
-            floorRing.position.set(0, 0.06, 0);
-            floorRing.rotation.x = -Math.PI / 2;
-            ag.add(floorRing);
-            ag.floorRing = floorRing;
+            const fMat1 = new THREE.MeshBasicMaterial({ color: 0xffd700, transparent: true, opacity: 0.8, side: THREE.DoubleSide });
+            const fMat2 = new THREE.MeshBasicMaterial({ color: 0xffea00, transparent: true, opacity: 0.6, side: THREE.DoubleSide });
 
-            // Golden Sparkle Orbits
+            const outerGlyph = new THREE.Mesh(new THREE.RingGeometry(0.85, 0.92, 32), fMat1);
+            outerGlyph.rotation.x = -Math.PI / 2;
+            floorGroup.add(outerGlyph);
+            ag.outerGlyph = outerGlyph;
+
+            const innerGlyph = new THREE.Mesh(new THREE.RingGeometry(0.55, 0.60, 24), fMat2);
+            innerGlyph.rotation.x = -Math.PI / 2;
+            floorGroup.add(innerGlyph);
+            ag.innerGlyph = innerGlyph;
+
+            // 4. Holy Ascending Light Columns (3 soft luminous vertical shafts)
+            ag.lightShafts = [];
+            const shaftMat = new THREE.MeshBasicMaterial({
+                color: 0xfff59d,
+                transparent: true,
+                opacity: 0.35,
+                blending: THREE.AdditiveBlending,
+                side: THREE.DoubleSide
+            });
+            for (let s = 0; s < 3; s++) {
+                const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.16, 2.4, 8, 1, true), shaftMat);
+                const sAng = (s / 3) * Math.PI * 2;
+                shaft.position.set(Math.cos(sAng) * 0.55, 1.2, Math.sin(sAng) * 0.55);
+                ag.add(shaft);
+                ag.lightShafts.push(shaft);
+            }
+
+            // 5. Rising Holy Golden Stardust Sparkles
             ag.sparkles = [];
-            const sparkGeo = new THREE.OctahedronGeometry(0.06, 0);
+            const sparkGeo = new THREE.OctahedronGeometry(0.055, 0);
             const sparkMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
-            for (let s = 0; s < 4; s++) {
+            for (let s = 0; s < 8; s++) {
                 const spk = new THREE.Mesh(sparkGeo, sparkMat);
                 ag.add(spk);
                 ag.sparkles.push(spk);
             }
         } else if (id.includes('blaze')) {
-            // 🔥 BLAZE AURA: Swirling Inferno Ground Rings & Rising Flame Cones
-            const flameMat = new THREE.MeshBasicMaterial({
-                color: 0xff3d00,
-                transparent: true,
-                opacity: 0.75,
-                blending: THREE.AdditiveBlending,
-                side: THREE.DoubleSide,
-                depthWrite: false
-            });
+            // 🔥 BLAZE AURA: Swirling Vortex of 6 Fire Tongues + Burning Floor Magma Ring
+            const fireMat1 = new THREE.MeshBasicMaterial({ color: 0xff3d00, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending });
+            const fireMat2 = new THREE.MeshBasicMaterial({ color: 0xffab00, transparent: true, opacity: 0.90, blending: THREE.AdditiveBlending });
 
-            const ring1 = new THREE.Mesh(new THREE.TorusGeometry(0.88, 0.04, 8, 30), flameMat);
-            ring1.rotation.x = -Math.PI / 2;
-            ring1.position.y = 0.08;
-            ag.add(ring1);
-            ag.ring1 = ring1;
-
-            const ring2 = new THREE.Mesh(new THREE.TorusGeometry(0.65, 0.035, 8, 24), new THREE.MeshBasicMaterial({
-                color: 0xffab00,
-                transparent: true,
-                opacity: 0.8,
-                blending: THREE.AdditiveBlending,
-                depthWrite: false
-            }));
-            ring2.rotation.x = -Math.PI / 2;
-            ring2.position.y = 0.14;
-            ag.add(ring2);
-            ag.ring2 = ring2;
-
-            // Rising Flame Cones
             ag.flames = [];
             for (let i = 0; i < 6; i++) {
-                const fGeo = new THREE.ConeGeometry(0.12, 0.55, 6);
-                const fMesh = new THREE.Mesh(fGeo, flameMat);
-                ag.add(fMesh);
-                ag.flames.push(fMesh);
+                const fGroup = new THREE.Group();
+                const fMesh1 = new THREE.Mesh(new THREE.ConeGeometry(0.14, 0.45, 5), fireMat1);
+                const fMesh2 = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.30, 5), fireMat2);
+                fMesh2.position.set(0, 0.05, 0);
+                fGroup.add(fMesh1);
+                fGroup.add(fMesh2);
+                ag.add(fGroup);
+                ag.flames.push(fGroup);
             }
+
+            // Dual Fire Orbit Rings
+            const ringGeo = new THREE.TorusGeometry(0.85, 0.025, 8, 32);
+            ag.ring1 = new THREE.Mesh(ringGeo, fireMat1);
+            ag.ring1.rotation.x = Math.PI / 2.2;
+            ag.add(ag.ring1);
+
+            ag.ring2 = new THREE.Mesh(ringGeo, fireMat2);
+            ag.ring2.rotation.x = -Math.PI / 2.2;
+            ag.add(ag.ring2);
         } else if (id.includes('liquid')) {
-            // 💧 LIQUID AURA: Swirling Azure Crystal Water Rings & Floating Drops
+            // 💧 LIQUID AURA: Floating Ascending Water Bubbles + Shimmering Pool Ripple
             const waterMat = new THREE.MeshStandardMaterial({
                 color: 0x00e5ff,
-                emissive: 0x00b0ff,
-                emissiveIntensity: 0.6,
+                emissive: 0x0091ea,
+                emissiveIntensity: 0.8,
                 roughness: 0.1,
-                metalness: 0.8,
+                metalness: 0.3,
                 transparent: true,
-                opacity: 0.75,
-                depthWrite: false
+                opacity: 0.75
             });
 
-            const wRing1 = new THREE.Mesh(new THREE.TorusGeometry(0.82, 0.04, 8, 28), waterMat);
-            wRing1.position.set(0, 0.95, 0);
-            wRing1.rotation.set(Math.PI / 3.5, 0, 0);
-            ag.add(wRing1);
-            ag.wRing1 = wRing1;
-
-            const wRing2 = new THREE.Mesh(new THREE.TorusGeometry(0.72, 0.035, 8, 28), waterMat);
-            wRing2.position.set(0, 1.05, 0);
-            wRing2.rotation.set(-Math.PI / 4, 0, Math.PI / 4);
-            ag.add(wRing2);
-            ag.wRing2 = wRing2;
-
             ag.drops = [];
-            const dropGeo = new THREE.SphereGeometry(0.08, 12, 12);
-            for (let d = 0; d < 4; d++) {
-                const drop = new THREE.Mesh(dropGeo, waterMat);
+            for (let d = 0; d < 8; d++) {
+                const drop = new THREE.Mesh(new THREE.SphereGeometry(0.075 + (d % 3) * 0.03, 10, 10), waterMat);
                 ag.add(drop);
                 ag.drops.push(drop);
             }
+
+            const wRingGeo = new THREE.TorusGeometry(0.82, 0.025, 8, 32);
+            ag.wRing1 = new THREE.Mesh(wRingGeo, waterMat);
+            ag.wRing1.rotation.x = Math.PI / 2;
+            ag.wRing1.position.y = 0.05;
+            ag.add(ag.wRing1);
+
+            ag.wRing2 = new THREE.Mesh(new THREE.TorusGeometry(0.55, 0.02, 8, 24), waterMat);
+            ag.wRing2.rotation.x = Math.PI / 2;
+            ag.wRing2.position.y = 0.06;
+            ag.add(ag.wRing2);
         } else if (id.includes('nature')) {
-            // 🌿 NATURE AURA: Emerald Green Spiral Vine & Fluttering Leaves
-            const vineMat = new THREE.MeshStandardMaterial({
-                color: 0x00e676,
-                emissive: 0x00c853,
-                emissiveIntensity: 0.5,
-                roughness: 0.3,
-                transparent: true,
-                opacity: 0.85
+            // 🌿 NATURE AURA: Double Helix of Swirling Emerald Leaf Petals
+            const leafMat = new THREE.MeshStandardMaterial({
+                color: 0x4caf50,
+                emissive: 0x2e7d32,
+                emissiveIntensity: 0.7,
+                roughness: 0.4,
+                side: THREE.DoubleSide
             });
 
-            ag.vineNodes = [];
-            const nodeGeo = new THREE.SphereGeometry(0.065, 8, 8);
-            for (let v = 0; v < 14; v++) {
-                const node = new THREE.Mesh(nodeGeo, vineMat);
-                ag.add(node);
-                ag.vineNodes.push(node);
-            }
-
             ag.leaves = [];
-            const leafGeo = new THREE.ConeGeometry(0.09, 0.22, 4);
-            for (let l = 0; l < 5; l++) {
-                const leaf = new THREE.Mesh(leafGeo, vineMat);
+            for (let l = 0; l < 8; l++) {
+                const leaf = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.28, 4), leafMat);
+                leaf.scale.set(1.0, 0.2, 1.0);
                 ag.add(leaf);
                 ag.leaves.push(leaf);
             }
+
+            ag.vineNodes = [];
+            for (let v = 0; v < 12; v++) {
+                const vn = new THREE.Mesh(new THREE.SphereGeometry(0.04, 6, 6), leafMat);
+                ag.add(vn);
+                ag.vineNodes.push(vn);
+            }
         } else if (id.includes('easter')) {
-            // 🐰 EASTER PASTEL AURA: Shifting Rainbow Pastel Rings & Starlight
-            const pastelMats = [
-                new THREE.MeshBasicMaterial({ color: 0xff80ab, transparent: true, opacity: 0.75, side: THREE.DoubleSide }),
-                new THREE.MeshBasicMaterial({ color: 0x84ffff, transparent: true, opacity: 0.75, side: THREE.DoubleSide }),
-                new THREE.MeshBasicMaterial({ color: 0xffff8d, transparent: true, opacity: 0.75, side: THREE.DoubleSide })
-            ];
+            // 🌸 EASTER AURA: Pastel Rainbow Stardust Sparkles & Golden Stars
+            const colors = [0xff80ab, 0x80d8ff, 0xb9f6ca, 0xffd180, 0xe040fb];
+            ag.stars = [];
+            for (let s = 0; s < 8; s++) {
+                const col = colors[s % colors.length];
+                const star = new THREE.Mesh(new THREE.OctahedronGeometry(0.07, 0), new THREE.MeshBasicMaterial({ color: col }));
+                ag.add(star);
+                ag.stars.push(star);
+            }
 
             ag.easterRings = [];
-            for (let r = 0; r < 3; r++) {
-                const ring = new THREE.Mesh(new THREE.TorusGeometry(0.78 + r * 0.1, 0.035, 8, 28), pastelMats[r]);
-                ring.position.y = 0.95;
-                ring.rotation.set(r * 0.8, r * 0.5, 0);
+            colors.slice(0, 3).forEach((col, idx) => {
+                const ring = new THREE.Mesh(new THREE.TorusGeometry(0.75 + idx * 0.1, 0.015, 6, 24), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.65 }));
+                ring.rotation.x = Math.PI / (2 + idx * 0.4);
                 ag.add(ring);
                 ag.easterRings.push(ring);
-            }
-
-            ag.stars = [];
-            const starGeo = new THREE.OctahedronGeometry(0.07, 0);
-            for (let s = 0; s < 5; s++) {
-                const st = new THREE.Mesh(starGeo, pastelMats[s % 3]);
-                ag.add(st);
-                ag.stars.push(st);
-            }
-        } else if (id.includes('void')) {
-            // 🌌 VOID AURA: Dark Abyssal Tendrils & Pulsing Void Orb
-            const voidMat = new THREE.MeshStandardMaterial({
-                color: 0x4a148c,
-                emissive: 0x7b1fa2,
-                emissiveIntensity: 0.7,
-                roughness: 0.2,
-                transparent: true,
-                opacity: 0.8
             });
+        } else if (id.includes('void')) {
+            // 🌌 VOID AURA: Dark Stardust Orb & Cosmic Purple Shadow Tendrils
+            const voidMat = new THREE.MeshBasicMaterial({ color: 0x7c4dff, transparent: true, opacity: 0.85 });
+            const voidDarkMat = new THREE.MeshBasicMaterial({ color: 0x1a0033 });
 
-            const orb = new THREE.Mesh(new THREE.SphereGeometry(0.2, 16, 16), voidMat);
-            orb.position.set(0, 1.45, 0.1);
+            const orb = new THREE.Mesh(new THREE.SphereGeometry(0.24, 12, 12), voidDarkMat);
+            orb.position.set(0, 1.1, 0);
             ag.add(orb);
             ag.voidOrb = orb;
 
             ag.tendrils = [];
-            for (let t = 0; t < 4; t++) {
-                const tGeo = new THREE.CylinderGeometry(0.04, 0.09, 1.4, 6);
-                const tendril = new THREE.Mesh(tGeo, voidMat);
+            for (let t = 0; t < 5; t++) {
+                const tendril = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.08, 0.75, 6), voidMat);
                 ag.add(tendril);
                 ag.tendrils.push(tendril);
             }
         } else if (id.includes('lightning')) {
-            // ⚡ LIGHTNING AURA: Crackling Electric Blue Lightning Arcs
-            const boltMat = new THREE.MeshBasicMaterial({
-                color: 0x80d8ff,
-                transparent: true,
-                opacity: 0.9,
-                blending: THREE.AdditiveBlending
-            });
+            // ⚡ LIGHTNING AURA: High-Voltage Electric Cyan & White Crackling Lightning Bolts
+            const boltMat = new THREE.MeshBasicMaterial({ color: 0x00e5ff, transparent: true, opacity: 0.95 });
+            const whiteZapMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
 
             ag.bolts = [];
-            for (let b = 0; b < 5; b++) {
-                const bGeo = new THREE.BoxGeometry(0.03, 0.35, 0.03);
-                const bolt = new THREE.Mesh(bGeo, boltMat);
-                ag.add(bolt);
-                ag.bolts.push(bolt);
+            for (let b = 0; b < 6; b++) {
+                const boltGroup = new THREE.Group();
+                const bMesh1 = new THREE.Mesh(new THREE.BoxGeometry(0.025, 0.28, 0.025), boltMat);
+                const bMesh2 = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.14, 0.02), whiteZapMat);
+                bMesh2.position.set(0.04, 0.10, 0);
+                bMesh2.rotation.z = 0.5;
+                boltGroup.add(bMesh1);
+                boltGroup.add(bMesh2);
+                ag.add(boltGroup);
+                ag.bolts.push(boltGroup);
             }
 
-            const lRing = new THREE.Mesh(new THREE.TorusGeometry(0.75, 0.03, 8, 24), boltMat);
-            lRing.position.y = 1.1;
-            lRing.rotation.x = Math.PI / 2.5;
-            ag.add(lRing);
-            ag.lRing = lRing;
+            const lRingGeo = new THREE.TorusGeometry(0.85, 0.02, 6, 28);
+            ag.lRing = new THREE.Mesh(lRingGeo, boltMat);
+            ag.lRing.rotation.x = Math.PI / 2;
+            ag.lRing.position.y = 0.06;
+            ag.add(ag.lRing);
         }
     }
 
@@ -2140,17 +2191,44 @@ export class Character3D {
         const t = this.animTime;
 
         if (this.currentAuraId.includes('divine')) {
-            if (ag.lWing) ag.lWing.rotation.y = Math.sin(t * 2.8) * 0.22;
-            if (ag.rWing) ag.rWing.rotation.y = -Math.sin(t * 2.8) * 0.22;
-            if (ag.halo) {
-                ag.halo.rotation.z = t * 0.6;
-                ag.halo.position.y = 2.05 + Math.sin(t * 2.0) * 0.04;
+            // Flapping Angelic Wings (Smooth undulating sweep matching 2D Exonie)
+            const flap = Math.sin(t * 2.8);
+            if (ag.lWing) {
+                ag.lWing.rotation.y = -0.32 + flap * 0.38;
+                ag.lWing.rotation.z = flap * 0.22;
+                ag.lWing.rotation.x = Math.sin(t * 2.8 + 0.4) * 0.12;
             }
-            if (ag.floorRing) ag.floorRing.rotation.z = -t * 0.4;
+            if (ag.rWing) {
+                ag.rWing.rotation.y = 0.32 - flap * 0.38;
+                ag.rWing.rotation.z = -flap * 0.22;
+                ag.rWing.rotation.x = Math.sin(t * 2.8 + 0.4) * 0.12;
+            }
+
+            // Halo gentle rotation and hovering float
+            if (ag.haloGroup) {
+                ag.haloGroup.rotation.y = t * 0.55;
+                ag.haloGroup.position.y = 2.08 + Math.sin(t * 2.2) * 0.04;
+            }
+
+            // Concentric sacred ground seal counter-rotation
+            if (ag.outerGlyph) ag.outerGlyph.rotation.z = -t * 0.35;
+            if (ag.innerGlyph) ag.innerGlyph.rotation.z = t * 0.50;
+
+            // Holy light shafts pulsation
+            if (ag.lightShafts) {
+                ag.lightShafts.forEach((shaft, idx) => {
+                    shaft.scale.y = 0.9 + Math.sin(t * 3.0 + idx) * 0.15;
+                    shaft.rotation.y = t * 0.8 + idx;
+                });
+            }
+
+            // Rising celestial sparkles
             if (ag.sparkles) {
                 ag.sparkles.forEach((spk, idx) => {
-                    const ang = t * 1.5 + (idx * Math.PI / 2);
-                    spk.position.set(Math.cos(ang) * 0.8, 1.1 + Math.sin(t * 3.0 + idx) * 0.2, Math.sin(ang) * 0.8);
+                    const ang = t * 1.5 + (idx * Math.PI / 4);
+                    const yOffset = ((t * 0.6 + idx * 0.25) % 2.2);
+                    spk.position.set(Math.cos(ang) * 0.75, 0.2 + yOffset, Math.sin(ang) * 0.75);
+                    spk.rotation.y += dt * 3.0;
                 });
             }
         } else if (this.currentAuraId.includes('blaze')) {
@@ -2169,8 +2247,9 @@ export class Character3D {
             if (ag.wRing2) ag.wRing2.rotation.y = -t * 1.6;
             if (ag.drops) {
                 ag.drops.forEach((drop, idx) => {
-                    const ang = t * 2.0 + (idx * Math.PI / 2);
-                    drop.position.set(Math.cos(ang) * 0.78, 1.0 + Math.sin(t * 3.5 + idx) * 0.18, Math.sin(ang) * 0.78);
+                    const ang = t * 1.8 + (idx * Math.PI / 4);
+                    const yCycle = ((t * 0.5 + idx * 0.25) % 1.8);
+                    drop.position.set(Math.cos(ang) * 0.75, 0.3 + yCycle, Math.sin(ang) * 0.75);
                 });
             }
         } else if (this.currentAuraId.includes('nature')) {
@@ -2184,8 +2263,9 @@ export class Character3D {
             }
             if (ag.leaves) {
                 ag.leaves.forEach((leaf, idx) => {
-                    const ang = t * 1.2 + (idx * (Math.PI * 2 / 5));
-                    leaf.position.set(Math.cos(ang) * 0.75, 0.85 + Math.sin(t * 2.5 + idx) * 0.25, Math.sin(ang) * 0.75);
+                    const ang = t * 1.2 + (idx * (Math.PI * 2 / 8));
+                    const yCycle = ((t * 0.4 + idx * 0.2) % 1.8);
+                    leaf.position.set(Math.cos(ang) * 0.75, 0.2 + yCycle, Math.sin(ang) * 0.75);
                     leaf.rotation.set(t + idx, t * 1.5, idx);
                 });
             }
@@ -2198,7 +2278,7 @@ export class Character3D {
             }
             if (ag.stars) {
                 ag.stars.forEach((st, idx) => {
-                    const ang = t * 1.6 + (idx * (Math.PI * 2 / 5));
+                    const ang = t * 1.6 + (idx * (Math.PI * 2 / 8));
                     st.position.set(Math.cos(ang) * 0.82, 1.1 + Math.sin(t * 3.0 + idx) * 0.22, Math.sin(ang) * 0.82);
                     st.rotation.y += dt * 3.0;
                 });
@@ -2210,7 +2290,7 @@ export class Character3D {
             }
             if (ag.tendrils) {
                 ag.tendrils.forEach((ten, idx) => {
-                    const ang = (idx * Math.PI / 2) + t * 0.5;
+                    const ang = (idx * Math.PI * 2 / 5) + t * 0.5;
                     ten.position.set(Math.cos(ang) * 0.65, 0.7 + Math.sin(t * 2.5 + idx) * 0.1, Math.sin(ang) * 0.65);
                     ten.rotation.z = Math.sin(t * 3.0 + idx) * 0.15;
                 });
@@ -2218,11 +2298,11 @@ export class Character3D {
         } else if (this.currentAuraId.includes('lightning')) {
             if (ag.lRing) ag.lRing.rotation.z += dt * 2.5;
             if (ag.bolts) {
-                ag.bolts.forEach((bolt, idx) => {
-                    if (Math.random() < 0.2) {
+                ag.bolts.forEach((bolt) => {
+                    if (Math.random() < 0.25) {
                         const ang = Math.random() * Math.PI * 2;
                         const r = 0.5 + Math.random() * 0.35;
-                        bolt.position.set(Math.cos(ang) * r, 0.7 + Math.random() * 0.8, Math.sin(ang) * r);
+                        bolt.position.set(Math.cos(ang) * r, 0.6 + Math.random() * 0.9, Math.sin(ang) * r);
                         bolt.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
                     }
                 });
@@ -2259,167 +2339,182 @@ export class Character3D {
         this.group.add(pg);
 
         if (id.includes('fox')) {
-            // 🦊 SPIRIT FOX PET: Orange fire-fox with pointed ears, white chest & fiery bushy tail
-            pg.position.set(1.05, 0, -0.85);
+            // 🦊 SPIRIT FOX PET: Dynamic Articulated 4-Legged Follow Companion with Bushy Fiery Tail
+            pg.position.set(1.0, 0, -0.9);
 
-            const foxOrangeMat = new THREE.MeshStandardMaterial({ color: 0xff6d00, roughness: 0.6 });
-            const foxWhiteMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.7 });
-            const foxDarkMat = new THREE.MeshStandardMaterial({ color: 0x3e2723, roughness: 0.8 });
-            const flameMat = new THREE.MeshBasicMaterial({ color: 0xffab00, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending });
+            const foxOrangeMat = new THREE.MeshStandardMaterial({ color: 0xff6d00, roughness: 0.5 });
+            const foxWhiteMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.6 });
+            const foxDarkMat = new THREE.MeshStandardMaterial({ color: 0x2e1c11, roughness: 0.7 });
+            const flameMat = new THREE.MeshBasicMaterial({ color: 0xffab00, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending });
 
-            // Body
-            const body = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.24, 0.46), foxOrangeMat);
-            body.position.set(0, 0.25, 0);
-            pg.add(body);
+            // Body Group (bobs naturally with trot)
+            const bodyGroup = new THREE.Group();
+            bodyGroup.position.set(0, 0.24, 0);
+            pg.add(bodyGroup);
+            pg.bodyGroup = bodyGroup;
 
-            // White Chest
+            // Body Torso
+            const body = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.22, 0.44), foxOrangeMat);
+            bodyGroup.add(body);
+
+            // White Chest Ruff
             const chest = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.16, 0.18), foxWhiteMat);
-            chest.position.set(0, 0.25, 0.16);
-            pg.add(chest);
+            chest.position.set(0, 0.02, 0.16);
+            bodyGroup.add(chest);
 
             // Head
-            const head = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.22, 0.24), foxOrangeMat);
-            head.position.set(0, 0.42, 0.26);
-            pg.add(head);
+            const head = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.20, 0.24), foxOrangeMat);
+            head.position.set(0, 0.18, 0.26);
+            bodyGroup.add(head);
 
-            // Snout
-            const snout = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.1, 0.16), foxWhiteMat);
-            snout.position.set(0, 0.38, 0.42);
-            pg.add(snout);
+            // Snout / Muzzle
+            const snout = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.10, 0.16), foxWhiteMat);
+            snout.position.set(0, 0.14, 0.42);
+            bodyGroup.add(snout);
 
-            const nose = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.05, 0.04), foxDarkMat);
-            nose.position.set(0, 0.41, 0.51);
-            pg.add(nose);
+            const nose = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.04, 0.04), foxDarkMat);
+            nose.position.set(0, 0.17, 0.51);
+            bodyGroup.add(nose);
+
+            // Eyes
+            const lEye = new THREE.Mesh(new THREE.SphereGeometry(0.022, 6, 6), foxDarkMat);
+            lEye.position.set(-0.08, 0.20, 0.36);
+            bodyGroup.add(lEye);
+
+            const rEye = new THREE.Mesh(new THREE.SphereGeometry(0.022, 6, 6), foxDarkMat);
+            rEye.position.set(0.08, 0.20, 0.36);
+            bodyGroup.add(rEye);
 
             // Pointed Ears
             const earGeo = new THREE.ConeGeometry(0.07, 0.16, 4);
             const lEar = new THREE.Mesh(earGeo, foxOrangeMat);
-            lEar.position.set(-0.09, 0.58, 0.25);
-            lEar.rotation.z = 0.2;
-            pg.add(lEar);
+            lEar.position.set(-0.09, 0.34, 0.25);
+            lEar.rotation.z = 0.22;
+            bodyGroup.add(lEar);
 
             const rEar = new THREE.Mesh(earGeo, foxOrangeMat);
-            rEar.position.set(0.09, 0.58, 0.25);
-            rEar.rotation.z = -0.2;
-            pg.add(rEar);
+            rEar.position.set(0.09, 0.34, 0.25);
+            rEar.rotation.z = -0.22;
+            bodyGroup.add(rEar);
 
-            // 4 Legs
-            const legGeo = new THREE.BoxGeometry(0.08, 0.18, 0.08);
-            const legPos = [[-0.11, 0.09, 0.14], [0.11, 0.09, 0.14], [-0.11, 0.09, -0.14], [0.11, 0.09, -0.14]];
-            legPos.forEach(pos => {
-                const leg = new THREE.Mesh(legGeo, foxDarkMat);
-                leg.position.set(...pos);
-                pg.add(leg);
+            // 4 Articulated Leg Pivots (Front-Left, Front-Right, Back-Left, Back-Right)
+            const legConfigs = [
+                { key: 'flLeg', x: -0.11, y: 0.19, z: 0.15 },
+                { key: 'frLeg', x: 0.11, y: 0.19, z: 0.15 },
+                { key: 'blLeg', x: -0.11, y: 0.19, z: -0.15 },
+                { key: 'brLeg', x: 0.11, y: 0.19, z: -0.15 }
+            ];
+
+            pg.legs = {};
+            legConfigs.forEach(cfg => {
+                const pivot = new THREE.Group();
+                pivot.position.set(cfg.x, cfg.y, cfg.z);
+                pg.add(pivot);
+                pg.legs[cfg.key] = pivot;
+
+                const upperLeg = new THREE.Mesh(new THREE.BoxGeometry(0.075, 0.14, 0.075), foxOrangeMat);
+                upperLeg.position.set(0, -0.07, 0);
+                pivot.add(upperLeg);
+
+                const paw = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.06, 0.085), foxDarkMat);
+                paw.position.set(0, -0.16, 0.01);
+                pivot.add(paw);
             });
 
             // Fiery Bushy Tail with Wiggle Pivot
             const tailPivot = new THREE.Group();
-            tailPivot.position.set(0, 0.26, -0.22);
-            pg.add(tailPivot);
+            tailPivot.position.set(0, 0.04, -0.22);
+            bodyGroup.add(tailPivot);
             pg.tailPivot = tailPivot;
 
-            const tailBase = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.12, 0.35, 6), foxOrangeMat);
-            tailBase.position.set(0, 0.15, -0.14);
+            const tailBase = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.13, 0.36, 6), foxOrangeMat);
+            tailBase.position.set(0, 0.14, -0.14);
             tailBase.rotation.x = -Math.PI / 3;
             tailPivot.add(tailBase);
 
-            const tailTip = new THREE.Mesh(new THREE.ConeGeometry(0.11, 0.26, 6), flameMat);
+            const tailTip = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.28, 6), flameMat);
             tailTip.position.set(0, 0.32, -0.24);
             tailTip.rotation.x = -Math.PI / 3;
             tailPivot.add(tailTip);
         } else if (id.includes('owl')) {
-            // 🦉 NIGHT OWL PET: Mysterious owl hovering with flapping wings & round amber eyes
-            pg.position.set(-0.95, 1.4, -0.55);
+            // 🦉 NIGHT OWL PET: Flying Mysterious Owl Hovering ABOVE HEAD (y = 2.25)
+            pg.position.set(-0.85, 2.25, -0.55);
 
             const owlBrownMat = new THREE.MeshStandardMaterial({ color: 0x4e342e, roughness: 0.7 });
-            const owlChestMat = new THREE.MeshStandardMaterial({ color: 0xd7ccc8, roughness: 0.8 });
-            const owlEyeMat = new THREE.MeshBasicMaterial({ color: 0xffb300 });
-            const owlBeakMat = new THREE.MeshStandardMaterial({ color: 0xff9800 });
+            const owlChestMat = new THREE.MeshStandardMaterial({ color: 0xd7ccc8, roughness: 0.7 });
+            const owlEyeMat = new THREE.MeshBasicMaterial({ color: 0xffab00 });
+            const beakMat = new THREE.MeshStandardMaterial({ color: 0xff9800 });
 
             // Body
-            const body = new THREE.Mesh(new THREE.SphereGeometry(0.22, 14, 14), owlBrownMat);
-            body.scale.set(0.9, 1.15, 0.9);
+            const body = new THREE.Mesh(new THREE.SphereGeometry(0.19, 12, 12), owlBrownMat);
+            body.scale.set(0.9, 1.2, 0.85);
             pg.add(body);
 
-            // Chest
-            const chest = new THREE.Mesh(new THREE.SphereGeometry(0.16, 12, 12), owlChestMat);
-            chest.position.set(0, -0.04, 0.11);
-            chest.scale.set(0.85, 1.1, 0.5);
+            // Light Chest
+            const chest = new THREE.Mesh(new THREE.SphereGeometry(0.13, 10, 10), owlChestMat);
+            chest.position.set(0, 0.02, 0.09);
+            chest.scale.set(0.9, 1.1, 0.6);
             pg.add(chest);
 
             // Amber Eyes
-            const eyeGeo = new THREE.SphereGeometry(0.055, 8, 8);
-            const lEye = new THREE.Mesh(eyeGeo, owlEyeMat);
-            lEye.position.set(-0.08, 0.08, 0.17);
+            const lEye = new THREE.Mesh(new THREE.SphereGeometry(0.045, 8, 8), owlEyeMat);
+            lEye.position.set(-0.07, 0.10, 0.15);
             pg.add(lEye);
 
-            const rEye = new THREE.Mesh(eyeGeo, owlEyeMat);
-            rEye.position.set(0.08, 0.08, 0.17);
+            const rEye = new THREE.Mesh(new THREE.SphereGeometry(0.045, 8, 8), owlEyeMat);
+            rEye.position.set(0.07, 0.10, 0.15);
             pg.add(rEye);
 
             // Beak
-            const beak = new THREE.Mesh(new THREE.ConeGeometry(0.04, 0.09, 4), owlBeakMat);
-            beak.position.set(0, 0.03, 0.22);
+            const beak = new THREE.Mesh(new THREE.ConeGeometry(0.035, 0.08, 4), beakMat);
+            beak.position.set(0, 0.06, 0.19);
             beak.rotation.x = Math.PI / 2;
             pg.add(beak);
 
             // Flapping Wings
-            const wingGeo = new THREE.BoxGeometry(0.28, 0.05, 0.18);
+            const wingGeo = new THREE.BoxGeometry(0.28, 0.04, 0.18);
             const lWingPivot = new THREE.Group();
-            lWingPivot.position.set(-0.2, 0.04, 0);
+            lWingPivot.position.set(-0.16, 0.05, 0);
             pg.add(lWingPivot);
             pg.lWingPivot = lWingPivot;
 
-            const lWingMesh = new THREE.Mesh(wingGeo, owlBrownMat);
-            lWingMesh.position.set(-0.14, 0, 0);
-            lWingPivot.add(lWingMesh);
+            const lWing = new THREE.Mesh(wingGeo, owlBrownMat);
+            lWing.position.set(-0.14, 0, 0);
+            lWingPivot.add(lWing);
 
             const rWingPivot = new THREE.Group();
-            rWingPivot.position.set(0.2, 0.04, 0);
+            rWingPivot.position.set(0.16, 0.05, 0);
             pg.add(rWingPivot);
             pg.rWingPivot = rWingPivot;
 
-            const rWingMesh = new THREE.Mesh(wingGeo, owlBrownMat);
-            rWingMesh.position.set(0.14, 0, 0);
-            rWingPivot.add(rWingMesh);
+            const rWing = new THREE.Mesh(wingGeo, owlBrownMat);
+            rWing.position.set(0.14, 0, 0);
+            rWingPivot.add(rWing);
         } else if (id.includes('wisp')) {
-            // ✨ ANCIENT WISP PET: Glowing ethereal cyan spirit orb with rotating gyro rings
-            pg.position.set(0.9, 1.55, -0.5);
+            // 🔮 WILL-O'-WISP PET: Luminous Spirit Orb Floating ABOVE HEAD (y = 2.35)
+            pg.position.set(0.78, 2.35, -0.50);
 
-            const wispCoreMat = new THREE.MeshStandardMaterial({
-                color: 0x00e5ff,
-                emissive: 0x00e5ff,
-                emissiveIntensity: 1.4,
-                roughness: 0.1,
-                transparent: true,
-                opacity: 0.95
-            });
+            const coreMat = new THREE.MeshBasicMaterial({ color: 0x00e5ff });
+            const ringMat = new THREE.MeshBasicMaterial({ color: 0x18ffff, transparent: true, opacity: 0.65 });
 
-            const core = new THREE.Mesh(new THREE.SphereGeometry(0.18, 16, 16), wispCoreMat);
+            const core = new THREE.Mesh(new THREE.SphereGeometry(0.16, 12, 12), coreMat);
             pg.add(core);
             pg.wispCore = core;
 
-            const gyroMat = new THREE.MeshBasicMaterial({
-                color: 0x80d8ff,
-                transparent: true,
-                opacity: 0.75,
-                side: THREE.DoubleSide
-            });
-
-            const gRing1 = new THREE.Mesh(new THREE.TorusGeometry(0.28, 0.02, 8, 24), gyroMat);
+            const gRing1 = new THREE.Mesh(new THREE.TorusGeometry(0.26, 0.015, 6, 24), ringMat);
             pg.add(gRing1);
             pg.gRing1 = gRing1;
 
-            const gRing2 = new THREE.Mesh(new THREE.TorusGeometry(0.32, 0.02, 8, 24), gyroMat);
+            const gRing2 = new THREE.Mesh(new THREE.TorusGeometry(0.22, 0.015, 6, 24), ringMat);
             gRing2.rotation.x = Math.PI / 2;
             pg.add(gRing2);
             pg.gRing2 = gRing2;
         } else if (id.includes('void')) {
-            // 👤 MINI WRAITH PET: Miniature hooded shadow wraith with glowing eyes & ghostly tail
-            pg.position.set(-0.85, 1.25, -0.8);
+            // 👻 VOID WRAITH PET: Hooded Phantom Spirit Floating ABOVE HEAD (y = 2.20)
+            pg.position.set(-0.75, 2.20, -0.60);
 
-            const wraithRobeMat = new THREE.MeshStandardMaterial({ color: 0x1a0f2e, roughness: 0.8 });
-            const wraithEyeMat = new THREE.MeshBasicMaterial({ color: 0xe040fb });
+            const wraithRobeMat = new THREE.MeshStandardMaterial({ color: 0x1a0f2e, roughness: 0.5 });
+            const wraithEyeMat = new THREE.MeshBasicMaterial({ color: 0x7c4dff });
 
             // Hood
             const hood = new THREE.Mesh(new THREE.ConeGeometry(0.18, 0.38, 7), wraithRobeMat);
@@ -2449,8 +2544,8 @@ export class Character3D {
             pg.add(tail);
             pg.wraithTail = tail;
         } else if (id.includes('egg')) {
-            // 🥚 EASTER EGG PET: Floating decorated pastel egg with golden bow
-            pg.position.set(0.85, 0.95, -0.7);
+            // 🥚 EASTER EGG PET: Floating Decorated Pastel Egg ABOVE HEAD (y = 2.15)
+            pg.position.set(0.75, 2.15, -0.55);
 
             const eggMat = new THREE.MeshStandardMaterial({ color: 0xffc1e3, roughness: 0.3, metalness: 0.2 });
             const stripeMat = new THREE.MeshStandardMaterial({ color: 0x80deea, roughness: 0.3 });
@@ -2486,36 +2581,74 @@ export class Character3D {
         const t = this.animTime;
 
         if (this.currentPetId.includes('fox')) {
-            // Tail wagging
-            if (pg.tailPivot) {
-                pg.tailPivot.rotation.y = Math.sin(t * 5.5) * 0.45;
-                pg.tailPivot.rotation.z = Math.sin(t * 3.0) * 0.15;
+            // Articulated 4-legged walking animation & smooth follow physics
+            if (isMoving) {
+                pg.legPhase = (pg.legPhase || 0) + dt * 11.5;
+                const swing = Math.sin(pg.legPhase) * 0.65;
+                if (pg.legs) {
+                    if (pg.legs.flLeg) pg.legs.flLeg.rotation.x = swing;
+                    if (pg.legs.brLeg) pg.legs.brLeg.rotation.x = swing;
+                    if (pg.legs.frLeg) pg.legs.frLeg.rotation.x = -swing;
+                    if (pg.legs.blLeg) pg.legs.blLeg.rotation.x = -swing;
+                }
+                // Trot bobbing & tail sway
+                if (pg.bodyGroup) pg.bodyGroup.position.y = 0.24 + Math.abs(Math.sin(pg.legPhase)) * 0.04;
+                if (pg.tailPivot) {
+                    pg.tailPivot.rotation.y = Math.sin(pg.legPhase * 1.4) * 0.55;
+                    pg.tailPivot.rotation.z = Math.sin(pg.legPhase * 0.7) * 0.20;
+                }
+                // Smooth follow offset lagging behind slightly
+                pg.position.x = damp(pg.position.x, 0.95, 4.0, dt);
+                pg.position.z = damp(pg.position.z, -1.05, 4.0, dt);
+                pg.position.y = 0;
+            } else {
+                // Smooth deceleration back to idle standing pose
+                if (pg.legs) {
+                    const dampRate = Math.max(0, 1 - dt * 8.0);
+                    if (pg.legs.flLeg) pg.legs.flLeg.rotation.x *= dampRate;
+                    if (pg.legs.frLeg) pg.legs.frLeg.rotation.x *= dampRate;
+                    if (pg.legs.blLeg) pg.legs.blLeg.rotation.x *= dampRate;
+                    if (pg.legs.brLeg) pg.legs.brLeg.rotation.x *= dampRate;
+                }
+                // Idle breathing & soft tail wag
+                if (pg.bodyGroup) pg.bodyGroup.position.y = 0.24 + Math.sin(t * 3.0) * 0.015;
+                if (pg.tailPivot) {
+                    pg.tailPivot.rotation.y = Math.sin(t * 4.0) * 0.35;
+                    pg.tailPivot.rotation.z = Math.sin(t * 2.0) * 0.10;
+                }
+                pg.position.x = damp(pg.position.x, 1.05, 3.0, dt);
+                pg.position.z = damp(pg.position.z, -0.85, 3.0, dt);
+                pg.position.y = 0;
             }
-            // Gentle trot bob
-            pg.position.y = isMoving ? (Math.abs(Math.sin(t * 9.0)) * 0.08) : (Math.sin(t * 3.5) * 0.03);
         } else if (this.currentPetId.includes('owl')) {
-            // Wing flapping
+            // Hover bob ABOVE HEAD (y = 2.25)
             const flap = Math.sin(t * 8.5) * 0.55;
             if (pg.lWingPivot) pg.lWingPivot.rotation.z = flap;
             if (pg.rWingPivot) pg.rWingPivot.rotation.z = -flap;
-            // Hover bob
-            pg.position.y = 1.4 + Math.sin(t * 4.0) * 0.09;
+            pg.position.y = 2.25 + Math.sin(t * 3.5) * 0.09;
+            pg.position.x = -0.85 + Math.sin(t * 1.5) * 0.05;
+            pg.position.z = -0.55 + Math.cos(t * 1.5) * 0.05;
         } else if (this.currentPetId.includes('wisp')) {
-            // Gyro rotation
+            // Gyro rotation & spirit bob ABOVE HEAD (y = 2.35)
             if (pg.gRing1) pg.gRing1.rotation.x += dt * 2.2;
             if (pg.gRing2) pg.gRing2.rotation.y += dt * 3.0;
-            // Spirit bob
-            pg.position.y = 1.55 + Math.sin(t * 2.8) * 0.12;
+            pg.position.y = 2.35 + Math.sin(t * 2.8) * 0.12;
             if (pg.wispCore) pg.wispCore.scale.setScalar(0.95 + Math.sin(t * 4.5) * 0.08);
+            pg.position.x = 0.78 + Math.cos(t * 1.8) * 0.06;
+            pg.position.z = -0.50 + Math.sin(t * 1.8) * 0.06;
         } else if (this.currentPetId.includes('void')) {
-            // Ghostly float & drift
-            pg.position.y = 1.25 + Math.sin(t * 2.4) * 0.09;
+            // Ghostly float & drift ABOVE HEAD (y = 2.20)
+            pg.position.y = 2.20 + Math.sin(t * 2.4) * 0.09;
             pg.rotation.z = Math.sin(t * 2.0) * 0.06;
             if (pg.wraithTail) pg.wraithTail.rotation.x = Math.PI + Math.sin(t * 3.5) * 0.15;
+            pg.position.x = -0.75 + Math.cos(t * 1.2) * 0.05;
+            pg.position.z = -0.60 + Math.sin(t * 1.2) * 0.05;
         } else if (this.currentPetId.includes('egg')) {
-            // Bouncy joyful hop & tilt
-            pg.position.y = 0.95 + Math.abs(Math.sin(t * 4.2)) * 0.14;
+            // Bouncy joyful hop & tilt ABOVE HEAD (y = 2.15)
+            pg.position.y = 2.15 + Math.abs(Math.sin(t * 4.2)) * 0.14;
             pg.rotation.z = Math.sin(t * 4.2) * 0.15;
+            pg.position.x = 0.75 + Math.sin(t * 1.4) * 0.05;
+            pg.position.z = -0.55 + Math.cos(t * 1.4) * 0.05;
         }
     }
 }

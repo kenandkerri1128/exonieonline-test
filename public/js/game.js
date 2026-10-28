@@ -806,6 +806,28 @@ export class GameApp {
                     this.removeRemotePlayer(sid);
                 });
 
+                // Home Storage Vault Synchronization (2D Exonie Home Storage Engine)
+                this.socket.on('syncStorage', (storageData) => {
+                    if (Array.isArray(storageData)) {
+                        this.player.storage = storageData;
+                        if (!this.player.baseStats) this.player.baseStats = {};
+                        this.player.baseStats.homeStorage = storageData;
+                        this.saveCharacterToAccountSlot();
+                        if (this.ui && this.ui.renderStorageUI && this.ui.storageModal && this.ui.storageModal.style.display === 'flex') {
+                            this.ui.renderStorageUI();
+                        }
+                    }
+                });
+
+                this.socket.on('openStorageUI', (storageData) => {
+                    if (Array.isArray(storageData)) {
+                        this.player.storage = storageData;
+                        if (!this.player.baseStats) this.player.baseStats = {};
+                        this.player.baseStats.homeStorage = storageData;
+                    }
+                    if (this.ui) this.ui.openStorageUI();
+                });
+
                 // 2D Exonie Chat Message Listeners (server.js lines 4795-4799)
                 this.socket.on('chatMessage', (data) => {
                     if (data && data.text) {
@@ -1236,6 +1258,7 @@ export class GameApp {
             playerClass: pClass,
             equips: this.player.equips || {},
             weapon: this.player.equips ? this.player.equips.weapon : null,
+            mapId: this.currentMapId || 'town',
             hp: this.player.hp || 100,
             maxHp: this.player.maxHp || 100,
             x: this.player.pos ? this.player.pos.x : 0,
@@ -1619,11 +1642,15 @@ export class GameApp {
     }
 
     // ==========================================
-    // 2D HOME STORAGE VAULT (15 SLOTS)
+    // 2D HOME STORAGE VAULT (15 SLOTS - SYNCS TO SUPABASE)
     // ==========================================
     transferToStorage(bagIdx) {
         if (!Array.isArray(this.player.storage)) {
             this.player.storage = Array(15).fill(null);
+        }
+        if (!this.player.baseStats) this.player.baseStats = {};
+        if (!Array.isArray(this.player.baseStats.homeStorage)) {
+            this.player.baseStats.homeStorage = Array(15).fill(null);
         }
         const item = this.player.inventory[bagIdx];
         if (!item) return;
@@ -1642,10 +1669,19 @@ export class GameApp {
         }
 
         this.player.storage[emptyVaultIdx] = item;
+        this.player.baseStats.homeStorage[emptyVaultIdx] = item;
         this.player.inventory[bagIdx] = null;
+
+        if (this.socket && this.socket.connected) {
+            this.socket.emit('transferToStorage', bagIdx);
+        }
         this.saveCharacterToAccountSlot();
         this.audio.playSfx('splash');
         this.ui.showToast(`📥 Stored ${item.name} in Home Vault (Slot ${emptyVaultIdx + 1})!`);
+        if (this.ui) {
+            this.ui.renderStorageUI();
+            this.ui.renderInventory();
+        }
     }
 
     transferFromStorage(vaultIdx) {
@@ -1660,10 +1696,21 @@ export class GameApp {
         }
 
         this.player.storage[vaultIdx] = null;
+        if (this.player.baseStats && Array.isArray(this.player.baseStats.homeStorage)) {
+            this.player.baseStats.homeStorage[vaultIdx] = null;
+        }
+
+        if (this.socket && this.socket.connected) {
+            this.socket.emit('transferFromStorage', vaultIdx);
+        }
         this.saveCharacterToAccountSlot();
         this.audio.playSfx('splash');
         this.ui.showToast(`📤 Withdrew ${item.name} from Home Vault to Bag!`);
         this.ui.updatePlayerHUD(this.player);
+        if (this.ui) {
+            this.ui.renderStorageUI();
+            this.ui.renderInventory();
+        }
     }
 
     // ==========================================
@@ -1979,12 +2026,9 @@ export class GameApp {
                 leggingsRarity: legRarity
             });
 
-            if (slot === 'aura') {
-                this.player.char3D.setCosmeticAura(item.id);
-            }
-            if (slot === 'pet') {
-                this.player.char3D.setCosmeticPet(item.id);
-            }
+            // Always keep both cosmetic aura and pet synchronized simultaneously
+            this.player.char3D.setCosmeticAura(this.player.equips?.aura?.id || null);
+            this.player.char3D.setCosmeticPet(this.player.equips?.pet?.id || null);
         }
 
         this.recalculateStats();
@@ -2457,6 +2501,14 @@ export class GameApp {
                 return;
             }
 
+            // 🛡️ Pre-Game & Input Field Guard: Never trigger in-game shortcuts if not inside the active game world or typing in an input field!
+            if (!this.hasEnteredWorld || (window.ExonieFlow && window.ExonieFlow.step !== 'game')) return;
+
+            const targetTag = (e.target && e.target.tagName) ? e.target.tagName.toUpperCase() : '';
+            if (targetTag === 'INPUT' || targetTag === 'TEXTAREA' || targetTag === 'SELECT' || (e.target && e.target.isContentEditable)) {
+                return;
+            }
+
             this.keys[e.code] = true;
             const kb = this.keybinds || this.getDefaultKeybinds();
 
@@ -2503,6 +2555,7 @@ export class GameApp {
 
         // Mouse Move Hover System: Changes cursor and displays hover badge when cursor is over another player
         window.addEventListener('mousemove', (e) => {
+            if (!this.hasEnteredWorld || (window.ExonieFlow && window.ExonieFlow.step !== 'game')) return;
             if (this.engine && this.engine.isPointerLocked) return;
 
             const now = performance.now();
@@ -2536,6 +2589,7 @@ export class GameApp {
 
         // Desktop mouse left-click: Primary Attack combo OR Player Interaction
         window.addEventListener('mousedown', (e) => {
+            if (!this.hasEnteredWorld || (window.ExonieFlow && window.ExonieFlow.step !== 'game')) return;
             if (e.target && e.target.id === 'canvas-3d') {
                 if (e.button === 0) {
                     // If clicking directly on a hovered remote player while in free mouse mode, open interaction menu
@@ -2551,6 +2605,7 @@ export class GameApp {
 
         // Right-click: Player Interaction Context Menu (Both in free cursor and Dragon Nest aim modes)
         window.addEventListener('contextmenu', (e) => {
+            if (!this.hasEnteredWorld || (window.ExonieFlow && window.ExonieFlow.step !== 'game')) return;
             if (e.target && e.target.id === 'canvas-3d') {
                 e.preventDefault();
                 // When in active Dragon Nest pointer lock aim mode, allow right-clicking an aimed target to interact
@@ -2575,6 +2630,7 @@ export class GameApp {
 
         // Ensure clicking game canvas or HUD blurs any lingering inputs so keyboard controls are always responsive
         window.addEventListener('pointerdown', (e) => {
+            if (!this.hasEnteredWorld || (window.ExonieFlow && window.ExonieFlow.step !== 'game')) return;
             if (e.target && e.target.id !== 'chat-input' && document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA')) {
                 document.activeElement.blur();
             }
@@ -2685,9 +2741,32 @@ export class GameApp {
         }
         this.currentMapId = mapId;
 
+        // Clear remote player models from previous map to enforce strict instance/map isolation
+        if (this.remotePlayers) {
+            for (const sid in this.remotePlayers) {
+                const rp = this.remotePlayers[sid];
+                if (rp && rp.char3D && rp.char3D.group) {
+                    this.engine.scene.remove(rp.char3D.group);
+                }
+            }
+            this.remotePlayers = {};
+        }
+        this.clearHoveredPlayer();
+
         // Build the 3D map from 2D Exonie dataset
         const data = this.world.loadMap(mapId, targetX, targetY);
         this.player.pos.copy(data.spawn);
+
+        // Notify server to transfer socket instance room (Private Solo/Party instance for Home/Dungeons)
+        if (this.socket && this.socket.connected) {
+            this.socket.emit('changeMap', {
+                mapId: mapId,
+                x: this.player.pos.x,
+                y: this.player.pos.y,
+                z: this.player.pos.z,
+                rotY: this.player.rotY
+            });
+        }
 
         // 🛡️ Authentic 2D: Purification uses reset to 0 upon entering Town
         if (mapId === 'town' && this.player) {
@@ -3611,6 +3690,11 @@ export class GameApp {
 
         const delta = Math.min(0.1, (timestamp - this.lastTime) * 0.001);
         this.lastTime = timestamp;
+
+        // 🛡️ Pre-Game Guard: Never run game loop systems, HUD updates, or cooldowns if not actively in-game!
+        if (!this.hasEnteredWorld || (window.ExonieFlow && window.ExonieFlow.step !== 'game')) {
+            return;
+        }
 
         if (this.portalCooldown > 0) this.portalCooldown -= delta;
         if (this.combat.cooldowns.dodge > 0) this.combat.cooldowns.dodge -= delta;
