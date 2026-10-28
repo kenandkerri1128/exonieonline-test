@@ -260,6 +260,22 @@ export class Character3D {
 
         const displayName = name || this.name || 'Hero';
 
+        // 🏆 Top 3 Tavern Speedrun Champion Radiant Name Shine
+        const topRanks = window.topTavernPlayers || [];
+        const rankIdx = topRanks.indexOf(displayName);
+        let nameColor = isSelf ? '#4ade80' : '#00e5ff';
+        let glowColor = null;
+        if (rankIdx === 0) {
+            nameColor = '#ffffff';
+            glowColor = '#FFD700'; // Gold Shine
+        } else if (rankIdx === 1) {
+            nameColor = '#ffffff';
+            glowColor = '#E0E0E0'; // Silver Shine
+        } else if (rankIdx === 2) {
+            nameColor = '#ffffff';
+            glowColor = '#CD7F32'; // Bronze Shine
+        }
+
         if (title) {
             // Line 1: <TITLE> with radiant tier outline
             const tUpper = String(title).toUpperCase();
@@ -283,8 +299,17 @@ export class Character3D {
             ctx.fillStyle = '#000000';
             ctx.fillText(`Lv.${level} ${displayName}`, 129, 34);
             ctx.fillText(`Lv.${level} ${displayName}`, 127, 32);
-            ctx.fillStyle = isSelf ? '#4ade80' : '#00e5ff';
-            ctx.fillText(`Lv.${level} ${displayName}`, 128, 33);
+            if (glowColor) {
+                ctx.save();
+                ctx.shadowColor = glowColor;
+                ctx.shadowBlur = 10;
+                ctx.fillStyle = nameColor;
+                ctx.fillText(`Lv.${level} ${displayName}`, 128, 33);
+                ctx.restore();
+            } else {
+                ctx.fillStyle = nameColor;
+                ctx.fillText(`Lv.${level} ${displayName}`, 128, 33);
+            }
 
             // Line 3: HP bar
             const barX = 36;
@@ -310,8 +335,17 @@ export class Character3D {
             ctx.fillStyle = '#000000';
             ctx.fillText(`Lv.${level} ${displayName}`, 129, 23);
             ctx.fillText(`Lv.${level} ${displayName}`, 127, 21);
-            ctx.fillStyle = isSelf ? '#4ade80' : '#00e5ff';
-            ctx.fillText(`Lv.${level} ${displayName}`, 128, 22);
+            if (glowColor) {
+                ctx.save();
+                ctx.shadowColor = glowColor;
+                ctx.shadowBlur = 12;
+                ctx.fillStyle = nameColor;
+                ctx.fillText(`Lv.${level} ${displayName}`, 128, 22);
+                ctx.restore();
+            } else {
+                ctx.fillStyle = nameColor;
+                ctx.fillText(`Lv.${level} ${displayName}`, 128, 22);
+            }
 
             // Line 2: HP bar
             const barX = 36;

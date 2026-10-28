@@ -656,6 +656,46 @@ export function generateHauntedLoot(level) {
     return drops;
 }
 
+// ============================================================================
+// 🍺 2D TAVERN ACCESSORY LOOT GENERATOR (Tavern drops ACCESSORIES ONLY!)
+// Matches 2D Exonie server.js generateTavernLoot 1:1
+// Only drops: Necklace, Ring, or Earrings with rolled bonus stats!
+// ============================================================================
+export function generateTavernLoot(level, category = 'floor_boss') {
+    let rarityRoll = Math.random();
+    let rarity = "Basic";
+    if (category === "floor_boss") {
+        rarity = rarityRoll < 0.05 ? "Godly" : (rarityRoll < 0.25 ? "Legendary" : "Unique");
+    } else if (category === "mini_boss") {
+        rarity = rarityRoll < 0.10 ? "Unique" : (rarityRoll < 0.40 ? "Rare" : "Basic");
+    } else {
+        rarity = rarityRoll < 0.20 ? "Rare" : "Basic";
+    }
+
+    const types = ['necklace', 'ring', 'earrings'];
+    const type = types[Math.floor(Math.random() * types.length)];
+    const stats = [...STAT_TYPES];
+    const rStat = stats[Math.floor(Math.random() * stats.length)];
+
+    let statVal = getBaseStat(level) + ({ "Basic": 0, "Rare": 2, "Unique": 5, "Legendary": 8, "Godly": 12, "Divine": 16 }[rarity] || 0);
+    const color = RARITY_COLORS[rarity] || '#ffffff';
+
+    return {
+        id: 'tavn_' + Date.now() + '_' + Math.random(),
+        name: rarity + ' Tavern ' + type.charAt(0).toUpperCase() + type.slice(1),
+        type: type,
+        sprite: rarity.toLowerCase() + type,
+        level: level,
+        rarity: rarity,
+        color: color,
+        fixedStat: {},
+        randomStat: { [rStat]: statVal },
+        enhanceLevel: 0,
+        quantity: 1,
+        desc: 'Exquisite ' + rarity + ' tavern accessory. Grants +' + statVal + ' ' + rStat.toUpperCase() + '.'
+    };
+}
+
 // 🗝️ DUNGEON BOSS LOOT (The Cave / Dungeon 1 & 2 Bosses — 50% Power Gem!)
 export function generateDungeonLoot(mob) {
     const lvl = Math.max(1, (mob && mob.level) || 15);

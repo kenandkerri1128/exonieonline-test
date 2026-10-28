@@ -688,6 +688,52 @@ const playerParty = {}; // Maps character_name -> partyId
 const parties = {};     // Maps partyId -> { id, leaderId, members: Set<character_name> }
 if (!global.playerFriends) global.playerFriends = {}; // Maps character_name -> Set<friendName>
 
+// ==========================================
+// 🏆 GLOBAL TAVERN RANKINGS & TOP 3 BROADCAST (2D EXONIE ENGINE)
+// ==========================================
+global.topTavernPlayers = [];
+let memoryTavernLeaderboard = [];
+
+async function updateAndBroadcastTopTavern() {
+    try {
+        let sorted = [];
+        if (supabase) {
+            const { data, error } = await supabase.from('Tavern_Leaderboard').select('character_name, mob_type, mob_level, time_taken').limit(1000);
+            if (!error && Array.isArray(data)) {
+                sorted = data;
+            } else if (memoryTavernLeaderboard.length > 0) {
+                sorted = memoryTavernLeaderboard;
+            }
+        } else {
+            sorted = memoryTavernLeaderboard;
+        }
+
+        const w = { 'floor_boss': 3, 'mini_boss': 2, 'common_mobs': 1 };
+        sorted.sort((a, b) => {
+            let aW = w[a.mob_type] || 0; let bW = w[b.mob_type] || 0;
+            if (aW !== bW) return bW - aW;
+            if (Number(a.mob_level || 0) !== Number(b.mob_level || 0)) {
+                return Number(b.mob_level || 0) - Number(a.mob_level || 0);
+            }
+            return Number(a.time_taken || 0) - Number(b.time_taken || 0);
+        });
+
+        let uniqueTop3 = [];
+        for (let row of sorted) {
+            const name = row.character_name || row.name;
+            if (name && !uniqueTop3.includes(name)) uniqueTop3.push(name);
+            if (uniqueTop3.length === 3) break;
+        }
+        global.topTavernPlayers = uniqueTop3;
+        io.emit('topTavernPlayers', global.topTavernPlayers);
+    } catch (e) {
+        console.error("Error updating top tavern:", e.message);
+    }
+}
+// Initialize top rankings and auto-refresh every 60 seconds
+updateAndBroadcastTopTavern();
+setInterval(updateAndBroadcastTopTavern, 60000);
+
 function findSocketIdByPlayerName(name) {
     if (!name) return null;
     const clean = String(name).trim().toLowerCase();
@@ -1602,6 +1648,7 @@ io.on('connection', (socket) => {
         }
         socket.emit('gameState', { self: onlinePlayers[socket.id], players: playersInInstance });
         socket.to(instId).emit('playerJoined', onlinePlayers[socket.id]);
+        socket.emit('topTavernPlayers', global.topTavernPlayers || []);
     });
 
     socket.on('changeMap', (data) => {
@@ -2006,15 +2053,20 @@ io.on('connection', (socket) => {
     // 🏆 TAVERN SPEEDRUN LEADERBOARD (SUPABASE ALIGNED)
     // ==========================================
     socket.on('getTavernLeaderboard', async () => {
-        if (!supabase) return socket.emit('updateLeaderboardUI', []);
+        let sorted = [];
         try {
-            const { data, error } = await supabase.from('Tavern_Leaderboard').select('*').limit(1000);
-            if (error) {
-                console.error('[Tavern LB] Query error:', error.message);
-                return socket.emit('updateLeaderboardUI', []);
+            if (supabase) {
+                const { data, error } = await supabase.from('Tavern_Leaderboard').select('*').limit(1000);
+                if (!error && Array.isArray(data)) {
+                    sorted = data;
+                } else if (memoryTavernLeaderboard.length > 0) {
+                    sorted = memoryTavernLeaderboard;
+                }
+            } else {
+                sorted = memoryTavernLeaderboard;
             }
             const w = { 'floor_boss': 3, 'mini_boss': 2, 'common_mobs': 1 };
-            let sorted = (data || []).sort((a, b) => {
+            sorted.sort((a, b) => {
                 let aW = w[a.mob_type] || 0; let bW = w[b.mob_type] || 0;
                 if (aW !== bW) return bW - aW;
                 if (Number(a.mob_level || 0) !== Number(b.mob_level || 0)) {
@@ -2025,7 +2077,117 @@ io.on('connection', (socket) => {
             socket.emit('updateLeaderboardUI', sorted.slice(0, 50));
         } catch (err) {
             console.error('[Tavern LB] Server error:', err.message);
-            socket.emit('updateLeaderboardUI', []);
+            socket.emit('updateLeaderboardUI', memoryTavernLeaderboard.slice(0, 50));
+        }
+    });
+
+    // 🏆 Submit Tavern Solo Speedrun Run (Matches 2D Exonie server.js logic & Supabase persistence)
+    socket.on('submitTavernRun', async (data) => {
+        if (!data) return;
+        const p = onlinePlayers[socket.id];
+        const pName = (p && p.name) || socket.characterName || data.characterName || 'Hero';
+        const pClass = (p && p.playerClass) || data.playerClass || 'Novice';
+        const pLevel = (p && p.level) || data.playerLevel || 1;
+        const timeTaken = Math.max(100, Number(data.timeTaken || 0));
+        const mobType = String(data.mobType || 'floor_boss');
+        const mobLevel = Math.max(1, Number(data.mobLevel || 1));
+
+        const weight = { 'floor_boss': 3, 'mini_boss': 2, 'common_mobs': 1 };
+        let isNewBest = false;
+
+        try {
+            if (supabase) {
+                const { data: existingRecords } = await supabase
+                    .from('Tavern_Leaderboard')
+                    .select('*')
+                    .eq('character_name', pName);
+
+                const existingRecord = existingRecords && existingRecords[0];
+
+                if (!existingRecord) {
+                    isNewBest = true;
+                } else {
+                    let oldW = weight[existingRecord.mob_type] || 0;
+                    let newW = weight[mobType] || 0;
+
+                    if (newW > oldW) {
+                        isNewBest = true;
+                    } else if (newW === oldW) {
+                        if (mobLevel > Number(existingRecord.mob_level || 0)) {
+                            isNewBest = true;
+                        } else if (mobLevel === Number(existingRecord.mob_level || 0)) {
+                            if (timeTaken < Number(existingRecord.time_taken || 99999999)) {
+                                isNewBest = true;
+                            }
+                        }
+                    }
+                }
+
+                if (isNewBest) {
+                    if (existingRecord) {
+                        await supabase.from('Tavern_Leaderboard')
+                            .update({
+                                mob_type: mobType,
+                                mob_level: mobLevel,
+                                time_taken: timeTaken,
+                                achieved_at: new Date(),
+                                player_level: pLevel,
+                                player_class: pClass
+                            })
+                            .eq('id', existingRecord.id);
+                    } else {
+                        await supabase.from('Tavern_Leaderboard').insert([{
+                            character_name: pName,
+                            mob_type: mobType,
+                            mob_level: mobLevel,
+                            time_taken: timeTaken,
+                            achieved_at: new Date(),
+                            player_level: pLevel,
+                            player_class: pClass
+                        }]);
+                    }
+                }
+            } else {
+                // Memory fallback
+                const existingIdx = memoryTavernLeaderboard.findIndex(r => r.character_name === pName);
+                if (existingIdx === -1) {
+                    isNewBest = true;
+                    memoryTavernLeaderboard.push({
+                        id: Date.now(),
+                        character_name: pName,
+                        mob_type: mobType,
+                        mob_level: mobLevel,
+                        time_taken: timeTaken,
+                        player_level: pLevel,
+                        player_class: pClass,
+                        achieved_at: new Date()
+                    });
+                } else {
+                    const ex = memoryTavernLeaderboard[existingIdx];
+                    let oldW = weight[ex.mob_type] || 0;
+                    let newW = weight[mobType] || 0;
+                    if (newW > oldW || (newW === oldW && mobLevel > ex.mob_level) || (newW === oldW && mobLevel === ex.mob_level && timeTaken < ex.time_taken)) {
+                        isNewBest = true;
+                        memoryTavernLeaderboard[existingIdx] = {
+                            ...ex,
+                            mob_type: mobType,
+                            mob_level: mobLevel,
+                            time_taken: timeTaken,
+                            player_level: pLevel,
+                            player_class: pClass,
+                            achieved_at: new Date()
+                        };
+                    }
+                }
+            }
+
+            socket.emit('tavernVictory', { time: timeTaken, isNewBest });
+
+            if (isNewBest) {
+                await updateAndBroadcastTopTavern();
+            }
+        } catch (err) {
+            console.error('[Tavern Record Error]:', err.message);
         }
     });
 

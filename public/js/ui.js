@@ -1674,8 +1674,13 @@ export class UIManager {
 
         rows.forEach((r, idx) => {
             const tr = document.createElement('tr');
+            const isRank1 = idx === 0;
+            const isRank2 = idx === 1;
+            const isRank3 = idx === 2;
             const isTop3 = idx < 3;
-            const rankMedal = idx === 0 ? '🥇 1' : (idx === 1 ? '🥈 2' : (idx === 2 ? '🥉 3' : `${idx + 1}`));
+            const rankClass = isRank1 ? 'rank-1-name' : (isRank2 ? 'rank-2-name' : (isRank3 ? 'rank-3-name' : ''));
+            const rankMedal = isRank1 ? '🥇 1' : (isRank2 ? '🥈 2' : (isRank3 ? '🥉 3' : `${idx + 1}`));
+            const rankColor = isRank1 ? '#ffd700' : (isRank2 ? '#e2e8f0' : (isRank3 ? '#cd7f32' : '#94a3b8'));
             const pName = r.character_name || r.name || 'Hero';
             const isSelf = myName && (pName === myName);
             const pClass = r.player_class || r.playerClass || 'Novice';
@@ -1695,11 +1700,14 @@ export class UIManager {
                 tr.style.background = 'rgba(0, 229, 255, 0.15)';
             }
             tr.innerHTML = `
-                <td style="padding:7px 8px; font-weight:900; color:${isTop3 ? '#ffd700' : '#94a3b8'};">${rankMedal}</td>
-                <td style="padding:7px 8px; font-weight:800; color:${isSelf ? '#00e5ff' : '#fff'};">${pName} <span style="font-size:0.75rem; color:#ffd700; font-weight:normal;">Lv.${pLvl}</span></td>
+                <td style="padding:7px 8px; font-weight:900; color:${rankColor};">${rankMedal}</td>
+                <td style="padding:7px 8px; font-weight:800;">
+                    <span class="${rankClass}" style="${isSelf && !rankClass ? 'color:#00e5ff;' : ''}">${pName}</span>
+                    <span style="font-size:0.75rem; color:#ffd700; font-weight:normal; margin-left:4px;">Lv.${pLvl}</span>
+                </td>
                 <td style="padding:7px 8px; color:#4ade80;">${icon} ${pClass}</td>
                 <td style="padding:7px 8px; color:#fbbf24; font-weight:700;">${oppStr}</td>
-                <td style="padding:7px 8px; text-align:right; font-family:var(--font-pixel); color:#38bdf8; font-weight:900;">${timeFormatted}</td>
+                <td style="padding:7px 8px; text-align:right; font-family:var(--font-pixel); color:${isTop3 ? '#fde047' : '#38bdf8'}; font-weight:900;">${timeFormatted}</td>
             `;
             tbody.appendChild(tr);
         });

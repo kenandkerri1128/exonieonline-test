@@ -5,7 +5,7 @@ import { World3D } from './world3d.js?v=3.0';
 import { Monster3D } from './monsters3d.js?v=3.0';
 import { CombatSystem } from './combat.js?v=3.0';
 import { UIManager } from './ui.js?v=3.0';
-import { CLASSES, MONSTER_DATABASE, STARTER_ITEMS, DEFAULT_BASE_STATS, MAX_LEVEL, getExpForNextLevel, generateLoot, generateHauntedLoot, getItemSellPrice, CASH_SHOP_ITEMS } from './game_data.js?v=3.0';
+import { CLASSES, MONSTER_DATABASE, STARTER_ITEMS, DEFAULT_BASE_STATS, MAX_LEVEL, getExpForNextLevel, generateLoot, generateTavernLoot, generateHauntedLoot, getItemSellPrice, CASH_SHOP_ITEMS } from './game_data.js?v=3.0';
 import { MAPS_DATA } from './maps_data.js?v=3.0';
 
 // ==========================================
@@ -1033,6 +1033,25 @@ export class GameApp {
 
                 this.socket.on('updateLeaderboardUI', (rows) => {
                     if (this.ui) this.ui.renderLeaderboardData(rows);
+                });
+
+                this.socket.on('topTavernPlayers', (top3) => {
+                    window.topTavernPlayers = Array.isArray(top3) ? top3 : [];
+                    if (this.player && this.player.char3D) {
+                        this.player.char3D._lastName = null;
+                    }
+                    for (const id in this.remotePlayers) {
+                        if (this.remotePlayers[id]?.char3D) {
+                            this.remotePlayers[id].char3D._lastName = null;
+                        }
+                    }
+                });
+
+                this.socket.on('tavernVictory', (data) => {
+                    if (data && data.isNewBest) {
+                        this.ui.showToast('🏆 NEW PERSONAL BEST! Tavern run recorded to Leaderboard!');
+                        this.socket.emit('getTavernLeaderboard');
+                    }
                 });
 
                 this.socket.on('raidInvite', (data) => {
@@ -2886,8 +2905,23 @@ export class GameApp {
         this.player.gold += mob.goldYield;
         this.combat.spawnFloatingDamage(mob.group.position, `+${mob.expYield} EXP`, false, true);
 
-        // Authoritative 2D Loot Drop System + Single World Announcement for Highest-Tier Drop
-        const drops = generateLoot(mob);
+        // Authoritative 2D Loot Drop System:
+        // In Training Tavern, monsters STRICTLY drop Tavern Accessories (necklace, ring, earrings)! NO swords, weapons, or armor!
+        const isTavern = this.currentMapId === 'trainingtavern' || mob.isTavernBoss;
+        const drops = [];
+
+        if (isTavern) {
+            // 50% chance to drop Tavern Accessory (necklace, ring, earrings) matching 2D Exonie server.js
+            if (Math.random() < 0.50) {
+                const accDrop = generateTavernLoot(mob.level, mob.category || 'floor_boss');
+                drops.push(accDrop);
+            }
+        } else {
+            // Normal Dungeon / Floor / Overworld loot
+            const normalDrops = generateLoot(mob);
+            drops.push(...normalDrops);
+        }
+
         let bestLegendDrop = null;
         for (const drop of drops) {
             const added = this.addItemToInventory(drop);
@@ -2958,28 +2992,30 @@ export class GameApp {
             this.tavernTimerActive = false;
             const elapsedMs = Math.max(500, Math.round(performance.now() - (this.tavernStartTime || performance.now())));
             const cfg = this.world.tavernChallengeConfig || { bossType: 'floor', level: mob.level };
+            const mobCat = mob.category || (cfg.bossType === 'floor' ? 'floor_boss' : (cfg.bossType === 'mini' ? 'mini_boss' : 'common_mobs'));
+
+            // 1. Submit run to server for official Supabase Tavern_Leaderboard persistence
+            if (this.socket) {
+                this.socket.emit('submitTavernRun', {
+                    mobType: mobCat,
+                    mobLevel: mob.level,
+                    timeTaken: elapsedMs,
+                    playerLevel: this.player.level || 1,
+                    playerClass: this.player.baseStats?.playerClass || this.player.className || 'Novice',
+                    characterName: this.player.name || 'Hero'
+                });
+            }
+
+            // 2. Local fallback update
             this.recordTavernRun(cfg.bossType, mob.level, elapsedMs);
+
             const secStr = (elapsedMs / 1000).toFixed(2);
             this.ui.showWorldAnnouncement(
                 `🍺 <strong style="color:#00e5ff;">[TAVERN RANKING] ${this.player.name}</strong> defeated Lv.${mob.level} <strong>${mob.name}</strong> in <strong style="color:#fde047;">${secStr}s</strong>!`,
                 '#ffab00'
             );
-            // 50% chance to drop a special Tavern Champion Trophy / Gear
-            if (Math.random() < 0.5) {
-                const tavernItem = {
-                    name: `Tavern Champion's Crest (Lv.${mob.level})`,
-                    type: 'armor',
-                    rarity: 'Legendary',
-                    level: mob.level,
-                    fixedStat: { defense: 18 + mob.level * 2, hp: 60 + mob.level * 5 },
-                    randomStat: { str: 5 + Math.floor(mob.level * 0.4), int: 5 + Math.floor(mob.level * 0.4) },
-                    sprite: 'armor3',
-                    desc: 'Awarded to solo speedrun champions of the Training Tavern.'
-                };
-                if (this.addItemToInventory(tavernItem)) {
-                    this.ui.showToast(`🏆 Bonus Tavern Drop: ${tavernItem.name}!`);
-                }
-            }
+
+            // Auto-teleport back to town after victory matching 2D Exonie
             setTimeout(() => {
                 if (this.currentMapId === 'trainingtavern') {
                     this.ui.updateTavernTimer(0, false);
