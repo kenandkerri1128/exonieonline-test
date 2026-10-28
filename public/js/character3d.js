@@ -1765,6 +1765,10 @@ export class Character3D {
         p.rHip.rotation.x = damp(p.rHip.rotation.x, rHipRx, k, dt);
         p.lKnee.rotation.x = damp(p.lKnee.rotation.x, lKneeRx, k, dt);
         p.rKnee.rotation.x = damp(p.rKnee.rotation.x, rKneeRx, k, dt);
+
+        // Update 3D Cosmetic Auras & Companion Pets
+        if (this.updateCosmeticAura) this.updateCosmeticAura(dt);
+        if (this.updateCosmeticPet) this.updateCosmeticPet(dt, isMoving);
     }
 
     // ==========================================
@@ -1844,6 +1848,659 @@ export class Character3D {
             this.parryGuardMesh.geometry.dispose();
             if (this.parryGuardMesh.material) this.parryGuardMesh.material.dispose();
             this.parryGuardMesh = null;
+        }
+    }
+
+    // ==========================================
+    // ✨ 3D COSMETIC AURA ENGINE (2D EXONIE REMASTERED)
+    // ==========================================
+    setCosmeticAura(auraId) {
+        if (this.cosmeticAuraGroup) {
+            this.group.remove(this.cosmeticAuraGroup);
+            this.cosmeticAuraGroup.traverse(child => {
+                if (child.geometry) child.geometry.dispose();
+                if (child.material) {
+                    if (Array.isArray(child.material)) child.material.forEach(m => m.dispose());
+                    else child.material.dispose();
+                }
+            });
+            this.cosmeticAuraGroup = null;
+        }
+
+        const id = String(auraId || '').toLowerCase().trim();
+        if (!id || id === 'none' || id === 'null') {
+            this.currentAuraId = null;
+            return;
+        }
+
+        this.currentAuraId = id;
+        const ag = new THREE.Group();
+        ag.name = 'cosmeticAuraGroup';
+        this.cosmeticAuraGroup = ag;
+        this.group.add(ag);
+
+        if (id.includes('divine')) {
+            // 🕊️ AURA OF THE DIVINE: Angelic Wings + Celestial Halo + Golden Particles
+            const wingMat = new THREE.MeshStandardMaterial({
+                color: 0xffea00,
+                emissive: 0xffb300,
+                emissiveIntensity: 0.95,
+                roughness: 0.25,
+                metalness: 0.5,
+                transparent: true,
+                opacity: 0.92,
+                side: THREE.DoubleSide
+            });
+
+            // Wings Root Groups attached behind the torso
+            const wingsGroup = new THREE.Group();
+            wingsGroup.position.set(0, 1.35, -0.22);
+            ag.add(wingsGroup);
+            ag.wingsGroup = wingsGroup;
+
+            const lWing = new THREE.Group();
+            lWing.position.set(-0.12, 0, 0);
+            wingsGroup.add(lWing);
+            ag.lWing = lWing;
+
+            const rWing = new THREE.Group();
+            rWing.position.set(0.12, 0, 0);
+            wingsGroup.add(rWing);
+            ag.rWing = rWing;
+
+            // Feathers layered outward
+            for (let f = 0; f < 5; f++) {
+                const fLength = 0.55 + f * 0.12;
+                const fGeo = new THREE.ConeGeometry(0.09, fLength, 5);
+                fGeo.rotateZ(Math.PI / 2);
+
+                const lfMesh = new THREE.Mesh(fGeo, wingMat);
+                lfMesh.position.set(-0.2 - f * 0.14, 0.15 + f * 0.11, -f * 0.04);
+                lfMesh.rotation.set(0.1, -0.25, 0.35 + f * 0.18);
+                lWing.add(lfMesh);
+
+                const rfMesh = new THREE.Mesh(fGeo, wingMat);
+                rfMesh.position.set(0.2 + f * 0.14, 0.15 + f * 0.11, -f * 0.04);
+                rfMesh.rotation.set(0.1, 0.25, -0.35 - f * 0.18);
+                rWing.add(rfMesh);
+            }
+
+            // Celestial Halo
+            const haloGeo = new THREE.TorusGeometry(0.35, 0.035, 8, 28);
+            const haloMat = new THREE.MeshBasicMaterial({ color: 0xffea00, transparent: true, opacity: 0.9 });
+            const halo = new THREE.Mesh(haloGeo, haloMat);
+            halo.position.set(0, 2.05, 0);
+            halo.rotation.x = Math.PI / 2.3;
+            ag.add(halo);
+            ag.halo = halo;
+
+            // Floor Radiant Ring
+            const ringGeo = new THREE.TorusGeometry(0.85, 0.025, 8, 32);
+            const ringMat = new THREE.MeshBasicMaterial({ color: 0xffea00, transparent: true, opacity: 0.65 });
+            const floorRing = new THREE.Mesh(ringGeo, ringMat);
+            floorRing.position.set(0, 0.06, 0);
+            floorRing.rotation.x = -Math.PI / 2;
+            ag.add(floorRing);
+            ag.floorRing = floorRing;
+
+            // Golden Sparkle Orbits
+            ag.sparkles = [];
+            const sparkGeo = new THREE.OctahedronGeometry(0.06, 0);
+            const sparkMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+            for (let s = 0; s < 4; s++) {
+                const spk = new THREE.Mesh(sparkGeo, sparkMat);
+                ag.add(spk);
+                ag.sparkles.push(spk);
+            }
+        } else if (id.includes('blaze')) {
+            // 🔥 BLAZE AURA: Swirling Inferno Ground Rings & Rising Flame Cones
+            const flameMat = new THREE.MeshBasicMaterial({
+                color: 0xff3d00,
+                transparent: true,
+                opacity: 0.75,
+                blending: THREE.AdditiveBlending,
+                side: THREE.DoubleSide,
+                depthWrite: false
+            });
+
+            const ring1 = new THREE.Mesh(new THREE.TorusGeometry(0.88, 0.04, 8, 30), flameMat);
+            ring1.rotation.x = -Math.PI / 2;
+            ring1.position.y = 0.08;
+            ag.add(ring1);
+            ag.ring1 = ring1;
+
+            const ring2 = new THREE.Mesh(new THREE.TorusGeometry(0.65, 0.035, 8, 24), new THREE.MeshBasicMaterial({
+                color: 0xffab00,
+                transparent: true,
+                opacity: 0.8,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false
+            }));
+            ring2.rotation.x = -Math.PI / 2;
+            ring2.position.y = 0.14;
+            ag.add(ring2);
+            ag.ring2 = ring2;
+
+            // Rising Flame Cones
+            ag.flames = [];
+            for (let i = 0; i < 6; i++) {
+                const fGeo = new THREE.ConeGeometry(0.12, 0.55, 6);
+                const fMesh = new THREE.Mesh(fGeo, flameMat);
+                ag.add(fMesh);
+                ag.flames.push(fMesh);
+            }
+        } else if (id.includes('liquid')) {
+            // 💧 LIQUID AURA: Swirling Azure Crystal Water Rings & Floating Drops
+            const waterMat = new THREE.MeshStandardMaterial({
+                color: 0x00e5ff,
+                emissive: 0x00b0ff,
+                emissiveIntensity: 0.6,
+                roughness: 0.1,
+                metalness: 0.8,
+                transparent: true,
+                opacity: 0.75,
+                depthWrite: false
+            });
+
+            const wRing1 = new THREE.Mesh(new THREE.TorusGeometry(0.82, 0.04, 8, 28), waterMat);
+            wRing1.position.set(0, 0.95, 0);
+            wRing1.rotation.set(Math.PI / 3.5, 0, 0);
+            ag.add(wRing1);
+            ag.wRing1 = wRing1;
+
+            const wRing2 = new THREE.Mesh(new THREE.TorusGeometry(0.72, 0.035, 8, 28), waterMat);
+            wRing2.position.set(0, 1.05, 0);
+            wRing2.rotation.set(-Math.PI / 4, 0, Math.PI / 4);
+            ag.add(wRing2);
+            ag.wRing2 = wRing2;
+
+            ag.drops = [];
+            const dropGeo = new THREE.SphereGeometry(0.08, 12, 12);
+            for (let d = 0; d < 4; d++) {
+                const drop = new THREE.Mesh(dropGeo, waterMat);
+                ag.add(drop);
+                ag.drops.push(drop);
+            }
+        } else if (id.includes('nature')) {
+            // 🌿 NATURE AURA: Emerald Green Spiral Vine & Fluttering Leaves
+            const vineMat = new THREE.MeshStandardMaterial({
+                color: 0x00e676,
+                emissive: 0x00c853,
+                emissiveIntensity: 0.5,
+                roughness: 0.3,
+                transparent: true,
+                opacity: 0.85
+            });
+
+            ag.vineNodes = [];
+            const nodeGeo = new THREE.SphereGeometry(0.065, 8, 8);
+            for (let v = 0; v < 14; v++) {
+                const node = new THREE.Mesh(nodeGeo, vineMat);
+                ag.add(node);
+                ag.vineNodes.push(node);
+            }
+
+            ag.leaves = [];
+            const leafGeo = new THREE.ConeGeometry(0.09, 0.22, 4);
+            for (let l = 0; l < 5; l++) {
+                const leaf = new THREE.Mesh(leafGeo, vineMat);
+                ag.add(leaf);
+                ag.leaves.push(leaf);
+            }
+        } else if (id.includes('easter')) {
+            // 🐰 EASTER PASTEL AURA: Shifting Rainbow Pastel Rings & Starlight
+            const pastelMats = [
+                new THREE.MeshBasicMaterial({ color: 0xff80ab, transparent: true, opacity: 0.75, side: THREE.DoubleSide }),
+                new THREE.MeshBasicMaterial({ color: 0x84ffff, transparent: true, opacity: 0.75, side: THREE.DoubleSide }),
+                new THREE.MeshBasicMaterial({ color: 0xffff8d, transparent: true, opacity: 0.75, side: THREE.DoubleSide })
+            ];
+
+            ag.easterRings = [];
+            for (let r = 0; r < 3; r++) {
+                const ring = new THREE.Mesh(new THREE.TorusGeometry(0.78 + r * 0.1, 0.035, 8, 28), pastelMats[r]);
+                ring.position.y = 0.95;
+                ring.rotation.set(r * 0.8, r * 0.5, 0);
+                ag.add(ring);
+                ag.easterRings.push(ring);
+            }
+
+            ag.stars = [];
+            const starGeo = new THREE.OctahedronGeometry(0.07, 0);
+            for (let s = 0; s < 5; s++) {
+                const st = new THREE.Mesh(starGeo, pastelMats[s % 3]);
+                ag.add(st);
+                ag.stars.push(st);
+            }
+        } else if (id.includes('void')) {
+            // 🌌 VOID AURA: Dark Abyssal Tendrils & Pulsing Void Orb
+            const voidMat = new THREE.MeshStandardMaterial({
+                color: 0x4a148c,
+                emissive: 0x7b1fa2,
+                emissiveIntensity: 0.7,
+                roughness: 0.2,
+                transparent: true,
+                opacity: 0.8
+            });
+
+            const orb = new THREE.Mesh(new THREE.SphereGeometry(0.2, 16, 16), voidMat);
+            orb.position.set(0, 1.45, 0.1);
+            ag.add(orb);
+            ag.voidOrb = orb;
+
+            ag.tendrils = [];
+            for (let t = 0; t < 4; t++) {
+                const tGeo = new THREE.CylinderGeometry(0.04, 0.09, 1.4, 6);
+                const tendril = new THREE.Mesh(tGeo, voidMat);
+                ag.add(tendril);
+                ag.tendrils.push(tendril);
+            }
+        } else if (id.includes('lightning')) {
+            // ⚡ LIGHTNING AURA: Crackling Electric Blue Lightning Arcs
+            const boltMat = new THREE.MeshBasicMaterial({
+                color: 0x80d8ff,
+                transparent: true,
+                opacity: 0.9,
+                blending: THREE.AdditiveBlending
+            });
+
+            ag.bolts = [];
+            for (let b = 0; b < 5; b++) {
+                const bGeo = new THREE.BoxGeometry(0.03, 0.35, 0.03);
+                const bolt = new THREE.Mesh(bGeo, boltMat);
+                ag.add(bolt);
+                ag.bolts.push(bolt);
+            }
+
+            const lRing = new THREE.Mesh(new THREE.TorusGeometry(0.75, 0.03, 8, 24), boltMat);
+            lRing.position.y = 1.1;
+            lRing.rotation.x = Math.PI / 2.5;
+            ag.add(lRing);
+            ag.lRing = lRing;
+        }
+    }
+
+    updateCosmeticAura(dt) {
+        const ag = this.cosmeticAuraGroup;
+        if (!ag || !this.currentAuraId) return;
+        const t = this.animTime;
+
+        if (this.currentAuraId.includes('divine')) {
+            if (ag.lWing) ag.lWing.rotation.y = Math.sin(t * 2.8) * 0.22;
+            if (ag.rWing) ag.rWing.rotation.y = -Math.sin(t * 2.8) * 0.22;
+            if (ag.halo) {
+                ag.halo.rotation.z = t * 0.6;
+                ag.halo.position.y = 2.05 + Math.sin(t * 2.0) * 0.04;
+            }
+            if (ag.floorRing) ag.floorRing.rotation.z = -t * 0.4;
+            if (ag.sparkles) {
+                ag.sparkles.forEach((spk, idx) => {
+                    const ang = t * 1.5 + (idx * Math.PI / 2);
+                    spk.position.set(Math.cos(ang) * 0.8, 1.1 + Math.sin(t * 3.0 + idx) * 0.2, Math.sin(ang) * 0.8);
+                });
+            }
+        } else if (this.currentAuraId.includes('blaze')) {
+            if (ag.ring1) ag.ring1.rotation.z = t * 1.8;
+            if (ag.ring2) ag.ring2.rotation.z = -t * 2.2;
+            if (ag.flames) {
+                ag.flames.forEach((flame, idx) => {
+                    const ang = t * 1.2 + (idx * (Math.PI * 2 / 6));
+                    const r = 0.68 + Math.sin(t * 4.0 + idx) * 0.06;
+                    flame.position.set(Math.cos(ang) * r, 0.35 + Math.sin(t * 5.0 + idx) * 0.12, Math.sin(ang) * r);
+                    flame.scale.set(1, 0.85 + Math.sin(t * 6.0 + idx) * 0.35, 1);
+                });
+            }
+        } else if (this.currentAuraId.includes('liquid')) {
+            if (ag.wRing1) ag.wRing1.rotation.y = t * 1.4;
+            if (ag.wRing2) ag.wRing2.rotation.y = -t * 1.6;
+            if (ag.drops) {
+                ag.drops.forEach((drop, idx) => {
+                    const ang = t * 2.0 + (idx * Math.PI / 2);
+                    drop.position.set(Math.cos(ang) * 0.78, 1.0 + Math.sin(t * 3.5 + idx) * 0.18, Math.sin(ang) * 0.78);
+                });
+            }
+        } else if (this.currentAuraId.includes('nature')) {
+            if (ag.vineNodes) {
+                ag.vineNodes.forEach((node, idx) => {
+                    const progress = idx / ag.vineNodes.length;
+                    const ang = progress * Math.PI * 4 + t * 0.8;
+                    const rad = 0.6 - progress * 0.15;
+                    node.position.set(Math.cos(ang) * rad, 0.1 + progress * 1.4, Math.sin(ang) * rad);
+                });
+            }
+            if (ag.leaves) {
+                ag.leaves.forEach((leaf, idx) => {
+                    const ang = t * 1.2 + (idx * (Math.PI * 2 / 5));
+                    leaf.position.set(Math.cos(ang) * 0.75, 0.85 + Math.sin(t * 2.5 + idx) * 0.25, Math.sin(ang) * 0.75);
+                    leaf.rotation.set(t + idx, t * 1.5, idx);
+                });
+            }
+        } else if (this.currentAuraId.includes('easter')) {
+            if (ag.easterRings) {
+                ag.easterRings.forEach((ring, idx) => {
+                    ring.rotation.x += dt * (0.8 + idx * 0.3);
+                    ring.rotation.y += dt * (0.5 + idx * 0.2);
+                });
+            }
+            if (ag.stars) {
+                ag.stars.forEach((st, idx) => {
+                    const ang = t * 1.6 + (idx * (Math.PI * 2 / 5));
+                    st.position.set(Math.cos(ang) * 0.82, 1.1 + Math.sin(t * 3.0 + idx) * 0.22, Math.sin(ang) * 0.82);
+                    st.rotation.y += dt * 3.0;
+                });
+            }
+        } else if (this.currentAuraId.includes('void')) {
+            if (ag.voidOrb) {
+                ag.voidOrb.rotation.y += dt * 1.5;
+                ag.voidOrb.scale.setScalar(0.9 + Math.sin(t * 3.0) * 0.15);
+            }
+            if (ag.tendrils) {
+                ag.tendrils.forEach((ten, idx) => {
+                    const ang = (idx * Math.PI / 2) + t * 0.5;
+                    ten.position.set(Math.cos(ang) * 0.65, 0.7 + Math.sin(t * 2.5 + idx) * 0.1, Math.sin(ang) * 0.65);
+                    ten.rotation.z = Math.sin(t * 3.0 + idx) * 0.15;
+                });
+            }
+        } else if (this.currentAuraId.includes('lightning')) {
+            if (ag.lRing) ag.lRing.rotation.z += dt * 2.5;
+            if (ag.bolts) {
+                ag.bolts.forEach((bolt, idx) => {
+                    if (Math.random() < 0.2) {
+                        const ang = Math.random() * Math.PI * 2;
+                        const r = 0.5 + Math.random() * 0.35;
+                        bolt.position.set(Math.cos(ang) * r, 0.7 + Math.random() * 0.8, Math.sin(ang) * r);
+                        bolt.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
+                    }
+                });
+            }
+        }
+    }
+
+    // ==========================================
+    // 🐾 3D COMPANION PET ENGINE (2D EXONIE REMASTERED)
+    // ==========================================
+    setCosmeticPet(petId) {
+        if (this.petCompanionGroup) {
+            this.group.remove(this.petCompanionGroup);
+            this.petCompanionGroup.traverse(child => {
+                if (child.geometry) child.geometry.dispose();
+                if (child.material) {
+                    if (Array.isArray(child.material)) child.material.forEach(m => m.dispose());
+                    else child.material.dispose();
+                }
+            });
+            this.petCompanionGroup = null;
+        }
+
+        const id = String(petId || '').toLowerCase().trim();
+        if (!id || id === 'none' || id === 'null') {
+            this.currentPetId = null;
+            return;
+        }
+
+        this.currentPetId = id;
+        const pg = new THREE.Group();
+        pg.name = 'petCompanionGroup';
+        this.petCompanionGroup = pg;
+        this.group.add(pg);
+
+        if (id.includes('fox')) {
+            // 🦊 SPIRIT FOX PET: Orange fire-fox with pointed ears, white chest & fiery bushy tail
+            pg.position.set(1.05, 0, -0.85);
+
+            const foxOrangeMat = new THREE.MeshStandardMaterial({ color: 0xff6d00, roughness: 0.6 });
+            const foxWhiteMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.7 });
+            const foxDarkMat = new THREE.MeshStandardMaterial({ color: 0x3e2723, roughness: 0.8 });
+            const flameMat = new THREE.MeshBasicMaterial({ color: 0xffab00, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending });
+
+            // Body
+            const body = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.24, 0.46), foxOrangeMat);
+            body.position.set(0, 0.25, 0);
+            pg.add(body);
+
+            // White Chest
+            const chest = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.16, 0.18), foxWhiteMat);
+            chest.position.set(0, 0.25, 0.16);
+            pg.add(chest);
+
+            // Head
+            const head = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.22, 0.24), foxOrangeMat);
+            head.position.set(0, 0.42, 0.26);
+            pg.add(head);
+
+            // Snout
+            const snout = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.1, 0.16), foxWhiteMat);
+            snout.position.set(0, 0.38, 0.42);
+            pg.add(snout);
+
+            const nose = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.05, 0.04), foxDarkMat);
+            nose.position.set(0, 0.41, 0.51);
+            pg.add(nose);
+
+            // Pointed Ears
+            const earGeo = new THREE.ConeGeometry(0.07, 0.16, 4);
+            const lEar = new THREE.Mesh(earGeo, foxOrangeMat);
+            lEar.position.set(-0.09, 0.58, 0.25);
+            lEar.rotation.z = 0.2;
+            pg.add(lEar);
+
+            const rEar = new THREE.Mesh(earGeo, foxOrangeMat);
+            rEar.position.set(0.09, 0.58, 0.25);
+            rEar.rotation.z = -0.2;
+            pg.add(rEar);
+
+            // 4 Legs
+            const legGeo = new THREE.BoxGeometry(0.08, 0.18, 0.08);
+            const legPos = [[-0.11, 0.09, 0.14], [0.11, 0.09, 0.14], [-0.11, 0.09, -0.14], [0.11, 0.09, -0.14]];
+            legPos.forEach(pos => {
+                const leg = new THREE.Mesh(legGeo, foxDarkMat);
+                leg.position.set(...pos);
+                pg.add(leg);
+            });
+
+            // Fiery Bushy Tail with Wiggle Pivot
+            const tailPivot = new THREE.Group();
+            tailPivot.position.set(0, 0.26, -0.22);
+            pg.add(tailPivot);
+            pg.tailPivot = tailPivot;
+
+            const tailBase = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.12, 0.35, 6), foxOrangeMat);
+            tailBase.position.set(0, 0.15, -0.14);
+            tailBase.rotation.x = -Math.PI / 3;
+            tailPivot.add(tailBase);
+
+            const tailTip = new THREE.Mesh(new THREE.ConeGeometry(0.11, 0.26, 6), flameMat);
+            tailTip.position.set(0, 0.32, -0.24);
+            tailTip.rotation.x = -Math.PI / 3;
+            tailPivot.add(tailTip);
+        } else if (id.includes('owl')) {
+            // 🦉 NIGHT OWL PET: Mysterious owl hovering with flapping wings & round amber eyes
+            pg.position.set(-0.95, 1.4, -0.55);
+
+            const owlBrownMat = new THREE.MeshStandardMaterial({ color: 0x4e342e, roughness: 0.7 });
+            const owlChestMat = new THREE.MeshStandardMaterial({ color: 0xd7ccc8, roughness: 0.8 });
+            const owlEyeMat = new THREE.MeshBasicMaterial({ color: 0xffb300 });
+            const owlBeakMat = new THREE.MeshStandardMaterial({ color: 0xff9800 });
+
+            // Body
+            const body = new THREE.Mesh(new THREE.SphereGeometry(0.22, 14, 14), owlBrownMat);
+            body.scale.set(0.9, 1.15, 0.9);
+            pg.add(body);
+
+            // Chest
+            const chest = new THREE.Mesh(new THREE.SphereGeometry(0.16, 12, 12), owlChestMat);
+            chest.position.set(0, -0.04, 0.11);
+            chest.scale.set(0.85, 1.1, 0.5);
+            pg.add(chest);
+
+            // Amber Eyes
+            const eyeGeo = new THREE.SphereGeometry(0.055, 8, 8);
+            const lEye = new THREE.Mesh(eyeGeo, owlEyeMat);
+            lEye.position.set(-0.08, 0.08, 0.17);
+            pg.add(lEye);
+
+            const rEye = new THREE.Mesh(eyeGeo, owlEyeMat);
+            rEye.position.set(0.08, 0.08, 0.17);
+            pg.add(rEye);
+
+            // Beak
+            const beak = new THREE.Mesh(new THREE.ConeGeometry(0.04, 0.09, 4), owlBeakMat);
+            beak.position.set(0, 0.03, 0.22);
+            beak.rotation.x = Math.PI / 2;
+            pg.add(beak);
+
+            // Flapping Wings
+            const wingGeo = new THREE.BoxGeometry(0.28, 0.05, 0.18);
+            const lWingPivot = new THREE.Group();
+            lWingPivot.position.set(-0.2, 0.04, 0);
+            pg.add(lWingPivot);
+            pg.lWingPivot = lWingPivot;
+
+            const lWingMesh = new THREE.Mesh(wingGeo, owlBrownMat);
+            lWingMesh.position.set(-0.14, 0, 0);
+            lWingPivot.add(lWingMesh);
+
+            const rWingPivot = new THREE.Group();
+            rWingPivot.position.set(0.2, 0.04, 0);
+            pg.add(rWingPivot);
+            pg.rWingPivot = rWingPivot;
+
+            const rWingMesh = new THREE.Mesh(wingGeo, owlBrownMat);
+            rWingMesh.position.set(0.14, 0, 0);
+            rWingPivot.add(rWingMesh);
+        } else if (id.includes('wisp')) {
+            // ✨ ANCIENT WISP PET: Glowing ethereal cyan spirit orb with rotating gyro rings
+            pg.position.set(0.9, 1.55, -0.5);
+
+            const wispCoreMat = new THREE.MeshStandardMaterial({
+                color: 0x00e5ff,
+                emissive: 0x00e5ff,
+                emissiveIntensity: 1.4,
+                roughness: 0.1,
+                transparent: true,
+                opacity: 0.95
+            });
+
+            const core = new THREE.Mesh(new THREE.SphereGeometry(0.18, 16, 16), wispCoreMat);
+            pg.add(core);
+            pg.wispCore = core;
+
+            const gyroMat = new THREE.MeshBasicMaterial({
+                color: 0x80d8ff,
+                transparent: true,
+                opacity: 0.75,
+                side: THREE.DoubleSide
+            });
+
+            const gRing1 = new THREE.Mesh(new THREE.TorusGeometry(0.28, 0.02, 8, 24), gyroMat);
+            pg.add(gRing1);
+            pg.gRing1 = gRing1;
+
+            const gRing2 = new THREE.Mesh(new THREE.TorusGeometry(0.32, 0.02, 8, 24), gyroMat);
+            gRing2.rotation.x = Math.PI / 2;
+            pg.add(gRing2);
+            pg.gRing2 = gRing2;
+        } else if (id.includes('void')) {
+            // 👤 MINI WRAITH PET: Miniature hooded shadow wraith with glowing eyes & ghostly tail
+            pg.position.set(-0.85, 1.25, -0.8);
+
+            const wraithRobeMat = new THREE.MeshStandardMaterial({ color: 0x1a0f2e, roughness: 0.8 });
+            const wraithEyeMat = new THREE.MeshBasicMaterial({ color: 0xe040fb });
+
+            // Hood
+            const hood = new THREE.Mesh(new THREE.ConeGeometry(0.18, 0.38, 7), wraithRobeMat);
+            hood.position.set(0, 0.15, 0);
+            hood.rotation.x = 0.15;
+            pg.add(hood);
+
+            // Void Face (Interior)
+            const face = new THREE.Mesh(new THREE.SphereGeometry(0.11, 8, 8), new THREE.MeshBasicMaterial({ color: 0x0a0514 }));
+            face.position.set(0, 0.1, 0.05);
+            pg.add(face);
+
+            // Glowing Eyes
+            const lEye = new THREE.Mesh(new THREE.SphereGeometry(0.025, 6, 6), wraithEyeMat);
+            lEye.position.set(-0.045, 0.11, 0.13);
+            pg.add(lEye);
+
+            const rEye = new THREE.Mesh(new THREE.SphereGeometry(0.025, 6, 6), wraithEyeMat);
+            rEye.position.set(0.045, 0.11, 0.13);
+            pg.add(rEye);
+
+            // Ghostly Tail Base
+            const tailGeo = new THREE.ConeGeometry(0.15, 0.32, 6);
+            tailGeo.rotateX(Math.PI);
+            const tail = new THREE.Mesh(tailGeo, wraithRobeMat);
+            tail.position.set(0, -0.15, 0);
+            pg.add(tail);
+            pg.wraithTail = tail;
+        } else if (id.includes('egg')) {
+            // 🥚 EASTER EGG PET: Floating decorated pastel egg with golden bow
+            pg.position.set(0.85, 0.95, -0.7);
+
+            const eggMat = new THREE.MeshStandardMaterial({ color: 0xffc1e3, roughness: 0.3, metalness: 0.2 });
+            const stripeMat = new THREE.MeshStandardMaterial({ color: 0x80deea, roughness: 0.3 });
+            const ribbonMat = new THREE.MeshStandardMaterial({ color: 0xffd700, emissive: 0xffb300, emissiveIntensity: 0.4 });
+
+            // Egg Body
+            const egg = new THREE.Mesh(new THREE.SphereGeometry(0.2, 16, 16), eggMat);
+            egg.scale.set(0.88, 1.25, 0.88);
+            pg.add(egg);
+            pg.eggMesh = egg;
+
+            // Decorative Ring Stripe
+            const stripe = new THREE.Mesh(new THREE.TorusGeometry(0.18, 0.02, 8, 24), stripeMat);
+            stripe.rotation.x = Math.PI / 2;
+            pg.add(stripe);
+
+            // Golden Bow on top
+            const bowL = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.12, 4), ribbonMat);
+            bowL.position.set(-0.07, 0.28, 0);
+            bowL.rotation.z = -Math.PI / 2.5;
+            pg.add(bowL);
+
+            const bowR = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.12, 4), ribbonMat);
+            bowR.position.set(0.07, 0.28, 0);
+            bowR.rotation.z = Math.PI / 2.5;
+            pg.add(bowR);
+        }
+    }
+
+    updateCosmeticPet(dt, isMoving = false) {
+        const pg = this.petCompanionGroup;
+        if (!pg || !this.currentPetId) return;
+        const t = this.animTime;
+
+        if (this.currentPetId.includes('fox')) {
+            // Tail wagging
+            if (pg.tailPivot) {
+                pg.tailPivot.rotation.y = Math.sin(t * 5.5) * 0.45;
+                pg.tailPivot.rotation.z = Math.sin(t * 3.0) * 0.15;
+            }
+            // Gentle trot bob
+            pg.position.y = isMoving ? (Math.abs(Math.sin(t * 9.0)) * 0.08) : (Math.sin(t * 3.5) * 0.03);
+        } else if (this.currentPetId.includes('owl')) {
+            // Wing flapping
+            const flap = Math.sin(t * 8.5) * 0.55;
+            if (pg.lWingPivot) pg.lWingPivot.rotation.z = flap;
+            if (pg.rWingPivot) pg.rWingPivot.rotation.z = -flap;
+            // Hover bob
+            pg.position.y = 1.4 + Math.sin(t * 4.0) * 0.09;
+        } else if (this.currentPetId.includes('wisp')) {
+            // Gyro rotation
+            if (pg.gRing1) pg.gRing1.rotation.x += dt * 2.2;
+            if (pg.gRing2) pg.gRing2.rotation.y += dt * 3.0;
+            // Spirit bob
+            pg.position.y = 1.55 + Math.sin(t * 2.8) * 0.12;
+            if (pg.wispCore) pg.wispCore.scale.setScalar(0.95 + Math.sin(t * 4.5) * 0.08);
+        } else if (this.currentPetId.includes('void')) {
+            // Ghostly float & drift
+            pg.position.y = 1.25 + Math.sin(t * 2.4) * 0.09;
+            pg.rotation.z = Math.sin(t * 2.0) * 0.06;
+            if (pg.wraithTail) pg.wraithTail.rotation.x = Math.PI + Math.sin(t * 3.5) * 0.15;
+        } else if (this.currentPetId.includes('egg')) {
+            // Bouncy joyful hop & tilt
+            pg.position.y = 0.95 + Math.abs(Math.sin(t * 4.2)) * 0.14;
+            pg.rotation.z = Math.sin(t * 4.2) * 0.15;
         }
     }
 }

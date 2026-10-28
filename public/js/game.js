@@ -1,12 +1,12 @@
 import * as THREE from 'three';
-import { Engine3D } from './engine3d.js?v=2.7';
-import { Character3D } from './character3d.js?v=2.7';
-import { World3D } from './world3d.js?v=2.7';
-import { Monster3D } from './monsters3d.js?v=2.7';
-import { CombatSystem } from './combat.js?v=2.7';
-import { UIManager } from './ui.js?v=2.7';
-import { CLASSES, MONSTER_DATABASE, STARTER_ITEMS, DEFAULT_BASE_STATS, MAX_LEVEL, getExpForNextLevel, generateLoot, generateHauntedLoot, getItemSellPrice } from './game_data.js?v=2.7';
-import { MAPS_DATA } from './maps_data.js?v=2.7';
+import { Engine3D } from './engine3d.js?v=3.0';
+import { Character3D } from './character3d.js?v=3.0';
+import { World3D } from './world3d.js?v=3.0';
+import { Monster3D } from './monsters3d.js?v=3.0';
+import { CombatSystem } from './combat.js?v=3.0';
+import { UIManager } from './ui.js?v=3.0';
+import { CLASSES, MONSTER_DATABASE, STARTER_ITEMS, DEFAULT_BASE_STATS, MAX_LEVEL, getExpForNextLevel, generateLoot, generateHauntedLoot, getItemSellPrice, CASH_SHOP_ITEMS } from './game_data.js?v=3.0';
+import { MAPS_DATA } from './maps_data.js?v=3.0';
 
 // ==========================================
 // AUDIO MANAGER (EXONIE SOUND EFFECTS & BGM)
@@ -961,6 +961,8 @@ export class GameApp {
                         rp.weapon = data.weapon || data.equips?.weapon || null;
                         if (rp.char3D) {
                             rp.char3D.setWeaponFromObject(rp.weapon);
+                            rp.char3D.setCosmeticAura(rp.equips?.aura?.id || null);
+                            rp.char3D.setCosmeticPet(rp.equips?.pet?.id || null);
                         }
                     }
                 });
@@ -1014,6 +1016,86 @@ export class GameApp {
                     if (this.ui) this.ui.showToast(`🤝 [FRIEND REQUEST] ${data.from} sent you a friend request!`);
                     this.appendChatLine('system', `🤝 <b>${data.from}</b> sent you a friend request.`);
                 });
+
+                // 🔄 Trade Socket Listeners (2D Exonie Engine)
+                this.socket.on('tradeInviteReceived', (data) => {
+                    if (!data) return;
+                    const fromName = data.fromId || data.from || 'A player';
+                    if (this.ui) this.ui.showTradeDialog(fromName);
+                    this.appendChatLine('system', `🔄 <b>${fromName}</b> invited you to trade.`);
+                });
+
+                this.socket.on('tradeStarted', (data) => {
+                    if (!data) return;
+                    const targetName = data.targetName || data.targetId || 'Hero';
+                    this.tradeTarget = targetName;
+                    this.myTradeItems = [null, null, null];
+                    this.theirTradeItems = [null, null, null];
+                    this.myTradeGold = 0;
+                    this.theirTradeGold = 0;
+                    if (this.ui) {
+                        this.ui.openTradeModal(targetName);
+                        this.ui.showToast(`🔄 Trade started with ${targetName}!`);
+                    }
+                });
+
+                this.socket.on('tradeSyncReceived', (data) => {
+                    if (!data) return;
+                    this.theirTradeGold = data.gold || 0;
+                    this.theirTradeItems = Array.isArray(data.items) ? data.items : [];
+                    if (this.ui) {
+                        this.ui.updateTradeRemoteOffer(this.theirTradeGold, this.theirTradeItems);
+                    }
+                });
+
+                this.socket.on('tradeConfirmStatus', (data) => {
+                    if (!data) return;
+                    if (this.ui) {
+                        this.ui.setTradeConfirmState(data.meConfirmed, data.otherConfirmed);
+                    }
+                });
+
+                this.socket.on('tradeDone', (data) => {
+                    if (!data) return;
+                    if (data.newGold !== undefined) this.player.gold = data.newGold;
+                    if (data.newInventory) this.player.inventory = data.newInventory;
+                    this.myTradeItems = [null, null, null];
+                    this.theirTradeItems = [null, null, null];
+                    this.myTradeGold = 0;
+                    this.theirTradeGold = 0;
+                    this.tradeTarget = null;
+                    this.saveCharacterToAccountSlot();
+                    if (this.ui) {
+                        this.ui.closeTradeModal();
+                        this.ui.updatePlayerHUD(this.player);
+                        this.ui.renderInventory();
+                        this.ui.showToast('🎉 Trade completed successfully!');
+                    }
+                    this.audio.playSfx('levelup');
+                });
+
+                this.socket.on('tradeCancelled', () => {
+                    this.myTradeItems = [null, null, null];
+                    this.theirTradeItems = [null, null, null];
+                    this.myTradeGold = 0;
+                    this.theirTradeGold = 0;
+                    this.tradeTarget = null;
+                    if (this.ui) {
+                        this.ui.closeTradeModal();
+                        this.ui.showToast('⚠️ The trade was cancelled.');
+                    }
+                    this.audio.playSfx('bump');
+                });
+
+                // ⚔️ Party Portal Wait Alert
+                this.socket.on('partyPortalWaitAlert', (data) => {
+                    if (!data) return;
+                    this.audio.playSfx('bump');
+                    if (this.ui) {
+                        this.ui.showToast(`⚔️ [Party Teleport] ${data.from} is waiting at ${data.portalName}! (${data.readyCount}/${data.totalCount} ready)`);
+                    }
+                    this.appendChatLine('system', `⚔️ [Party Portal] <b>${data.from}</b> is waiting at <b>${data.portalName}</b>! Step on the portal to enter together!`);
+                });
             }
         } catch (e) {
             console.log('Running in standalone local simulation mode', e);
@@ -1040,6 +1122,10 @@ export class GameApp {
                 if (data.title) existing.title = data.title;
                 const w = (data.equips && data.equips.weapon) || data.weapon || existing.weapon;
                 if (w && existing.char3D) existing.char3D.setWeaponFromObject(w);
+                if (existing.char3D) {
+                    existing.char3D.setCosmeticAura(existing.equips?.aura?.id || null);
+                    existing.char3D.setCosmeticPet(existing.equips?.pet?.id || null);
+                }
                 if (existing.char3D) existing.char3D.updateOverheadUI(existing.name, existing.level, existing.hp, existing.maxHp, false, existing.title || null);
                 return;
             }
@@ -1061,6 +1147,12 @@ export class GameApp {
         });
         if (wpn) {
             char3D.setWeaponFromObject(wpn);
+        }
+        if (data.equips?.aura) {
+            char3D.setCosmeticAura(data.equips.aura.id);
+        }
+        if (data.equips?.pet) {
+            char3D.setCosmeticPet(data.equips.pet.id);
         }
         char3D.group.position.set(data.x || 0, data.y || 0, data.z || 0);
         char3D.group.rotation.y = data.rotY || 0;
@@ -1453,6 +1545,12 @@ export class GameApp {
         if (this.player.equips?.weapon) {
             this.player.char3D.setWeaponFromObject(this.player.equips.weapon);
         }
+        if (this.player.equips?.aura) {
+            this.player.char3D.setCosmeticAura(this.player.equips.aura.id);
+        }
+        if (this.player.equips?.pet) {
+            this.player.char3D.setCosmeticPet(this.player.equips.pet.id);
+        }
 
         this.engine.scene.add(this.player.char3D.group);
         this.saveCharacterToAccountSlot();
@@ -1841,7 +1939,7 @@ export class GameApp {
 
     equipItemFromInventory(slotIndex) {
         const item = this.player.inventory[slotIndex];
-        const validSlots = ['weapon', 'armor', 'leggings', 'necklace', 'ring', 'earrings'];
+        const validSlots = ['weapon', 'armor', 'leggings', 'necklace', 'ring', 'earrings', 'aura', 'pet'];
         if (!item || !validSlots.includes(item.type)) return;
 
         // 2D Exonie Level Requirement Check (Full Exonie public/game.js line 3359)
@@ -1870,6 +1968,13 @@ export class GameApp {
                 armorRarity: armRarity,
                 leggingsRarity: legRarity
             });
+
+            if (slot === 'aura') {
+                this.player.char3D.setCosmeticAura(item.id);
+            }
+            if (slot === 'pet') {
+                this.player.char3D.setCosmeticPet(item.id);
+            }
         }
 
         this.recalculateStats();
@@ -1964,7 +2069,7 @@ export class GameApp {
 
     // Unequip any currently equipped slot back into the 30-slot bag
     unequipItem(slot) {
-        const validSlots = ['weapon', 'armor', 'leggings', 'necklace', 'ring', 'earrings'];
+        const validSlots = ['weapon', 'armor', 'leggings', 'necklace', 'ring', 'earrings', 'aura', 'pet'];
         if (!validSlots.includes(slot) || !this.player.equips || !this.player.equips[slot]) return;
 
         let emptyIdx = -1;
@@ -1986,6 +2091,10 @@ export class GameApp {
 
         if (slot === 'weapon' && this.player.char3D) {
             this.player.char3D.setWeapon(null);
+        } else if (slot === 'aura' && this.player.char3D) {
+            this.player.char3D.setCosmeticAura(null);
+        } else if (slot === 'pet' && this.player.char3D) {
+            this.player.char3D.setCosmeticPet(null);
         }
 
         this.recalculateStats();
@@ -2275,6 +2384,8 @@ export class GameApp {
                 this.ui.toggleSkills();
             } else if (e.code === 'KeyF') {
                 this.ui.toggleFriendsModal();
+            } else if (e.code === 'KeyC') {
+                this.ui.toggleCashShop();
             } else if (e.code === 'Space') {
                 e.preventDefault();
                 this.onJumpTrigger();
@@ -2943,6 +3054,26 @@ export class GameApp {
         const triggeredPortal = this.world.checkPortalTrigger(this.player.pos.x, this.player.pos.z);
         if (triggeredPortal) {
             const tid = triggeredPortal.targetMapId;
+
+            // ⚔️ AUTHENTIC 2D PARTY PORTAL GATING: All party members must be on the portal pad
+            const isCoopZone = tid.startsWith('dungeon') || tid.startsWith('floor') || tid === 'battlefield' || tid === 'neutral_zone' || tid === 'maze_guide' || tid === 'hauntedhouse';
+            if (isCoopZone && this.party && this.party.members && this.party.members.length > 1) {
+                const partyCheck = this.isPartyReadyAtPortal(triggeredPortal.x, triggeredPortal.z);
+                if (!partyCheck.ready) {
+                    this.portalCooldown = 3.5;
+                    this.audio.playSfx('bump');
+                    this.ui.showToast(`⚔️ [Party Teleport] All party members must be on the portal to enter! (${partyCheck.readyCount}/${partyCheck.totalCount} ready)`);
+                    this.socket?.emit('partyPortalWait', {
+                        portalName: triggeredPortal.label || tid,
+                        portalX: triggeredPortal.x,
+                        portalZ: triggeredPortal.z,
+                        readyCount: partyCheck.readyCount,
+                        totalCount: partyCheck.totalCount
+                    });
+                    return;
+                }
+            }
+
             if (tid === 'marketplace') {
                 if (this.ui.marketplaceModal && this.ui.marketplaceModal.style.display === 'flex') return;
                 this.portalCooldown = 4.0;
@@ -3025,6 +3156,183 @@ export class GameApp {
                 this.loadMap(triggeredPortal.targetMapId, triggeredPortal.targetX, triggeredPortal.targetY);
             }
         }
+    }
+
+    // Check if all living party members are standing on the portal trigger pad
+    isPartyReadyAtPortal(portalX, portalZ, maxDist = 4.2) {
+        if (!this.party || !this.party.members || this.party.members.length <= 1) {
+            return { ready: true, readyCount: 1, totalCount: 1 };
+        }
+
+        let totalLiving = 0;
+        let readyCount = 0;
+        const myName = (this.player && this.player.name) || '';
+
+        for (const m of this.party.members) {
+            if (m.isGhost) continue; // Ghosts don't block party entry
+            totalLiving++;
+
+            if (m.name === myName || m.id === myName) {
+                // Local player is standing on this portal
+                readyCount++;
+                continue;
+            }
+
+            // Find remote player in the current map
+            let memberFound = false;
+            for (const sid in this.remotePlayers) {
+                const rp = this.remotePlayers[sid];
+                if (rp && (rp.name === m.name || rp.name === m.id)) {
+                    memberFound = true;
+                    const d = Math.hypot(rp.targetPos.x - portalX, rp.targetPos.z - portalZ);
+                    if (d <= maxDist) {
+                        readyCount++;
+                    }
+                    break;
+                }
+            }
+        }
+
+        return {
+            ready: readyCount >= totalLiving,
+            readyCount,
+            totalCount: totalLiving
+        };
+    }
+
+    // ==========================================
+    // 💎 CASH SHOP (EXO EMPORIUM) CLAIM ENGINE
+    // ==========================================
+    claimCashShopItem(itemId) {
+        const item = CASH_SHOP_ITEMS.find(it => it.id === itemId);
+        if (!item) return;
+
+        // Check inventory space (30 slots)
+        let emptyIdx = -1;
+        for (let i = 0; i < 30; i++) {
+            if (!this.player.inventory[i]) {
+                emptyIdx = i;
+                break;
+            }
+        }
+
+        if (emptyIdx === -1) {
+            this.audio.playSfx('bump');
+            this.ui.showToast('🎒 Your inventory bag is full! Free up a slot first.');
+            return;
+        }
+
+        // Clone item into bag
+        const newItem = {
+            id: item.id,
+            name: item.name,
+            type: item.type,
+            sprite: item.sprite,
+            rarity: item.rarity || 'Godly',
+            color: item.color || '#e040fb',
+            desc: item.desc,
+            enhanceLevel: 0,
+            quantity: item.quantity || 1
+        };
+
+        this.player.inventory[emptyIdx] = newItem;
+        this.saveCharacterToAccountSlot();
+        this.audio.playSfx('pickup');
+        this.ui.showToast(`💎 Claimed [${item.name}] from Cash Shop (Free Trial)! Press B/I to view.`);
+        this.ui.renderInventory();
+    }
+
+    // ==========================================
+    // 🔄 TRADE SYSTEM (2D EXONIE REPLICATED)
+    // ==========================================
+    requestTrade(targetName) {
+        if (!targetName || targetName === this.player.name) return;
+        if (this.socket && this.socket.connected) {
+            this.socket.emit('tradeRequest', { targetId: targetName, targetName });
+            this.ui.showToast(`🔄 Trade request sent to ${targetName}...`);
+        }
+    }
+
+    respondTrade(accept) {
+        const fromName = this.ui.pendingTradeFrom;
+        this.ui.hideTradeDialog();
+        if (!fromName) return;
+        if (this.socket && this.socket.connected) {
+            this.socket.emit('tradeInviteResponse', { fromId: fromName, accept: !!accept });
+        }
+    }
+
+    addOrRemoveTradeItem(inventoryIndex) {
+        const item = this.player.inventory[inventoryIndex];
+        if (!item) return;
+
+        if (!this.myTradeItems) this.myTradeItems = [null, null, null];
+
+        // If already in trade, remove it
+        const existingIdx = this.myTradeItems.findIndex(it => it && it.id === item.id);
+        if (existingIdx !== -1) {
+            this.myTradeItems[existingIdx] = null;
+            this.audio.playSfx('bump');
+            this.ui.showToast(`Removed ${item.name} from trade.`);
+        } else {
+            // Find empty trade slot (max 3)
+            const emptyIdx = this.myTradeItems.findIndex(it => it === null);
+            if (emptyIdx === -1) {
+                this.audio.playSfx('bump');
+                this.ui.showToast('⚠️ Maximum 3 items allowed per trade!');
+                return;
+            }
+            this.myTradeItems[emptyIdx] = item;
+            this.audio.playSfx('pickup');
+            this.ui.showToast(`Added ${item.name} to trade offer.`);
+        }
+
+        this.syncTradeOffer();
+        this.ui.renderTradeSlots();
+    }
+
+    removeTradeItemAt(tradeIndex) {
+        if (!this.myTradeItems || !this.myTradeItems[tradeIndex]) return;
+        const item = this.myTradeItems[tradeIndex];
+        this.myTradeItems[tradeIndex] = null;
+        this.audio.playSfx('bump');
+        this.ui.showToast(`Removed ${item.name} from trade.`);
+        this.syncTradeOffer();
+        this.ui.renderTradeSlots();
+    }
+
+    setTradeGold(amount) {
+        const parsed = Math.max(0, parseInt(amount) || 0);
+        this.myTradeGold = Math.min(this.player.gold || 0, parsed);
+        this.syncTradeOffer();
+    }
+
+    syncTradeOffer() {
+        if (!this.socket || !this.socket.connected || !this.ui.isTradeOpen) return;
+        const offeredItems = (this.myTradeItems || []).filter(Boolean);
+        this.socket.emit('tradeSync', {
+            gold: this.myTradeGold || 0,
+            items: offeredItems
+        });
+    }
+
+    confirmTrade() {
+        if (!this.socket || !this.socket.connected || !this.ui.isTradeOpen) return;
+        this.socket.emit('requestConfirmTrade');
+        this.audio.playSfx('bump');
+    }
+
+    cancelTrade() {
+        if (this.socket && this.socket.connected && this.ui.isTradeOpen) {
+            this.socket.emit('tradeCancel');
+        }
+        this.myTradeItems = [null, null, null];
+        this.theirTradeItems = [null, null, null];
+        this.myTradeGold = 0;
+        this.theirTradeGold = 0;
+        this.tradeTarget = null;
+        this.ui.closeTradeModal();
+        this.ui.showToast('Trade cancelled.');
     }
 
     // Check if player has Revival Juice in bag

@@ -1,4 +1,4 @@
-import { CLASSES, getItemSellPrice } from './game_data.js';
+import { CLASSES, getItemSellPrice, CASH_SHOP_ITEMS } from './game_data.js';
 
 export class UIManager {
     constructor(game) {
@@ -43,6 +43,11 @@ export class UIManager {
         this.dungeonModal = document.getElementById('dungeon-modal');
         this.mazeGuideModal = document.getElementById('maze-guide-modal');
         this.hauntedHouseModal = document.getElementById('haunted-house-modal');
+        this.cashShopModal = document.getElementById('cash-shop-modal');
+        this.tradeDialog = document.getElementById('trade-dialog');
+        this.tradeScreen = document.getElementById('trade-screen');
+        this.isTradeOpen = false;
+        this.currentShopCategory = 'all';
         this.deathScreen = document.getElementById('death-screen');
         this.toastEl = document.getElementById('system-toast');
         this.lootBroadcastEl = document.getElementById('loot-broadcast');
@@ -148,8 +153,8 @@ export class UIManager {
             }
         };
 
-        // Unequip items by clicking equipped slot (All 6 slots: weapon, armor, leggings, necklace, ring, earrings)
-        ['weapon', 'armor', 'leggings', 'necklace', 'ring', 'earrings'].forEach(slotKey => {
+        // Unequip items by clicking equipped slot (All 8 slots: weapon, armor, leggings, necklace, ring, earrings, aura, pet)
+        ['weapon', 'armor', 'leggings', 'necklace', 'ring', 'earrings', 'aura', 'pet'].forEach(slotKey => {
             const slotEl = document.getElementById('slot-' + slotKey);
             if (slotEl) {
                 slotEl.onclick = () => this.game.unequipItem(slotKey);
@@ -162,7 +167,7 @@ export class UIManager {
             btnCloseInspect.onclick = () => this.closeInspectModal();
         }
 
-        // Player Interaction Context Popup Buttons (Inspect, Add Friend, Invite Party, Invite Raid)
+        // Player Interaction Context Popup Buttons (Inspect, Add Friend, Invite Party, Trade, Invite Raid)
         const btnCtxInspect = document.getElementById('btn-ctx-inspect');
         if (btnCtxInspect) {
             btnCtxInspect.onclick = (e) => {
@@ -199,6 +204,18 @@ export class UIManager {
                 }
             };
         }
+        const btnCtxTrade = document.getElementById('btn-ctx-trade');
+        if (btnCtxTrade) {
+            btnCtxTrade.onclick = (e) => {
+                e.stopPropagation();
+                const target = this.selectedTargetPlayer;
+                this.closePlayerInteractionMenu();
+                if (target && this.game) {
+                    const lookup = target.name || target.character_name || target.socketId;
+                    this.game.requestTrade(lookup);
+                }
+            };
+        }
         const btnCtxRaid = document.getElementById('btn-ctx-raid');
         if (btnCtxRaid) {
             btnCtxRaid.onclick = (e) => {
@@ -218,6 +235,50 @@ export class UIManager {
                 this.closePlayerInteractionMenu();
             };
         }
+
+        // Trade Modal & Dialog Handlers
+        const btnTradeAccept = document.getElementById('btn-trade-accept');
+        if (btnTradeAccept) btnTradeAccept.onclick = () => this.game?.respondTrade(true);
+
+        const btnTradeDecline = document.getElementById('btn-trade-decline');
+        if (btnTradeDecline) btnTradeDecline.onclick = () => this.game?.respondTrade(false);
+
+        const btnCloseTrade = document.getElementById('btn-close-trade');
+        if (btnCloseTrade) btnCloseTrade.onclick = () => this.game?.cancelTrade();
+
+        const btnTradeCancel = document.getElementById('btn-trade-cancel');
+        if (btnTradeCancel) btnTradeCancel.onclick = () => this.game?.cancelTrade();
+
+        const btnTradeConfirm = document.getElementById('btn-trade-confirm');
+        if (btnTradeConfirm) btnTradeConfirm.onclick = () => this.game?.confirmTrade();
+
+        const tradeMyGold = document.getElementById('trade-my-gold');
+        if (tradeMyGold) {
+            tradeMyGold.oninput = (e) => this.game?.setTradeGold(e.target.value);
+            tradeMyGold.onchange = (e) => this.game?.setTradeGold(e.target.value);
+        }
+
+        // Cash Shop Buttons (Keybind 'C' + HUD Button)
+        const btnCashShop = document.getElementById('btn-cash-shop');
+        if (btnCashShop) btnCashShop.onclick = () => this.toggleCashShop();
+
+        const mBtnShop = document.getElementById('m-btn-shop');
+        if (mBtnShop) mBtnShop.onclick = () => this.toggleCashShop();
+
+        const btnCloseCashShop = document.getElementById('btn-close-cash-shop');
+        if (btnCloseCashShop) btnCloseCashShop.onclick = () => this.toggleCashShop();
+
+        // Cash Shop Filter Tabs
+        ['all', 'pet', 'aura', 'utility'].forEach(cat => {
+            const tabBtn = document.getElementById(`shop-tab-${cat}`);
+            if (tabBtn) {
+                tabBtn.onclick = () => {
+                    document.querySelectorAll('.shop-filter-tabs .pill-btn').forEach(b => b.classList.remove('active'));
+                    tabBtn.classList.add('active');
+                    this.renderCashShop(cat);
+                };
+            }
+        });
 
         window.addEventListener('click', (e) => {
             const menu = document.getElementById('player-interaction-menu');
@@ -943,14 +1004,16 @@ export class UIManager {
         const player = this.game.player;
         if (!player) return;
 
-        // 1. Render Equipped Slots (All 6 Slots: Weapon, Armor, Leggings, Necklace, Ring, Earrings)
+        // 1. Render Equipped Slots (All 8 Slots: Weapon, Armor, Leggings, Necklace, Ring, Earrings, Aura, Pet)
         const equipConfig = [
             { key: 'weapon', label: 'WEAPON', defaultText: 'Empty', icon: '⚔️' },
             { key: 'armor', label: 'ARMOR', defaultText: 'Empty', icon: '🛡️' },
             { key: 'leggings', label: 'LEGGINGS', defaultText: 'Empty', icon: '👖' },
             { key: 'necklace', label: 'NECKLACE', defaultText: 'Empty', icon: '📿' },
             { key: 'ring', label: 'RING', defaultText: 'Empty', icon: '💍' },
-            { key: 'earrings', label: 'EARRINGS', defaultText: 'Empty', icon: '✨' }
+            { key: 'earrings', label: 'EARRINGS', defaultText: 'Empty', icon: '✨' },
+            { key: 'aura', label: 'AURA', defaultText: 'Empty', icon: '✨' },
+            { key: 'pet', label: 'PET', defaultText: 'Empty', icon: '🐾' }
         ];
 
         equipConfig.forEach(cfg => {
@@ -1021,8 +1084,13 @@ export class UIManager {
                     this.hideTooltip();
                 };
 
-                // LEFT CLICK: Locks this item in the inspector so the Equip Weapon button stays locked!
+                // LEFT CLICK: Locks this item in the inspector or toggles into active Trade offer!
                 slotEl.onclick = () => {
+                    if (this.isTradeOpen) {
+                        this.game?.addOrRemoveTradeItem(i);
+                        this.renderInventory();
+                        return;
+                    }
                     this.selectedInventoryIndex = i;
                     this.renderInventory();
                     this.showItemDetail(item, i);
@@ -1030,7 +1098,7 @@ export class UIManager {
 
                 // DOUBLE CLICK: Instant Equip or Use!
                 slotEl.ondblclick = () => {
-                    if (['weapon', 'armor', 'leggings', 'necklace', 'ring', 'earrings'].includes(item.type)) {
+                    if (['weapon', 'armor', 'leggings', 'necklace', 'ring', 'earrings', 'aura', 'pet'].includes(item.type)) {
                         this.game.equipItemFromInventory(i);
                         this.selectedInventoryIndex = null;
                         this.renderInventory();
@@ -1076,6 +1144,9 @@ export class UIManager {
         if (type === 'necklace' || s.includes('necklace')) return '📿';
         if (type === 'ring' || s.includes('ring')) return '💍';
         if (type === 'earrings' || s.includes('earring')) return '✨';
+        if (type === 'aura' || s.includes('aura')) return '✨';
+        if (type === 'pet' || s.includes('pet')) return '🐾';
+        if (type === 'ticket' || s.includes('ticket')) return '🎫';
         return '📦';
     }
 
@@ -1105,7 +1176,22 @@ export class UIManager {
         actionsEl.innerHTML = '';
         if (index < 0) return; // Viewing already-equipped item
 
-        if (['weapon', 'armor', 'leggings', 'necklace', 'ring', 'earrings'].includes(item.type)) {
+        // If Trade Window is currently open, show Trade Offer Action
+        if (this.isTradeOpen && index >= 0) {
+            const btnTrade = document.createElement('button');
+            btnTrade.className = 'btn-item-action';
+            const isOffered = this.game.myTradeItems && this.game.myTradeItems.some(it => it && it.id === item.id);
+            btnTrade.textContent = isOffered ? '➖ Remove from Trade' : '➕ Add to Trade';
+            btnTrade.style.background = isOffered ? '#dc2626' : '#0284c7';
+            btnTrade.style.borderColor = isOffered ? '#ef4444' : '#38bdf8';
+            btnTrade.onclick = () => {
+                this.game.addOrRemoveTradeItem(index);
+                this.renderInventory();
+            };
+            actionsEl.appendChild(btnTrade);
+        }
+
+        if (['weapon', 'armor', 'leggings', 'necklace', 'ring', 'earrings', 'aura', 'pet'].includes(item.type)) {
             const btnEquip = document.createElement('button');
             btnEquip.className = 'btn-item-action';
             if (canEquip) {
@@ -1251,6 +1337,14 @@ export class UIManager {
             this.mazeGuideModal.style.display = 'none';
             return;
         }
+        if (this.cashShopModal && this.cashShopModal.style.display === 'flex') {
+            this.cashShopModal.style.display = 'none';
+            return;
+        }
+        if (this.tradeScreen && this.tradeScreen.style.display === 'flex') {
+            this.game?.cancelTrade();
+            return;
+        }
 
         if (!this.settingsModal) return;
         const isHidden = this.settingsModal.style.display === 'none' || !this.settingsModal.style.display;
@@ -1267,7 +1361,8 @@ export class UIManager {
             this.marketplaceModal, this.storageModal, this.dailyMissionsModal,
             this.tavernModal, this.leaderboardModal, this.dungeonModal,
             this.mazeGuideModal, this.settingsModal, this.statsModal,
-            this.inventoryModal, this.skillsModal, this.inspectModal
+            this.inventoryModal, this.skillsModal, this.inspectModal,
+            this.cashShopModal, this.tradeScreen
         ];
         return modals.some(m => m && (m.style.display === 'flex' || m.style.display === 'block'));
     }
@@ -1301,7 +1396,9 @@ export class UIManager {
                 { key: 'leggings', label: 'Leggings', icon: '👖' },
                 { key: 'necklace', label: 'Necklace', icon: '📿' },
                 { key: 'ring', label: 'Ring', icon: '💍' },
-                { key: 'earrings', label: 'Earrings', icon: '✨' }
+                { key: 'earrings', label: 'Earrings', icon: '✨' },
+                { key: 'aura', label: 'Aura', icon: '✨' },
+                { key: 'pet', label: 'Pet', icon: '🐾' }
             ];
 
             slots.forEach(s => {
@@ -2141,6 +2238,232 @@ export class UIManager {
 
         ctx.restore();
         ctx.restore();
+    }
+
+    // ==========================================
+    // 💎 CASH SHOP (EXO EMPORIUM) UI METHODS
+    // ==========================================
+    toggleCashShop() {
+        if (!this.cashShopModal) this.cashShopModal = document.getElementById('cash-shop-modal');
+        if (!this.cashShopModal) return;
+
+        const isHidden = this.cashShopModal.style.display === 'none' || !this.cashShopModal.style.display;
+        this.cashShopModal.style.display = isHidden ? 'flex' : 'none';
+        if (isHidden) {
+            document.exitPointerLock?.();
+            this.renderCashShop(this.currentShopCategory || 'all');
+        }
+    }
+
+    renderCashShop(category = 'all') {
+        this.currentShopCategory = category;
+        const grid = document.getElementById('cash-shop-items-grid');
+        if (!grid) return;
+        grid.innerHTML = '';
+
+        const catalog = CASH_SHOP_ITEMS || [];
+        const filtered = catalog.filter(it => {
+            if (category === 'all') return true;
+            if (category === 'pet') return it.type === 'pet';
+            if (category === 'aura') return it.type === 'aura';
+            if (category === 'utility') return ['material', 'potion', 'ticket'].includes(it.type);
+            return true;
+        });
+
+        if (filtered.length === 0) {
+            grid.innerHTML = `<p style="color:#94a3b8; font-size:0.85rem; text-align:center; padding:20px; grid-column:1/-1;">No items in this category.</p>`;
+            return;
+        }
+
+        filtered.forEach(it => {
+            const card = document.createElement('div');
+            card.className = 'cash-shop-card';
+            const icon = this.getItemIcon(it.type, it.sprite);
+            const rColor = it.color || '#e040fb';
+
+            card.innerHTML = `
+                <div class="cash-shop-card-header">
+                    <div class="cash-shop-icon-box" style="border-color:${rColor}; box-shadow:0 0 10px ${rColor}33;">
+                        ${icon}
+                    </div>
+                    <div class="cash-shop-info">
+                        <div class="cash-shop-name" style="color:${rColor};">${it.name}</div>
+                        <span class="cash-shop-badge" style="background:${rColor}22; color:${rColor}; border:1px solid ${rColor}44;">${it.rarity || it.type.toUpperCase()}</span>
+                    </div>
+                </div>
+                <div class="cash-shop-desc">${it.desc || 'Exclusive cosmetic / utility item.'}</div>
+                <div class="cash-shop-footer">
+                    <div class="cash-shop-price">💎 FREE TRIAL (0 Gems)</div>
+                    <button class="btn-shop-claim" id="btn-claim-${it.id}">Claim / Test ✨</button>
+                </div>
+            `;
+
+            const btnClaim = card.querySelector(`#btn-claim-${it.id}`);
+            if (btnClaim) {
+                btnClaim.onclick = () => this.claimCashShopItem(it.id);
+            }
+
+            grid.appendChild(card);
+        });
+    }
+
+    claimCashShopItem(itemId) {
+        if (!this.game) return;
+        this.game.claimCashShopItem(itemId);
+    }
+
+    // ==========================================
+    // 🔄 TRADE UI METHODS (2D EXONIE REPLICATED)
+    // ==========================================
+    showTradeDialog(fromName) {
+        if (!this.tradeDialog) this.tradeDialog = document.getElementById('trade-dialog');
+        if (!this.tradeDialog) return;
+        document.exitPointerLock?.();
+
+        const textEl = document.getElementById('trade-dialog-text');
+        if (textEl) textEl.innerHTML = `🤝 <strong>${fromName}</strong> wants to trade with you!`;
+        this.tradeDialog.style.display = 'flex';
+        this.pendingTradeFrom = fromName;
+    }
+
+    hideTradeDialog() {
+        if (this.tradeDialog) this.tradeDialog.style.display = 'none';
+        this.pendingTradeFrom = null;
+    }
+
+    openTradeModal(targetName) {
+        this.isTradeOpen = true;
+        this.hideTradeDialog();
+        if (!this.tradeScreen) this.tradeScreen = document.getElementById('trade-screen');
+        if (!this.tradeScreen) return;
+        document.exitPointerLock?.();
+
+        const targetEl = document.getElementById('trade-target-name');
+        if (targetEl) targetEl.textContent = targetName;
+
+        const myGoldInp = document.getElementById('trade-my-gold');
+        if (myGoldInp) myGoldInp.value = 0;
+
+        const theirGoldEl = document.getElementById('trade-their-gold');
+        if (theirGoldEl) theirGoldEl.textContent = '0';
+
+        const statusEl = document.getElementById('trade-status-indicator');
+        if (statusEl) {
+            statusEl.textContent = 'Waiting for offers...';
+            statusEl.style.color = '#94a3b8';
+        }
+
+        const confirmBtn = document.getElementById('btn-trade-confirm');
+        if (confirmBtn) {
+            confirmBtn.textContent = 'Confirm Trade';
+            confirmBtn.style.background = '#0284c7';
+        }
+
+        this.tradeScreen.style.display = 'flex';
+
+        // Auto open inventory bag for smooth trading experience
+        if (this.inventoryModal && this.inventoryModal.style.display !== 'flex') {
+            this.toggleInventory();
+        }
+
+        this.renderTradeSlots();
+    }
+
+    closeTradeModal() {
+        this.isTradeOpen = false;
+        if (this.tradeScreen) this.tradeScreen.style.display = 'none';
+        this.renderInventory();
+    }
+
+    renderTradeSlots() {
+        // My Offer Slots (3 Slots)
+        const myGrid = document.getElementById('trade-my-items');
+        if (myGrid && this.game) {
+            myGrid.innerHTML = '';
+            for (let i = 0; i < 3; i++) {
+                const item = this.game.myTradeItems ? this.game.myTradeItems[i] : null;
+                const slotEl = document.createElement('div');
+                slotEl.className = `trade-slot-card ${item ? 'filled' : ''}`;
+
+                if (item) {
+                    slotEl.innerHTML = `
+                        <div class="trade-slot-icon">${this.getItemIcon(item.type, item.sprite)}</div>
+                        <div class="trade-slot-name" style="color:${item.color || '#fff'}">${item.name}</div>
+                    `;
+                    slotEl.title = 'Click to remove from trade';
+                    slotEl.onclick = () => {
+                        this.game.removeTradeItemAt(i);
+                        this.renderTradeSlots();
+                        this.renderInventory();
+                    };
+                } else {
+                    slotEl.innerHTML = `<span style="font-size:0.72rem; color:#475569;">+ Item ${i + 1}</span>`;
+                    slotEl.title = 'Click an item in your bag to offer';
+                }
+                myGrid.appendChild(slotEl);
+            }
+        }
+
+        // Their Offer Slots (3 Slots)
+        const theirGrid = document.getElementById('trade-their-items');
+        if (theirGrid && this.game) {
+            theirGrid.innerHTML = '';
+            for (let i = 0; i < 3; i++) {
+                const item = this.game.theirTradeItems ? this.game.theirTradeItems[i] : null;
+                const slotEl = document.createElement('div');
+                slotEl.className = `trade-slot-card ${item ? 'filled' : ''}`;
+
+                if (item) {
+                    slotEl.innerHTML = `
+                        <div class="trade-slot-icon">${this.getItemIcon(item.type, item.sprite)}</div>
+                        <div class="trade-slot-name" style="color:${item.color || '#fff'}">${item.name}</div>
+                    `;
+                    slotEl.onmouseenter = (e) => this.showTooltip(item, e);
+                    slotEl.onmousemove = (e) => this.showTooltip(item, e);
+                    slotEl.onmouseleave = () => this.hideTooltip();
+                } else {
+                    slotEl.innerHTML = `<span style="font-size:0.72rem; color:#475569;">Empty</span>`;
+                }
+                theirGrid.appendChild(slotEl);
+            }
+        }
+    }
+
+    updateTradeRemoteOffer(gold, items) {
+        const theirGoldEl = document.getElementById('trade-their-gold');
+        if (theirGoldEl) theirGoldEl.textContent = Number(gold || 0).toLocaleString();
+        this.renderTradeSlots();
+    }
+
+    setTradeConfirmState(meConfirmed, otherConfirmed) {
+        const confirmBtn = document.getElementById('btn-trade-confirm');
+        const statusEl = document.getElementById('trade-status-indicator');
+
+        if (confirmBtn) {
+            if (meConfirmed) {
+                confirmBtn.textContent = 'Waiting for Other Player...';
+                confirmBtn.style.background = '#eab308';
+            } else {
+                confirmBtn.textContent = 'Confirm Trade';
+                confirmBtn.style.background = '#0284c7';
+            }
+        }
+
+        if (statusEl) {
+            if (meConfirmed && otherConfirmed) {
+                statusEl.textContent = '✅ Both players confirmed! Finalizing...';
+                statusEl.style.color = '#4ade80';
+            } else if (meConfirmed) {
+                statusEl.textContent = '⏳ Waiting for other player to confirm...';
+                statusEl.style.color = '#fbbf24';
+            } else if (otherConfirmed) {
+                statusEl.textContent = '⚡ Other player has confirmed their offer!';
+                statusEl.style.color = '#38bdf8';
+            } else {
+                statusEl.textContent = 'Reviewing trade offers...';
+                statusEl.style.color = '#94a3b8';
+            }
+        }
     }
 }
 

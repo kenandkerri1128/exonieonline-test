@@ -1990,6 +1990,233 @@ io.on('connection', (socket) => {
     });
 
     // ==========================================
+    // ⚔️ PARTY PORTAL WAIT BROADCAST
+    // ==========================================
+    socket.on('partyPortalWait', (data) => {
+        if (!data) return;
+        const me = onlinePlayers[socket.id];
+        const myName = me ? me.name : socket.characterName;
+        if (!myName) return;
+
+        const pid = playerParty[myName];
+        if (pid && parties[pid]) {
+            for (const memberName of parties[pid].members) {
+                if (memberName !== myName) {
+                    const sid = findSocketIdByPlayerName(memberName);
+                    if (sid) {
+                        io.to(sid).emit('partyPortalWaitAlert', {
+                            from: myName,
+                            portalName: data.portalName || 'Dungeon Portal',
+                            readyCount: data.readyCount,
+                            totalCount: data.totalCount
+                        });
+                    }
+                }
+            }
+        }
+    });
+
+    // ==========================================
+    // 🔄 PLAYER-TO-PLAYER TRADING (2D EXONIE REPLICATED)
+    // ==========================================
+    socket.on('tradeRequest', (data) => {
+        if (!data) return;
+        const targetName = String(data.targetName || data.targetId || '').trim();
+        const me = onlinePlayers[socket.id];
+        const myName = me ? me.name : socket.characterName;
+        if (!myName || !targetName || myName.toLowerCase() === targetName.toLowerCase()) return;
+
+        const targetSid = findSocketIdByPlayerName(targetName);
+        if (!targetSid) {
+            return socket.emit('chatMessage', { id: 'System', text: `Player ${targetName} is not online.` });
+        }
+
+        io.to(targetSid).emit('tradeInviteReceived', { fromId: myName, from: myName });
+        socket.emit('chatMessage', { id: 'System', text: `🔄 Trade request sent to ${targetName}.` });
+    });
+
+    socket.on('tradeInviteResponse', (data) => {
+        const me = onlinePlayers[socket.id];
+        const myName = me ? me.name : socket.characterName;
+        if (!me || !myName || !data || !data.fromId) return;
+
+        const fromSid = findSocketIdByPlayerName(data.fromId);
+        const fromPlayer = getPlayerByName(data.fromId);
+        if (!fromSid || !fromPlayer) return;
+
+        if (data.accept) {
+            me.tradeTarget = fromPlayer.name;
+            fromPlayer.tradeTarget = me.name;
+
+            // Reset trade session state
+            me.currentTradeOffer = { gold: 0, items: [] };
+            fromPlayer.currentTradeOffer = { gold: 0, items: [] };
+            me.tradeConfirmed = false;
+            fromPlayer.tradeConfirmed = false;
+
+            socket.emit('tradeStarted', { targetId: fromPlayer.name, targetName: fromPlayer.name });
+            io.to(fromSid).emit('tradeStarted', { targetId: me.name, targetName: me.name });
+
+            socket.emit('tradeConfirmStatus', { meConfirmed: false, otherConfirmed: false });
+            io.to(fromSid).emit('tradeConfirmStatus', { meConfirmed: false, otherConfirmed: false });
+        } else {
+            io.to(fromSid).emit('partyError', `${myName} declined your trade request.`);
+        }
+    });
+
+    socket.on('tradeSync', (data) => {
+        const me = onlinePlayers[socket.id];
+        if (!me || !me.tradeTarget) return;
+
+        const them = getPlayerByName(me.tradeTarget);
+        const targetSid = findSocketIdByPlayerName(me.tradeTarget);
+        if (!them || !targetSid) return;
+
+        // Save THIS player's latest offer on the server
+        me.currentTradeOffer = {
+            gold: Math.max(0, parseInt(data.gold) || 0),
+            items: Array.isArray(data.items) ? data.items.slice(0, 3).filter(Boolean) : []
+        };
+
+        // Any change to offer resets both confirmations
+        me.tradeConfirmed = false;
+        them.tradeConfirmed = false;
+
+        io.to(targetSid).emit('tradeSyncReceived', {
+            gold: me.currentTradeOffer.gold,
+            items: me.currentTradeOffer.items
+        });
+
+        socket.emit('tradeConfirmStatus', { meConfirmed: false, otherConfirmed: false });
+        io.to(targetSid).emit('tradeConfirmStatus', { meConfirmed: false, otherConfirmed: false });
+    });
+
+    socket.on('tradeCancel', () => {
+        const me = onlinePlayers[socket.id];
+        if (!me || !me.tradeTarget) return;
+
+        const targetSid = findSocketIdByPlayerName(me.tradeTarget);
+        const targetPlayer = getPlayerByName(me.tradeTarget);
+
+        me.tradeTarget = null;
+        me.currentTradeOffer = null;
+        me.tradeConfirmed = false;
+
+        if (targetPlayer) {
+            targetPlayer.tradeTarget = null;
+            targetPlayer.currentTradeOffer = null;
+            targetPlayer.tradeConfirmed = false;
+        }
+
+        if (targetSid) io.to(targetSid).emit('tradeCancelled');
+    });
+
+    socket.on('requestConfirmTrade', () => {
+        const me = onlinePlayers[socket.id];
+        if (!me || !me.tradeTarget) return;
+
+        const them = getPlayerByName(me.tradeTarget);
+        const themSid = findSocketIdByPlayerName(me.tradeTarget);
+        if (!them || !themSid) return;
+
+        if (!me.currentTradeOffer) me.currentTradeOffer = { gold: 0, items: [] };
+        if (!them.currentTradeOffer) them.currentTradeOffer = { gold: 0, items: [] };
+
+        me.tradeConfirmed = true;
+
+        socket.emit('tradeConfirmStatus', { meConfirmed: true, otherConfirmed: !!them.tradeConfirmed });
+        io.to(themSid).emit('tradeConfirmStatus', { meConfirmed: !!them.tradeConfirmed, otherConfirmed: true });
+
+        // Stop here until BOTH players confirm
+        if (!them.tradeConfirmed) {
+            socket.emit('chatMessage', { id: 'System', text: 'Trade confirmed. Waiting for the other player...' });
+            io.to(themSid).emit('chatMessage', { id: 'System', text: `${me.name} confirmed the trade.` });
+            return;
+        }
+
+        const myOffer = me.currentTradeOffer || { gold: 0, items: [] };
+        const theirOffer = them.currentTradeOffer || { gold: 0, items: [] };
+
+        const myGoldOffer = Math.max(0, parseInt(myOffer.gold) || 0);
+        const theirGoldOffer = Math.max(0, parseInt(theirOffer.gold) || 0);
+
+        // Gold verification if inventory/gold tracked in memory
+        if (me.gold !== undefined && me.gold < myGoldOffer) {
+            me.tradeConfirmed = false;
+            them.tradeConfirmed = false;
+            socket.emit('chatMessage', { id: 'System', text: 'Trade failed: you do not have enough gold.' });
+            io.to(themSid).emit('chatMessage', { id: 'System', text: 'Trade failed: other player does not have enough gold.' });
+            socket.emit('tradeConfirmStatus', { meConfirmed: false, otherConfirmed: false });
+            io.to(themSid).emit('tradeConfirmStatus', { meConfirmed: false, otherConfirmed: false });
+            return;
+        }
+
+        if (them.gold !== undefined && them.gold < theirGoldOffer) {
+            me.tradeConfirmed = false;
+            them.tradeConfirmed = false;
+            socket.emit('chatMessage', { id: 'System', text: 'Trade failed: other player does not have enough gold.' });
+            io.to(themSid).emit('chatMessage', { id: 'System', text: 'Trade failed: you do not have enough gold.' });
+            socket.emit('tradeConfirmStatus', { meConfirmed: false, otherConfirmed: false });
+            io.to(themSid).emit('tradeConfirmStatus', { meConfirmed: false, otherConfirmed: false });
+            return;
+        }
+
+        // Exchange gold
+        if (me.gold !== undefined) {
+            me.gold = me.gold - myGoldOffer + theirGoldOffer;
+        }
+        if (them.gold !== undefined) {
+            them.gold = them.gold - theirGoldOffer + myGoldOffer;
+        }
+
+        // Exchange items
+        if (me.inventory && them.inventory) {
+            const myGiven = myOffer.items || [];
+            const theirGiven = theirOffer.items || [];
+
+            // Remove my items
+            myGiven.forEach(offered => {
+                const idx = me.inventory.findIndex(it => it && it.id === offered.id);
+                if (idx !== -1) me.inventory[idx] = null;
+            });
+            // Remove their items
+            theirGiven.forEach(offered => {
+                const idx = them.inventory.findIndex(it => it && it.id === offered.id);
+                if (idx !== -1) them.inventory[idx] = null;
+            });
+            // Add their items to me
+            theirGiven.forEach(item => {
+                const emptyIdx = me.inventory.findIndex(it => it === null);
+                if (emptyIdx !== -1) me.inventory[emptyIdx] = item;
+            });
+            // Add my items to them
+            myGiven.forEach(item => {
+                const emptyIdx = them.inventory.findIndex(it => it === null);
+                if (emptyIdx !== -1) them.inventory[emptyIdx] = item;
+            });
+        }
+
+        // Clear trade session
+        me.currentTradeOffer = null;
+        them.currentTradeOffer = null;
+        me.tradeConfirmed = false;
+        them.tradeConfirmed = false;
+        me.tradeTarget = null;
+        them.tradeTarget = null;
+
+        if (supabase) {
+            if (me.gold !== undefined) supabase.from('Exonians').update({ gold: me.gold, inventory: me.inventory }).eq('character_name', me.name).then(() => {});
+            if (them.gold !== undefined) supabase.from('Exonians').update({ gold: them.gold, inventory: them.inventory }).eq('character_name', them.name).then(() => {});
+        }
+
+        socket.emit('tradeDone', { newGold: me.gold, newInventory: me.inventory });
+        io.to(themSid).emit('tradeDone', { newGold: them.gold, newInventory: them.inventory });
+
+        socket.emit('chatMessage', { id: 'System', text: '🎉 Trade completed successfully.' });
+        io.to(themSid).emit('chatMessage', { id: 'System', text: '🎉 Trade completed successfully.' });
+    });
+
+    // ==========================================
     // 🏛️ AUCTION HOUSE (AUTHENTIC 2D EXONIE ENGINE)
     // ==========================================
     socket.on('ah_search', async (query) => {
@@ -2201,6 +2428,16 @@ io.on('connection', (socket) => {
         const myName = me ? me.name : socket.characterName;
         if (myName) {
             removeFromParty(myName);
+        }
+        if (me && me.tradeTarget) {
+            const targetSid = findSocketIdByPlayerName(me.tradeTarget);
+            const targetPlayer = getPlayerByName(me.tradeTarget);
+            if (targetPlayer) {
+                targetPlayer.tradeTarget = null;
+                targetPlayer.currentTradeOffer = null;
+                targetPlayer.tradeConfirmed = false;
+            }
+            if (targetSid) io.to(targetSid).emit('tradeCancelled');
         }
         delete onlinePlayers[socket.id];
         io.emit('playerLeft', socket.id);

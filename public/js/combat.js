@@ -539,11 +539,7 @@ export class CombatSystem {
             }
         }
 
-        // Play authentic Exonie class voice shout
-        if (this.audio && this.audio.playClassVoice) {
-            this.audio.playClassVoice(player.hairStyle || '1', pClass);
-        }
-
+        // Trigger 3D skill cast visual effect on character
         if (player.char3D && player.char3D.triggerSkillCast) {
             player.char3D.triggerSkillCast(0x00e5ff);
         }

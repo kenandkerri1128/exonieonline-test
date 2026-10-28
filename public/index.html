@@ -6,7 +6,7 @@
     <title>Exonie 3D Remastered</title>
     <link rel="icon" type="image/png" href="favicon.png">
     <link rel="preload" as="image" href="loadingscreen.png">
-    <link rel="stylesheet" href="css/style.css?v=2.9">
+    <link rel="stylesheet" href="css/style.css?v=3.0">
 
     <!-- Native ES Module Import Map for Three.js -->
     <script type="importmap">
@@ -321,6 +321,7 @@
                 <button class="hud-btn" id="btn-stats" title="Player Stats [P]">📊</button>
                 <button class="hud-btn" id="btn-inventory" title="Inventory [B]">🎒</button>
                 <button class="hud-btn" id="btn-skills" title="Skills & Class [K]">📜</button>
+                <button class="hud-btn" id="btn-cash-shop" title="Cash Shop [C]" style="color:#e040fb; text-shadow:0 0 8px #e040fb;">💎</button>
                 <button class="hud-btn" id="btn-settings" title="Settings [ESC]">⚙️</button>
             </div>
             <div id="minimap-container">
@@ -383,6 +384,7 @@
             <button class="mobile-short-btn" id="m-btn-stats">📊 Stats</button>
             <button class="mobile-short-btn" id="m-btn-inventory">🎒 Bag</button>
             <button class="mobile-short-btn" id="m-btn-skills">📜 Skills</button>
+            <button class="mobile-short-btn" id="m-btn-shop" style="color:#e040fb;">💎 Shop</button>
             <button class="mobile-short-btn" id="m-btn-potion">🧪 Potion (<span id="m-potion-qty">10</span>)</button>
         </div>
 
@@ -505,6 +507,14 @@
                     <div class="equip-slot-card" id="slot-earrings" data-slot="earrings" title="Click to unequip">
                         <span class="slot-badge">EARRINGS</span>
                         <div class="slot-item-view" id="equip-view-earrings">Empty</div>
+                    </div>
+                    <div class="equip-slot-card" id="slot-aura" data-slot="aura" title="Click to unequip">
+                        <span class="slot-badge">AURA</span>
+                        <div class="slot-item-view" id="equip-view-aura">Empty</div>
+                    </div>
+                    <div class="equip-slot-card" id="slot-pet" data-slot="pet" title="Click to unequip">
+                        <span class="slot-badge">PET</span>
+                        <div class="slot-item-view" id="equip-view-pet">Empty</div>
                     </div>
                 </div>
 
@@ -1059,6 +1069,10 @@
                 <span class="ctx-btn-icon">⚔️</span>
                 <span class="ctx-btn-label">Invite Party</span>
             </button>
+            <button class="player-ctx-btn btn-trade" id="btn-ctx-trade">
+                <span class="ctx-btn-icon">🔄</span>
+                <span class="ctx-btn-label">Trade</span>
+            </button>
             <button class="player-ctx-btn btn-raid" id="btn-ctx-raid">
                 <span class="ctx-btn-icon">🏰</span>
                 <span class="ctx-btn-label">Invite Raid</span>
@@ -1139,6 +1153,97 @@
     </div>
 
     <!-- ============================================================
+         CASH SHOP MODAL (EXO EMPORIUM - KEYBIND 'C')
+         ============================================================ -->
+    <div class="game-modal" id="cash-shop-modal" style="display:none; z-index:99997;">
+        <div class="modal-dialog modal-dialog-shop" style="max-width:720px; width:94vw; background:linear-gradient(180deg, #130a1c 0%, #0d1117 100%); border:2px solid #e040fb; box-shadow:0 0 35px rgba(224, 64, 251, 0.35);">
+            <div class="modal-header" style="border-bottom:1px solid rgba(224,64,251,0.3);">
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <span style="font-size:1.4rem;">💎</span>
+                    <h3 style="color:#e040fb; margin:0; text-shadow:0 0 10px rgba(224,64,251,0.6);">Exo Emporium (Cash Shop) [C]</h3>
+                </div>
+                <div style="display:flex; align-items:center; gap:12px;">
+                    <span style="background:rgba(224,64,251,0.15); border:1px solid #e040fb; color:#ffeb3b; padding:4px 10px; border-radius:12px; font-size:0.85rem; font-weight:700;">
+                        🎉 Free Trial Testing: 0 Gems!
+                    </span>
+                    <button class="btn-close-modal" id="btn-close-cash-shop">✖</button>
+                </div>
+            </div>
+            <div class="confirm-modal-body" style="padding:16px; display:flex; flex-direction:column; gap:12px;">
+                <!-- Filter Tabs: All, Pets, Auras, Consumables -->
+                <div class="shop-filter-tabs" style="display:flex; gap:8px; border-bottom:1px solid #334155; padding-bottom:8px;">
+                    <button class="pill-btn active" data-tab="all" id="shop-tab-all">All Items</button>
+                    <button class="pill-btn" data-tab="pet" id="shop-tab-pet">🐾 Pets</button>
+                    <button class="pill-btn" data-tab="aura" id="shop-tab-aura">✨ Auras</button>
+                    <button class="pill-btn" data-tab="utility" id="shop-tab-utility">💎 Utility</button>
+                </div>
+                <div id="cash-shop-items-grid" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(280px, 1fr)); gap:10px; max-height:60vh; overflow-y:auto; padding-right:4px;">
+                    <!-- Dynamically populated from CASH_SHOP_ITEMS -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============================================================
+         TRADE INVITATION PROMPT DIALOG (AUTHENTIC 2D EXONIE)
+         ============================================================ -->
+    <div id="trade-dialog" class="game-modal" style="display:none; z-index:99999;">
+        <div class="modal-dialog" style="max-width:380px; text-align:center; background:#0f172a; border:2px solid #38bdf8; box-shadow:0 0 30px rgba(56, 189, 248, 0.4); padding:20px;">
+            <p id="trade-dialog-text" style="font-size:1.15rem; color:#fff; margin-top:0; margin-bottom:20px;">Player wants to trade.</p>
+            <div style="display:flex; justify-content:center; gap:15px;">
+                <button type="button" class="btn-primary" id="btn-trade-accept" style="background:#0284c7; border:1px solid #38bdf8; color:#fff; padding:8px 22px; border-radius:6px; cursor:pointer; font-weight:700;">Accept</button>
+                <button type="button" class="btn-secondary" id="btn-trade-decline" style="background:#dc2626; border:1px solid #ef4444; color:#fff; padding:8px 22px; border-radius:6px; cursor:pointer; font-weight:700;">Decline</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============================================================
+         TRADE SCREEN WINDOW (AUTHENTIC 2D EXONIE: 3 ITEMS + GOLD OFFER)
+         ============================================================ -->
+    <div id="trade-screen" class="game-modal" style="display:none; z-index:99998;">
+        <div class="modal-dialog" style="max-width:540px; width:95vw; background:#0f172a; border:2px solid #38bdf8; box-shadow:0 0 35px rgba(56, 189, 248, 0.35);">
+            <div class="modal-header">
+                <h3 style="color:#38bdf8; margin:0;">🔄 Trade with <span id="trade-target-name" style="color:#fff;">...</span></h3>
+                <button class="btn-close-modal" id="btn-close-trade">✖</button>
+            </div>
+            <div class="confirm-modal-body" style="padding:16px; display:flex; flex-direction:column; gap:14px;">
+                <div style="display:flex; justify-content:space-between; gap:16px;">
+                    <!-- Your Offer -->
+                    <div class="trade-side" style="flex:1; background:rgba(30,41,59,0.7); border:1px solid #334155; border-radius:8px; padding:12px;">
+                        <h4 style="margin:0 0 8px 0; color:#4ade80; text-align:center; font-size:1rem;">Your Offer</h4>
+                        <div style="margin-bottom:10px; display:flex; align-items:center; gap:6px;">
+                            <span style="color:gold; font-size:0.85rem;">🪙 Gold:</span>
+                            <input type="number" id="trade-my-gold" value="0" min="0" style="flex:1; background:#0f172a; border:1px solid #475569; border-radius:4px; color:#fff; padding:4px 8px; font-size:0.88rem; outline:none;">
+                        </div>
+                        <div id="trade-my-items" style="display:grid; grid-template-columns:repeat(3, 1fr); gap:8px;">
+                            <!-- 3 Slots populated dynamically -->
+                        </div>
+                    </div>
+                    <!-- Their Offer -->
+                    <div class="trade-side" style="flex:1; background:rgba(30,41,59,0.7); border:1px solid #334155; border-radius:8px; padding:12px;">
+                        <h4 style="margin:0 0 8px 0; color:#f87171; text-align:center; font-size:1rem;">Their Offer</h4>
+                        <div style="margin-bottom:10px; display:flex; align-items:center; gap:6px; height:28px;">
+                            <span style="color:gold; font-size:0.85rem;">🪙 Gold:</span>
+                            <span id="trade-their-gold" style="color:#fff; font-weight:700;">0</span>
+                        </div>
+                        <div id="trade-their-items" style="display:grid; grid-template-columns:repeat(3, 1fr); gap:8px;">
+                            <!-- 3 Slots populated dynamically -->
+                        </div>
+                    </div>
+                </div>
+                <p style="text-align:center; color:#94a3b8; font-size:0.82rem; margin:0;">
+                    💡 <em>Click any item in your bag (B/I) while trading to add or remove it from your offer.</em>
+                </p>
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-top:8px;">
+                    <button type="button" class="btn-item-action" id="btn-trade-cancel" style="background:#dc2626; border-color:#ef4444; color:#fff; padding:8px 16px;">Cancel Trade</button>
+                    <span id="trade-status-indicator" style="font-size:0.85rem; color:#94a3b8;">Waiting for offers...</span>
+                    <button type="button" class="btn-item-action" id="btn-trade-confirm" style="background:#0284c7; border-color:#38bdf8; color:#fff; padding:8px 20px; font-weight:700;">Confirm Trade</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============================================================
          AUTHENTIC 2D EXONIE PERSISTENT CHAT BOX & INPUT (LOCAL + WORLD)
          ============================================================ -->
     <div id="persistent-chat-box">
@@ -1172,6 +1277,6 @@
     </div>
 
     <!-- Main Game Orchestrator Script -->
-    <script type="module" src="./js/game.js?v=2.9"></script>
+    <script type="module" src="./js/game.js?v=3.0"></script>
 </body>
 </html>

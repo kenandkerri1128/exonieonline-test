@@ -133,7 +133,9 @@ export const STARTER_ITEMS = {
         leggings: { id: 'starter_leggings_1', name: "Starter Leggings", type: "leggings", sprite: "starterleggings", level: 1, rarity: "Starter", color: "#aaaaaa", fixedStat: { hp: 5 } },
         necklace: null,
         ring: null,
-        earrings: null
+        earrings: null,
+        aura: null,
+        pet: null
     },
     inventory: [
         { id: 'starter_wpn_sword', name: "Starter Sword", type: "weapon", weaponType: "sword", sprite: "startersword", level: 1, rarity: "Starter", color: "#aaaaaa", fixedStat: { attack: 3 }, desc: "A reliable iron blade. Required for Berserker & Blademaster." },
@@ -695,3 +697,30 @@ export function generateDungeonLoot(mob) {
     }
     return drops;
 }
+
+// ==========================================
+// 💎 CASH SHOP CATALOG (EXO EMPORIUM)
+// ==========================================
+export const CASH_SHOP_ITEMS = [
+    // 🐾 PETS (Cosmetic companions that follow you in battle)
+    { id: 'pet_fox', name: 'Spirit Fox Pet', type: 'pet', sprite: 'pet_fox', rarity: 'Godly', color: '#ff7e00', desc: 'A loyal fire-fox companion that follows you with a glowing fiery tail.' },
+    { id: 'pet_owl', name: 'Night Owl Pet', type: 'pet', sprite: 'pet_owl', rarity: 'Godly', color: '#ffeb3b', desc: 'A mysterious owl that flaps its wings and hovers by your side.' },
+    { id: 'pet_wisp', name: 'Ancient Wisp Pet', type: 'pet', sprite: 'pet_wisp', rarity: 'Godly', color: '#00e5ff', desc: 'An ethereal floating wisp spirit glowing with celestial energy.' },
+    { id: 'pet_void', name: 'Mini Wraith Pet', type: 'pet', sprite: 'pet_void', rarity: 'Godly', color: '#9c27b0', desc: 'A shadowy miniature wraith with glowing eyes and void mist.' },
+    { id: 'pet_egg', name: 'Easter Egg Pet', type: 'pet', sprite: 'pet_egg', rarity: 'Seasonal', color: '#ffd700', desc: 'Tradeable Seasonal Cosmetic: A cute floating pastel Easter Egg companion.' },
+
+    // ✨ AURAS (3D Cosmetic body auras & divine wings)
+    { id: 'aura_divine', name: 'Aura of the Divine', type: 'aura', sprite: 'aura_divine', rarity: 'Divine', color: '#ffea00', desc: 'Royal Tier Cosmetic: Angelic glowing wings on your back + radiant gold pulse.' },
+    { id: 'aura_blaze', name: 'Blaze Aura Stone', type: 'aura', sprite: 'aura_blaze', rarity: 'Godly', color: '#ff3d00', desc: 'Cosmetic: Infuses your character with swirling inferno flames & red embers.' },
+    { id: 'aura_liquid', name: 'Liquid Aura Stone', type: 'aura', sprite: 'aura_liquid', rarity: 'Godly', color: '#00e5ff', desc: 'Cosmetic: Swirling azure crystal water & frost vapor orbiting your body.' },
+    { id: 'aura_nature', name: 'Nature Aura Stone', type: 'aura', sprite: 'aura_nature', rarity: 'Godly', color: '#00e676', desc: 'Cosmetic: Spiraling emerald vines & fluttering leaves with green nature sparkles.' },
+    { id: 'aura_easter', name: 'Easter Aura Stone', type: 'aura', sprite: 'aura_easter', rarity: 'Seasonal', color: '#ffd700', desc: 'Seasonal Cosmetic: Beautiful shifting rainbow pastel starlight rings.' },
+    { id: 'aura_void', name: 'Void Aura Stone', type: 'aura', sprite: 'aura_void', rarity: 'Godly', color: '#ab47bc', desc: 'Cosmetic: Dark abyssal purple & black shadow tendrils swirling around you.' },
+    { id: 'aura_lightning', name: 'Lightning Aura Stone', type: 'aura', sprite: 'aura_lightning', rarity: 'Godly', color: '#29b6f6', desc: 'Cosmetic: Crackling electric blue lightning arcs surging around your character.' },
+
+    // 💎 UTILITY & CONSUMABLES
+    { id: 'divine_pack', name: 'Divine Stone Bundle (x5)', type: 'material', sprite: 'divine_stone', rarity: 'Divine', color: '#ffea00', quantity: 5, desc: 'Contains 5 Divine Enhancement Stones for upgrading equipment.' },
+    { id: 'revival_pack', name: 'Revival Juice Bundle (x10)', type: 'potion', sprite: 'revival_juice', rarity: 'Godly', color: '#e040fb', quantity: 10, desc: 'Contains 10 Revival Juices. Revive instantly on the spot when defeated.' },
+    { id: 'name_change', name: 'Name Change Ticket', type: 'ticket', sprite: 'ticket_name', rarity: 'Unique', color: '#38bdf8', desc: 'Permanently changes your character display name in Town.' },
+    { id: 'edit_char', name: 'Appearance Reroll Ticket', type: 'ticket', sprite: 'ticket_char', rarity: 'Unique', color: '#38bdf8', desc: 'Re-open character styling to modify hair and skin appearance.' }
+];
