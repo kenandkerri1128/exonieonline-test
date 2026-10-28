@@ -2735,31 +2735,122 @@ export class Character3D {
             pg.add(pg.gRing2);
 
         } else if (id.includes('void')) {
-            // 👻 VOID WRAITH PET: Ghostly Spirit Elevated ABOVE HEAD (y = 2.20)
+            // 👻 MINI GASTLY VOID PET (MATCHING 2D EXONIE .mini-wraith):
+            // Floating spherical shadow orb + billowing purple smoke puffs + glowing white slanted eyes + tiny fanged grin + trailing wisps!
             pg.position.set(-0.75, 2.20, -0.60);
 
-            const wraithTex = Character3D.getRadialGlowTexture('#ede7f6', '#7c4dff');
-            const wraithBody = new THREE.Mesh(
-                new THREE.PlaneGeometry(0.50, 0.65),
-                new THREE.MeshBasicMaterial({
-                    map: wraithTex,
-                    transparent: true,
-                    blending: THREE.AdditiveBlending,
-                    depthWrite: false
-                })
-            );
-            pg.add(wraithBody);
-            pg.wraithBody = wraithBody;
+            // 1. Core Dark Shadow Orb (Mini Gastly Body)
+            const orbGeo = new THREE.SphereGeometry(0.24, 18, 16);
+            const orbMat = new THREE.MeshStandardMaterial({
+                color: 0x140026,
+                roughness: 0.35,
+                metalness: 0.15,
+                emissive: 0x4a148c,
+                emissiveIntensity: 0.75
+            });
+            const miniOrb = new THREE.Mesh(orbGeo, orbMat);
+            pg.add(miniOrb);
+            pg.miniOrb = miniOrb;
 
-            const vEyeMat = new THREE.MeshBasicMaterial({ color: 0x00f0ff });
-            const lEye = new THREE.Mesh(new THREE.SphereGeometry(0.025, 6, 6), vEyeMat);
-            lEye.position.set(-0.065, 0.08, 0.08);
-            pg.add(lEye);
+            // 2. Swirling Purple Gas Smoke Puffs
+            const smokeGroup = new THREE.Group();
+            pg.add(smokeGroup);
+            pg.smokeGroup = smokeGroup;
 
-            const rEye = new THREE.Mesh(new THREE.SphereGeometry(0.025, 6, 6), vEyeMat);
-            rEye.position.set(0.065, 0.08, 0.08);
-            pg.add(rEye);
+            const smokeMat = new THREE.MeshBasicMaterial({
+                color: 0xba68c8,
+                transparent: true,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false,
+                opacity: 0.55
+            });
+            const darkSmokeMat = new THREE.MeshBasicMaterial({
+                color: 0x7b1fa2,
+                transparent: true,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false,
+                opacity: 0.65
+            });
 
+            pg.smokePuffs = [];
+            const smokeConfigs = [
+                { r: 0.14, x:  0.22, y:  0.10, z:  0.08, mat: smokeMat },
+                { r: 0.16, x: -0.24, y:  0.08, z: -0.06, mat: darkSmokeMat },
+                { r: 0.12, x:  0.18, y: -0.12, z:  0.12, mat: darkSmokeMat },
+                { r: 0.15, x: -0.20, y: -0.10, z: -0.10, mat: smokeMat },
+                { r: 0.16, x:  0.00, y:  0.25, z: -0.08, mat: smokeMat },
+                { r: 0.13, x:  0.00, y: -0.22, z:  0.08, mat: darkSmokeMat }
+            ];
+
+            smokeConfigs.forEach(cfg => {
+                const puff = new THREE.Mesh(new THREE.SphereGeometry(cfg.r, 10, 8), cfg.mat);
+                puff.position.set(cfg.x, cfg.y, cfg.z);
+                smokeGroup.add(puff);
+                pg.smokePuffs.push(puff);
+            });
+
+            // 3. Piercing White Slanted Eyes (2D w-eye style)
+            const eyeGroup = new THREE.Group();
+            eyeGroup.position.set(0, 0.04, 0.20);
+            pg.add(eyeGroup);
+
+            const eyeMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+            const pupilMat = new THREE.MeshBasicMaterial({ color: 0x00e5ff }); // Glowing cyan-blue pupil
+
+            [-1, 1].forEach(s => {
+                const eyeRoot = new THREE.Group();
+                eyeRoot.position.set(s * 0.09, 0, 0);
+                eyeRoot.rotation.z = s * -0.35; // Slanted menacing gaze!
+                eyeGroup.add(eyeRoot);
+
+                const sclera = new THREE.Mesh(new THREE.SphereGeometry(0.052, 10, 10), eyeMat);
+                sclera.scale.set(1.15, 0.70, 0.35);
+                eyeRoot.add(sclera);
+
+                const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.024, 8, 8), pupilMat);
+                pupil.position.set(0, 0, 0.025);
+                eyeRoot.add(pupil);
+            });
+
+            // 4. Wicked Little Fanged Smile
+            const mouthGroup = new THREE.Group();
+            mouthGroup.position.set(0, -0.07, 0.21);
+            pg.add(mouthGroup);
+            pg.mouth = mouthGroup;
+
+            const mawMat = new THREE.MeshBasicMaterial({ color: 0x050010 });
+            const mawGeo = new THREE.CylinderGeometry(0.09, 0.07, 0.04, 12);
+            mawGeo.rotateX(Math.PI / 2);
+            mawGeo.scale(1.2, 0.65, 0.4);
+            const maw = new THREE.Mesh(mawGeo, mawMat);
+            mouthGroup.add(maw);
+
+            const fangMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+            const fangGeo = new THREE.ConeGeometry(0.018, 0.045, 4);
+            fangGeo.rotateX(Math.PI);
+
+            [-0.045, 0.045].forEach(fx => {
+                const fang = new THREE.Mesh(fangGeo, fangMat);
+                fang.position.set(fx, 0.02, 0.015);
+                mouthGroup.add(fang);
+            });
+
+            // 5. Undulating Ghostly Smoke Tendrils (matching 2D w-particles)
+            const tendrilGroup = new THREE.Group();
+            tendrilGroup.position.set(0, -0.12, 0);
+            pg.add(tendrilGroup);
+            pg.tendrilGroup = tendrilGroup;
+            pg.tendrils = [];
+
+            for (let i = 0; i < 4; i++) {
+                const tGeo = new THREE.ConeGeometry(0.038, 0.18, 5);
+                tGeo.rotateX(Math.PI);
+                const tMesh = new THREE.Mesh(tGeo, darkSmokeMat);
+                const ang = (i / 4) * Math.PI * 2;
+                tMesh.position.set(Math.cos(ang) * 0.12, -0.12, Math.sin(ang) * 0.12);
+                tendrilGroup.add(tMesh);
+                pg.tendrils.push(tMesh);
+            }
         } else if (id.includes('egg')) {
             // 🥚 EASTER EGG PET: Playful Elevated Companion ABOVE HEAD (y = 2.15)
             pg.position.set(0.75, 2.15, -0.55);
@@ -2851,11 +2942,35 @@ export class Character3D {
             pg.position.x = 0.78 + Math.cos(t * 1.8) * 0.06;
             pg.position.z = -0.50 + Math.sin(t * 1.8) * 0.06;
         } else if (this.currentPetId.includes('void')) {
-            // Ghostly float & drift ABOVE HEAD (y = 2.20)
-            pg.position.y = 2.20 + Math.sin(t * 2.4) * 0.09;
-            pg.rotation.z = Math.sin(t * 2.0) * 0.06;
-            pg.position.x = -0.75 + Math.cos(t * 1.2) * 0.05;
-            pg.position.z = -0.60 + Math.sin(t * 1.2) * 0.05;
+            // Mini Gastly Float & Animation (matching 2D voidFadeFloat)
+            pg.position.y = 2.20 + Math.sin(t * 2.5) * 0.09;
+            pg.position.x = -0.75 + Math.cos(t * 1.2) * 0.06;
+            pg.position.z = -0.60 + Math.sin(t * 1.2) * 0.06;
+            pg.rotation.z = Math.sin(t * 2.0) * 0.05;
+
+            // Swirl purple gas smoke puffs
+            if (pg.smokeGroup) {
+                pg.smokeGroup.rotation.y += dt * 1.8;
+                pg.smokeGroup.rotation.z = Math.sin(t * 2.2) * 0.15;
+                if (pg.smokePuffs) {
+                    pg.smokePuffs.forEach((puff, idx) => {
+                        const puffPulse = 0.90 + Math.sin(t * 3.5 + idx * 0.8) * 0.15;
+                        puff.scale.setScalar(puffPulse);
+                    });
+                }
+            }
+            // Undulate smoke tendrils
+            if (pg.tendrilGroup && pg.tendrils) {
+                pg.tendrils.forEach((td, idx) => {
+                    td.position.y = -0.12 - Math.abs(Math.sin(t * 4.0 + idx * 0.7)) * 0.06;
+                    td.rotation.z = Math.sin(t * 3.2 + idx) * 0.20;
+                });
+            }
+            // Orb breathing
+            if (pg.miniOrb) {
+                const orbPulse = 1.0 + Math.sin(t * 3.0) * 0.04;
+                pg.miniOrb.scale.setScalar(orbPulse);
+            }
         } else if (this.currentPetId.includes('egg')) {
             // Bouncy joyful hop & tilt ABOVE HEAD (y = 2.15)
             pg.position.y = 2.15 + Math.abs(Math.sin(t * 4.2)) * 0.14;
