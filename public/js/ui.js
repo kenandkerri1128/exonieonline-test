@@ -2423,18 +2423,19 @@ export class UIManager {
         ctx.restore();
     }
 
-    // ==========================================
-    // 💎 CASH SHOP (EXO EMPORIUM) UI METHODS
+        // ==========================================
+    // 💎 CASH SHOP (EXO EMPORIUM) UI METHODS (STEAM IAP REPLICATED)
     // ==========================================
     toggleCashShop() {
         if (!this.cashShopModal) this.cashShopModal = document.getElementById('cash-shop-modal');
         if (!this.cashShopModal) return;
 
         const isHidden = this.cashShopModal.style.display === 'none' || !this.cashShopModal.style.display;
-        this.cashShopModal.style.display = isHidden ? 'flex' : 'none';
         if (isHidden) {
             document.exitPointerLock?.();
-            this.renderCashShop(this.currentShopCategory || 'all');
+            window.openRealMoneyShop();
+        } else {
+            this.cashShopModal.style.display = 'none';
         }
     }
 
@@ -2458,41 +2459,40 @@ export class UIManager {
             return;
         }
 
+        const currentGems = this.game?.player?.baseStats?.exoGems || 0;
+        const balEl = document.getElementById('ui-gem-balance');
+        if (balEl) balEl.innerText = currentGems;
+
         filtered.forEach(it => {
             const card = document.createElement('div');
             card.className = 'cash-shop-card';
+            card.style.cssText = 'background:#1a102a; border:1px solid rgba(224,64,251,0.25); border-radius:8px; padding:12px; display:flex; flex-direction:column; justify-content:space-between; gap:8px; transition:border 0.2s;';
             const icon = this.getItemIcon(it.type, it.sprite);
             const rColor = it.color || '#e040fb';
 
+            let tag = '';
+            if (it.isSeasonal) tag = ' <span style="font-size:11px; color:#ffd700;">🐰 (Seasonal)</span>';
+            else if (it.id === 'aura_divine') tag = ' <span style="font-size:11px; color:#ffea00; font-weight:bold;">👑 (Royal $75)</span>';
+
             card.innerHTML = `
-                <div class="cash-shop-card-header">
-                    <div class="cash-shop-icon-box" style="border-color:${rColor}; box-shadow:0 0 10px ${rColor}33;">
+                <div class="cash-shop-card-header" style="display:flex; gap:10px; align-items:center;">
+                    <div class="cash-shop-icon-box" style="width:44px; height:44px; background:#11081f; border:1.5px solid ${rColor}; border-radius:8px; display:flex; align-items:center; justify-content:center; font-size:20px; box-shadow:0 0 10px ${rColor}33;">
                         ${icon}
                     </div>
-                    <div class="cash-shop-info">
-                        <div class="cash-shop-name" style="color:${rColor};">${it.name}</div>
-                        <span class="cash-shop-badge" style="background:${rColor}22; color:${rColor}; border:1px solid ${rColor}44;">${it.rarity || it.type.toUpperCase()}</span>
+                    <div class="cash-shop-info" style="flex:1;">
+                        <div class="cash-shop-name" style="color:${rColor}; font-weight:bold; font-size:0.95rem;">${it.name}${tag}</div>
+                        <span class="cash-shop-badge" style="background:${rColor}22; color:${rColor}; border:1px solid ${rColor}44; font-size:0.75rem; padding:1px 6px; border-radius:4px; font-weight:600;">${it.rarity || it.type.toUpperCase()}</span>
                     </div>
                 </div>
-                <div class="cash-shop-desc">${it.desc || 'Exclusive cosmetic / utility item.'}</div>
-                <div class="cash-shop-footer">
-                    <div class="cash-shop-price">💎 FREE TRIAL (0 Gems)</div>
-                    <button class="btn-shop-claim" id="btn-claim-${it.id}">Claim / Test ✨</button>
+                <div class="cash-shop-desc" style="color:#94a3b8; font-size:0.8rem; line-height:1.4;">${it.desc || 'Exclusive cosmetic / utility item.'}</div>
+                <div class="cash-shop-footer" style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin-top:4px;">
+                    <button class="btn" style="background:#1e1e38; color:#38bdf8; border:1px solid #38bdf8; padding:6px 10px; border-radius:6px; font-size:0.85rem; font-weight:bold; cursor:pointer;" onclick="window.openCosmeticPreview('${it.type}', '${it.id}', '${it.name}', '${it.desc}')" title="Preview item">👁️ Preview</button>
+                    <button class="btn" style="background:linear-gradient(45deg, #9c27b0, #e040fb); color:#fff; border:none; padding:7px 12px; border-radius:6px; font-size:0.85rem; font-weight:bold; cursor:pointer; flex:1; box-shadow:0 0 8px rgba(224,64,251,0.4);" onclick="window.buyWithGems('${it.id}', '${it.name}', ${it.priceGems})">💎 Buy for ${it.priceGems} Gems</button>
                 </div>
             `;
 
-            const btnClaim = card.querySelector(`#btn-claim-${it.id}`);
-            if (btnClaim) {
-                btnClaim.onclick = () => this.claimCashShopItem(it.id);
-            }
-
             grid.appendChild(card);
         });
-    }
-
-    claimCashShopItem(itemId) {
-        if (!this.game) return;
-        this.game.claimCashShopItem(itemId);
     }
 
     // ==========================================
@@ -3374,4 +3374,217 @@ window.respondGuildInvite = function(accept) {
         window.game?.socket?.emit('joinGuild', window._pendingGuildInvite);
     }
     window._pendingGuildInvite = null;
+};
+
+// ==========================================
+// 💳 STEAM MICROTRANSACTIONS ENGINE (100% 2D EXONIE REPLICATED)
+// ==========================================
+window.currentPlatform = 'web';
+if (navigator.userAgent.toLowerCase().includes(' electron/') || (typeof process !== 'undefined' && process.versions && process.versions.electron)) {
+    window.currentPlatform = 'steam';
+} else if (window.electronAPI && window.electronAPI.getSteamId) {
+    window.currentPlatform = 'steam';
+}
+
+window.openRealMoneyShop = function() {
+    const modal = document.getElementById('cash-shop-modal');
+    if (!modal) return;
+    modal.style.display = 'flex';
+    document.exitPointerLock?.();
+
+    if (window.game?.ui) {
+        window.game.ui.renderCashShop(window.game.ui.currentShopCategory || 'all');
+    }
+
+    if (window.game?.socket && window.game.socket.connected) {
+        window.game.socket.emit('requestShopAccess');
+    }
+};
+
+window.buyWithGems = function(itemId, name, priceGems) {
+    const game = window.game;
+    const currentGems = game?.player?.baseStats?.exoGems || 0;
+
+    if (currentGems < priceGems) {
+        if (confirm(`❌ Not enough Exo Gems!\n\nYou have ${currentGems} Exo Gems, but ${name} costs ${priceGems} Exo Gems.\n\nWould you like to purchase Exo Gems via Steam?`)) {
+            const grid = document.getElementById('cash-shop-items-grid');
+            if (grid) grid.scrollTop = grid.scrollHeight;
+        }
+        return;
+    }
+
+    if (confirm(`Spend ${priceGems} Exo Gems to purchase ${name}?`)) {
+        if (game?.socket && game.socket.connected) {
+            game.socket.emit('requestGemPurchase', { itemId: itemId });
+        } else {
+            game?.ui?.showToast("⚠️ Not connected to server.");
+        }
+    }
+};
+
+window.purchaseExoGems = async function(packageId, priceCents, description) {
+    const game = window.game;
+    const username = game?.player?.name || 'Player';
+
+    let steamId = null;
+    if (window.electronAPI && window.electronAPI.getSteamId) {
+        try {
+            const raw = await window.electronAPI.getSteamId();
+            if (raw) {
+                const cleaned = String(raw).replace(/\D/g, '');
+                if (cleaned.length >= 17) {
+                    steamId = cleaned.substring(0, 17);
+                }
+            }
+        } catch (e) {
+            console.error("Steam ID retrieval error:", e);
+        }
+    }
+
+    // Web Browser Testing Fallback (If testing outside of Steam Electron)
+    if (!steamId) {
+        if (window.currentPlatform === 'steam') {
+            alert("Steam Error: Could not extract a valid 17-digit Steam ID from Steam Client.");
+            return;
+        }
+        // Development / browser test prompt
+        const manual = prompt("Enter 17-digit Steam ID for testing (or keep default test account):", "76561198000000001");
+        if (!manual) return;
+        steamId = manual.replace(/\D/g, '').substring(0, 17);
+    }
+
+    try {
+        game?.ui?.showToast(`Connecting to Steam Store for ${description}...`);
+        const res = await fetch('/api/shop/init', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                steamId: steamId,
+                username: username,
+                itemId: packageId,
+                amountCents: priceCents,
+                itemDescription: description || "Exo Gems"
+            })
+        });
+        const data = await res.json();
+
+        if (data.success && data.orderId) {
+            if (window.electronAPI && window.electronAPI.initiateSteamPurchase) {
+                window.electronAPI.initiateSteamPurchase(data.orderId);
+            }
+
+            // Prompt Steam overlay confirmation modal
+            const overlayModal = document.createElement('div');
+            overlayModal.id = 'steam-overlay-notice-modal';
+            overlayModal.style.cssText = 'position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); background:#0f172a; border:2px solid #00e5ff; padding:24px; border-radius:10px; z-index:99999; text-align:center; box-shadow:0 0 35px rgba(0,229,255,0.4); max-width:380px; width:90vw;';
+            overlayModal.innerHTML = `
+                <h3 style="color:#00e5ff; margin-top:0;">🛡️ Steam Authorization</h3>
+                <p style="color:#cbd5e1; font-size:0.9rem; line-height:1.5;">Please authorize your purchase in the Steam Overlay!</p>
+                <p style="color:#94a3b8; font-size:0.8rem; margin-bottom:20px;">Order ID: <b>${data.orderId}</b></p>
+                <div style="display:flex; gap:10px;">
+                    <button class="btn" style="flex:1; background:#0284c7; color:#fff; border:none; padding:10px; border-radius:6px; font-weight:bold; cursor:pointer;" onclick="window.verifySteamPurchase('${data.orderId}'); document.getElementById('steam-overlay-notice-modal')?.remove();">I Authorized Purchase</button>
+                    <button class="btn" style="flex:1; background:#dc2626; color:#fff; border:none; padding:10px; border-radius:6px; font-weight:bold; cursor:pointer;" onclick="document.getElementById('steam-overlay-notice-modal')?.remove();">Cancel</button>
+                </div>
+            `;
+            document.body.appendChild(overlayModal);
+        } else {
+            alert("Steam Store Error: " + (data.error || "Initialization failed"));
+        }
+    } catch (err) {
+        alert("Steam Store Connection Failed: " + err.message);
+    }
+};
+
+window.verifySteamPurchase = async function(orderId) {
+    const game = window.game;
+    const username = game?.player?.name || 'Player';
+
+    game?.ui?.showToast("Verifying purchase with Steam servers...");
+
+    try {
+        const res = await fetch('/api/shop/finalize', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                orderId: orderId,
+                username: username
+            })
+        });
+        const data = await res.json();
+
+        if (data.success) {
+            game?.ui?.showToast(`🎉 Steam Purchase Verified! Added ${data.gemsAdded || 'Exo'} Gems to your account!`);
+            if (game?.socket && game.socket.connected) {
+                game.socket.emit('requestShopAccess');
+            }
+        } else {
+            alert("Verification Failed: " + (data.error || "Payment not authorized or completed."));
+        }
+    } catch (err) {
+        alert("Verification Error: " + err.message);
+    }
+};
+
+// 🛡️ Steam Overlay Authorization Callback Listener
+if (window.electronAPI && window.electronAPI.onMicroTxnAuthorizationResponse) {
+    window.electronAPI.onMicroTxnAuthorizationResponse(async (authorized, orderId) => {
+        document.getElementById('steam-overlay-notice-modal')?.remove();
+        if (authorized && orderId) {
+            window.verifySteamPurchase(orderId);
+        } else {
+            window.game?.ui?.showToast("⚠️ Steam transaction cancelled.");
+        }
+    });
+}
+
+// 👁️ COSMETIC PREVIEW ENGINE (3D REALTIME DEMONSTRATION)
+window.openCosmeticPreview = function(type, cosmId, itemName, desc) {
+    const existing = document.getElementById('cosmetic-preview-modal');
+    if (existing) existing.remove();
+
+    const game = window.game;
+    const modal = document.createElement('div');
+    modal.id = 'cosmetic-preview-modal';
+    modal.style.cssText = 'position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); background:linear-gradient(135deg, #0d0d1a 0%, #1a1a2e 50%, #16213e 100%); border:2px solid #4fc3f7; padding:20px 24px; z-index:99999; width:320px; border-radius:12px; box-shadow:0 0 40px rgba(79,195,247,0.4); color:white; text-align:center; font-family:sans-serif;';
+
+    let previewBadge = type === 'aura' ? '✨ Aura' : (type === 'pet' ? '🐾 Pet Companion' : '💎 Utility');
+
+    modal.innerHTML = `
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; border-bottom:1px solid rgba(79,195,247,0.3); padding-bottom:8px;">
+            <h3 style="margin:0; color:#4fc3f7; font-size:1.1rem; text-shadow:0 0 10px rgba(79,195,247,0.5);">👁️ Cosmetic Preview</h3>
+            <button onclick="document.getElementById('cosmetic-preview-modal').remove()" style="background:none; border:none; color:#888; font-size:20px; cursor:pointer; padding:0 5px; line-height:1;">&times;</button>
+        </div>
+        <div style="color:#e040fb; font-weight:bold; font-size:1.1rem; margin-bottom:4px; text-shadow:0 0 8px rgba(224,64,251,0.4);">${itemName}</div>
+        <span style="display:inline-block; background:rgba(79,195,247,0.15); border:1px solid #4fc3f7; color:#4fc3f7; font-size:0.75rem; padding:2px 8px; border-radius:10px; margin-bottom:12px;">${previewBadge}</span>
+        <div style="color:#cbd5e1; font-size:0.85rem; line-height:1.5; margin-bottom:18px; min-height:45px;">${desc || 'Preview this exclusive item.'}</div>
+        <div style="display:flex; flex-direction:column; gap:8px;">
+            <button class="btn" style="background:#0284c7; color:#fff; border:none; padding:10px; border-radius:6px; font-weight:bold; cursor:pointer;" onclick="window.tryOnCosmetic('${type}', '${cosmId}', '${itemName}')">✨ Try On Character (8s)</button>
+            <button class="btn" style="background:#334155; color:#fff; border:none; padding:8px; border-radius:6px; cursor:pointer;" onclick="document.getElementById('cosmetic-preview-modal').remove()">Close</button>
+        </div>
+    `;
+
+    document.body.appendChild(modal);
+};
+
+window.tryOnCosmetic = function(type, cosmId, itemName) {
+    const game = window.game;
+    if (!game || !game.player || !game.player.char3D) return;
+
+    const originalAura = game.player.equips?.aura?.id || null;
+    const originalPet = game.player.equips?.pet?.id || null;
+
+    if (type === 'aura') {
+        game.player.char3D.setCosmeticAura(cosmId);
+    } else if (type === 'pet') {
+        game.player.char3D.setCosmeticPet(cosmId);
+    }
+
+    game.ui?.showToast(`✨ Trying on [${itemName}] on your 3D character for 8 seconds!`);
+
+    setTimeout(() => {
+        if (game.player?.char3D) {
+            game.player.char3D.setCosmeticAura(originalAura);
+            game.player.char3D.setCosmeticPet(originalPet);
+        }
+    }, 8000);
 };

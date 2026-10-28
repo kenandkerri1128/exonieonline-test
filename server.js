@@ -8,8 +8,12 @@ const http = require('http');
 const { Server } = require('socket.io');
 const path = require('path');
 const fs = require('fs');
+const axios = require('axios');
 
 const app = express();
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
 const server = http.createServer(app);
 const io = new Server(server, {
     cors: {
@@ -27,6 +31,208 @@ const PORT = process.env.PORT || 3003;
 // Lightweight HTTP ping route to quickly wake sleeping cloud containers (e.g. Render)
 app.get('/api/ping', (req, res) => {
     res.json({ status: 'ok', time: Date.now() });
+});
+
+// ==========================================
+// 🔵 STEAM MICROTRANSACTIONS (Exo Gems)
+// ==========================================
+const memoryPendingOrders = {};
+
+app.post('/api/shop/init', async (req, res) => {
+    const { steamId, itemId, amountCents, itemDescription } = req.body;
+
+    // 🛡️ INDESTRUCTIBLE SERVER-SIDE CLEANER (Strips out non-digits, locks to 17 digits)
+    let cleanSteamId = String(steamId || '').replace(/\D/g, '');
+    if (cleanSteamId.length < 17) {
+        return res.json({
+            success: false,
+            error: `Invalid Steam ID format received by server: ${JSON.stringify(steamId)}`
+        });
+    }
+    cleanSteamId = cleanSteamId.substring(0, 17);
+
+    try {
+        const apiKey = process.env.STEAM_WEB_API_KEY || '4F9B94B4338DF119CB6EE7AEBD89F0C0';
+        const appId = process.env.STEAM_APP_ID || '4579730';
+
+        const numericOrderId = Math.floor(Math.random() * 1000000000000).toString();
+
+        let numericItemId = 100;
+        let finalAmount = amountCents;
+
+        // 🛡️ SECURE PRICING: Server overrides client values to prevent spoofing
+        if (itemId === 'gem_pack_15') {
+            numericItemId = 15;
+            finalAmount = 1500; // $15.00
+        } else if (itemId === 'gem_pack_50') {
+            numericItemId = 50;
+            finalAmount = 5000; // $50.00
+        } else if (itemId === 'gem_pack_75') {
+            numericItemId = 75;
+            finalAmount = 7500; // $75.00 (Aura of the Divine)
+        } else if (itemId === 'gem_pack_100') {
+            numericItemId = 100;
+            finalAmount = 10000; // $100.00
+        }
+
+        const params = new URLSearchParams();
+        params.append('key', apiKey);
+        params.append('orderid', numericOrderId);
+        params.append('steamid', cleanSteamId);
+        params.append('appid', appId);
+        params.append('itemcount', '1');
+        params.append('language', 'en');
+        params.append('currency', 'USD');
+        params.append('usersession', 'client');
+        params.append('itemid[0]', String(numericItemId));
+        params.append('qty[0]', '1');
+        params.append('amount[0]', String(finalAmount));
+        params.append('description[0]', itemDescription || 'Exo Gems');
+
+        const formData = params.toString();
+
+        const response = await axios.post(
+            'https://partner.steam-api.com/ISteamMicroTxn/InitTxn/v3/',
+            formData,
+            { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
+        );
+
+        if (response.data?.response?.result === 'OK') {
+            const orderRecord = {
+                order_id: numericOrderId,
+                steam_id: cleanSteamId,
+                item_id: itemId,
+                amount_cents: finalAmount,
+                status: 'PENDING',
+                created_at: new Date().toISOString()
+            };
+            memoryPendingOrders[numericOrderId] = orderRecord;
+
+            if (supabase) {
+                try {
+                    await supabase.from('Pending_Orders').insert([orderRecord]);
+                } catch (dbErr) {
+                    console.warn('[Pending_Orders DB Insert Warning]:', dbErr.message);
+                }
+            }
+            res.json({ success: true, orderId: numericOrderId });
+        } else {
+            res.json({ success: false, error: response.data?.response?.error?.errordesc || "Rejected by Steam." });
+        }
+    } catch (error) {
+        let exactError = error.message;
+        if (error.response?.data?.response?.error?.errordesc) {
+            exactError = error.response.data.response.error.errordesc;
+        } else if (error.response?.data) {
+            exactError = JSON.stringify(error.response.data);
+        }
+        res.json({ success: false, error: exactError });
+    }
+});
+
+app.post('/api/shop/finalize', async (req, res) => {
+    const { orderId, username } = req.body;
+
+    try {
+        const apiKey = process.env.STEAM_WEB_API_KEY || '4F9B94B4338DF119CB6EE7AEBD89F0C0';
+        const appId = process.env.STEAM_APP_ID || '4579730';
+
+        const params = new URLSearchParams();
+        params.append('key', apiKey);
+        params.append('orderid', orderId);
+        params.append('appid', appId);
+
+        const formData = params.toString();
+
+        const response = await axios.post(
+            'https://partner.steam-api.com/ISteamMicroTxn/FinalizeTxn/v2/',
+            formData,
+            { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
+        );
+
+        if (response.data?.response?.result === 'OK') {
+            let order = memoryPendingOrders[orderId];
+            if (supabase) {
+                try {
+                    const { data } = await supabase.from('Pending_Orders').select('*').eq('order_id', orderId).maybeSingle();
+                    if (data) order = data;
+                } catch (dbErr) {
+                    console.warn('[Pending_Orders DB Fetch Warning]:', dbErr.message);
+                }
+            }
+
+            if (!order || order.status !== 'PENDING') {
+                return res.json({ success: false, error: "Order not found or already completed." });
+            }
+
+            let gemsToGive = 0;
+            if (order.item_id === 'gem_pack_15') gemsToGive = 15;
+            else if (order.item_id === 'gem_pack_50') gemsToGive = 50;
+            else if (order.item_id === 'gem_pack_75') gemsToGive = 75;
+            else if (order.item_id === 'gem_pack_100') gemsToGive = 100;
+            else gemsToGive = 15;
+
+            order.status = 'COMPLETED';
+            if (supabase) {
+                try {
+                    const { data: user } = await supabase.from('Exonians').select('base_stats').eq('character_name', username).maybeSingle();
+                    if (user) {
+                        let safeStats = user.base_stats || {};
+                        safeStats.exoGems = (safeStats.exoGems || 0) + gemsToGive;
+                        await supabase.from('Exonians').update({ base_stats: safeStats }).eq('character_name', username);
+                    }
+                    await supabase.from('Pending_Orders').update({ status: 'COMPLETED' }).eq('order_id', orderId);
+                } catch (dbErr) {
+                    console.warn('[Supabase Sync Warning]:', dbErr.message);
+                }
+            }
+
+            // Sync with online player memory & notify
+            for (const sid in onlinePlayers) {
+                const op = onlinePlayers[sid];
+                if (op.name === username || sid === username) {
+                    if (!op.baseStats) op.baseStats = {};
+                    op.baseStats.exoGems = (op.baseStats.exoGems || 0) + gemsToGive;
+                    io.to(sid).emit('gemPurchaseSuccess', { newGems: op.baseStats.exoGems });
+                    io.to(sid).emit('systemMessage', `Steam Purchase Complete! Received ${gemsToGive} Exo Gems.`);
+                    break;
+                }
+            }
+
+            res.json({ success: true, gemsAdded: gemsToGive });
+        } else {
+            res.json({ success: false, error: response.data?.response?.error?.errordesc || "Finalization rejected." });
+        }
+    } catch (error) {
+        let exactError = error.message;
+        if (error.response?.data?.response?.error?.errordesc) exactError = error.response.data.response.error.errordesc;
+        else if (error.response?.data) exactError = JSON.stringify(error.response.data);
+        res.json({ success: false, error: exactError });
+    }
+});
+
+// 📊 STEAM RECONCILIATION (Required for Review)
+app.get('/api/admin/steam-report', async (req, res) => {
+    try {
+        const apiKey = process.env.STEAM_WEB_API_KEY || '4F9B94B4338DF119CB6EE7AEBD89F0C0';
+        const appId = process.env.STEAM_APP_ID || '4579730';
+
+        const date24hAgo = new Date(Date.now() - 86400000);
+        const rfcTime = date24hAgo.toISOString().split('.')[0] + 'Z';
+
+        const params = new URLSearchParams();
+        params.append('key', apiKey);
+        params.append('appid', appId);
+        params.append('time', rfcTime);
+        params.append('type', 'GAMESALES');
+
+        const formData = params.toString();
+        const response = await axios.get(`https://partner.steam-api.com/ISteamMicroTxn/GetReport/v2/?${formData}`);
+
+        res.json(response.data);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
 });
 
 // Serve static assets from public
@@ -3375,6 +3581,88 @@ io.on('connection', (socket) => {
             const sid = Object.keys(onlinePlayers).find(k => onlinePlayers[k].name === mName);
             if (sid) io.to(sid).emit('requestGuildUI_Refresh');
         });
+    });
+
+    // ==========================================
+    // 💳 HYBRID CASH SHOP & STEAM MICROTRANSACTIONS ENGINE
+    // ==========================================
+    socket.on('requestShopAccess', () => {
+        const p = onlinePlayers[socket.id];
+        if (!p) return;
+        socket.emit('shopAuthState', {
+            state: 'shop_open',
+            exoGems: p.baseStats?.exoGems || 0
+        });
+    });
+
+    socket.on('requestGemPurchase', async (data) => {
+        const p = onlinePlayers[socket.id];
+        if (!p || !data.itemId) return;
+
+        const MASTER_CATALOG = {
+            // ✨ Auras (Divine Aura priced at 75 Exo Gems = $75.00)
+            'aura_divine': { priceGems: 75, item: { id: 'aura_divine', name: "Aura of the Divine", type: 'aura', rarity: 'Divine', color: '#ffea00', desc: "Royal Tier Cosmetic ($75): Angelic glowing wings + radiant gold pulse. Purely cosmetic.", quantity: 1 } },
+            'aura_easter': { priceGems: 15, item: { id: 'aura_easter', name: "Easter Aura Stone", type: 'aura', rarity: 'Seasonal', color: '#FFB7B2', desc: "Seasonal Cosmetic: A beautiful shifting pastel rainbow starlight aura.", quantity: 1 } },
+            'aura_blaze': { priceGems: 10, item: { id: 'aura_blaze', name: "Blaze Aura Stone", type: 'aura', rarity: 'Godly', color: '#ff3d00', desc: "Cosmetic: Swirling inferno flames and red embers.", quantity: 1 } },
+            'aura_liquid': { priceGems: 10, item: { id: 'aura_liquid', name: "Liquid Aura Stone", type: 'aura', rarity: 'Godly', color: '#00e5ff', desc: "Cosmetic: Swirling azure crystal water & frost vapor orbiting your body.", quantity: 1 } },
+            'aura_nature': { priceGems: 10, item: { id: 'aura_nature', name: "Nature Aura Stone", type: 'aura', rarity: 'Godly', color: '#00e676', desc: "Cosmetic: Spiraling emerald vines & fluttering leaves.", quantity: 1 } },
+            'aura_void': { priceGems: 10, item: { id: 'aura_void', name: "Void Aura Stone", type: 'aura', rarity: 'Godly', color: '#ab47bc', desc: "Cosmetic: Dark abyssal purple & black shadow tendrils.", quantity: 1 } },
+            'aura_lightning': { priceGems: 10, item: { id: 'aura_lightning', name: "Lightning Aura Stone", type: 'aura', rarity: 'Godly', color: '#29b6f6', desc: "Cosmetic: Crackling electric blue lightning arcs surging around your character.", quantity: 1 } },
+
+            // 🐾 Pets
+            'pet_egg': { priceGems: 15, item: { id: 'pet_egg', name: "Easter Egg Pet", type: 'pet', rarity: 'Seasonal', color: '#ffd700', desc: "Tradeable Seasonal Cosmetic: A cute floating Easter Egg that follows you.", quantity: 1 } },
+            'pet_fox': { priceGems: 10, item: { id: 'pet_fox', name: "Spirit Fox Pet", type: 'pet', rarity: 'Godly', color: '#ff7e00', desc: "A loyal fire-fox companion with glowing fiery tail that follows you.", quantity: 1 } },
+            'pet_owl': { priceGems: 10, item: { id: 'pet_owl', name: "Night Owl Pet", type: 'pet', rarity: 'Godly', color: '#ffeb3b', desc: "A mysterious owl that hovers by your side.", quantity: 1 } },
+            'pet_wisp': { priceGems: 10, item: { id: 'pet_wisp', name: "Ancient Wisp Pet", type: 'pet', rarity: 'Godly', color: '#00e5ff', desc: "An ethereal floating wisp spirit glowing with celestial energy.", quantity: 1 } },
+            'pet_void': { priceGems: 10, item: { id: 'pet_void', name: "Mini Wraith Pet", type: 'pet', rarity: 'Godly', color: '#9c27b0', desc: "A shadowy miniature wraith with glowing eyes and void mist.", quantity: 1 } },
+
+            // 💎 Utilities & Consumables
+            'name_change': { priceGems: 15, item: { id: 'name_change', name: "Name Change Ticket", type: 'ticket', rarity: 'Unique', color: '#38bdf8', desc: "Permanently changes your character display name in Town.", quantity: 1 } },
+            'edit_char': { priceGems: 15, item: { id: 'edit_char', name: "Appearance Reroll Ticket", type: 'ticket', rarity: 'Unique', color: '#38bdf8', desc: "Re-open character styling to modify hair and skin appearance.", quantity: 1 } },
+            'divine_pack': { priceGems: 10, item: { id: 'divine_pack', name: "Divine Enhancement Stone", type: 'material', rarity: 'Divine', color: '#ffea00', desc: "Contains 5 Divine Enhancement Stones for upgrading equipment.", quantity: 5 } },
+            'revival_pack': { priceGems: 5, item: { id: 'revival_pack', name: "Revival Juice", type: 'potion', rarity: 'Godly', color: '#e040fb', desc: "Contains 10 Revival Juices. Revive instantly on the spot when defeated.", quantity: 10 } }
+        };
+
+        const catalogItem = MASTER_CATALOG[data.itemId];
+        if (!catalogItem) return socket.emit('systemMessage', "Item not found in catalog.");
+
+        if (!p.baseStats) p.baseStats = {};
+        if ((p.baseStats.exoGems || 0) < catalogItem.priceGems) {
+            return socket.emit('systemMessage', "❌ Not enough Exo Gems! Click 'Get More Exo Gems' to purchase via Steam.");
+        }
+
+        const inv = Array.isArray(p.inventory) ? p.inventory : new Array(30).fill(null);
+        let added = false;
+        let deliveryItem = JSON.parse(JSON.stringify(catalogItem.item));
+        deliveryItem.enhanceLevel = 0;
+
+        if (['potion', 'material', 'consumable'].includes(deliveryItem.type)) {
+            const existingIndex = inv.findIndex(i => i && i.name === deliveryItem.name);
+            if (existingIndex !== -1) {
+                inv[existingIndex].quantity = (inv[existingIndex].quantity || 1) + (deliveryItem.quantity || 1);
+                added = true;
+            }
+        }
+
+        if (!added) {
+            const emptySlot = inv.findIndex(i => i === null);
+            if (emptySlot === -1) return socket.emit('systemMessage', "Inventory full! Clear space first.");
+            inv[emptySlot] = deliveryItem;
+        }
+
+        p.baseStats.exoGems -= catalogItem.priceGems;
+        p.inventory = inv;
+
+        if (supabase) {
+            try {
+                await supabase.from('Exonians').update({ inventory: p.inventory, base_stats: p.baseStats }).eq('character_name', p.name || p.id);
+            } catch (e) {
+                console.error("Failed to update Exonians in Supabase:", e.message);
+            }
+        }
+        socket.emit('syncInventory', p.inventory);
+        socket.emit('gemPurchaseSuccess', { newGems: p.baseStats.exoGems });
+        socket.emit('systemMessage', `Successfully purchased ${deliveryItem.name}!`);
     });
 
     socket.on('disconnect', () => {

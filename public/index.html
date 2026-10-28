@@ -1170,30 +1170,45 @@
     <!-- ============================================================
          CASH SHOP MODAL (EXO EMPORIUM - KEYBIND 'C')
          ============================================================ -->
-    <div class="game-modal" id="cash-shop-modal" style="display:none; z-index:99997;">
-        <div class="modal-dialog modal-dialog-shop" style="max-width:720px; width:94vw; background:linear-gradient(180deg, #130a1c 0%, #0d1117 100%); border:2px solid #e040fb; box-shadow:0 0 35px rgba(224, 64, 251, 0.35);">
-            <div class="modal-header" style="border-bottom:1px solid rgba(224,64,251,0.3);">
-                <div style="display:flex; align-items:center; gap:8px;">
-                    <span style="font-size:1.4rem;">💎</span>
-                    <h3 style="color:#e040fb; margin:0; text-shadow:0 0 10px rgba(224,64,251,0.6);">Exo Emporium (Cash Shop) [C]</h3>
+        <div class="game-modal" id="cash-shop-modal" style="display:none; z-index:99997;">
+        <div class="modal-dialog modal-dialog-shop" style="max-width:760px; width:95vw; background:linear-gradient(180deg, #130a1c 0%, #0d1117 100%); border:2px solid #e040fb; box-shadow:0 0 35px rgba(224, 64, 251, 0.4); border-radius:10px;">
+            <div class="modal-header" style="border-bottom:1px solid rgba(224,64,251,0.3); padding:12px 18px; display:flex; justify-content:space-between; align-items:center;">
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <span style="font-size:1.5rem;">💎</span>
+                    <h3 style="color:#e040fb; margin:0; text-shadow:0 0 10px rgba(224,64,251,0.6); font-size:1.25rem;">Exo Emporium (Cash Shop) [C]</h3>
                 </div>
-                <div style="display:flex; align-items:center; gap:12px;">
-                    <span style="background:rgba(224,64,251,0.15); border:1px solid #e040fb; color:#ffeb3b; padding:4px 10px; border-radius:12px; font-size:0.85rem; font-weight:700;">
-                        🎉 Free Trial Testing: 0 Gems!
-                    </span>
-                    <button class="btn-close-modal" id="btn-close-cash-shop">✖</button>
+                <div style="display:flex; align-items:center; gap:14px;">
+                    <div style="background:rgba(224,64,251,0.15); border:1px solid #e040fb; padding:5px 14px; border-radius:14px; display:flex; align-items:center; gap:6px; box-shadow:0 0 10px rgba(224,64,251,0.2);">
+                        <span style="color:#aaa; font-size:0.85rem;">Balance:</span>
+                        <strong id="ui-gem-balance" style="color:#e040fb; font-size:1.1rem; font-weight:800;">0</strong>
+                        <span style="color:#e040fb; font-size:0.85rem;">Exo Gems</span>
+                    </div>
+                    <button class="btn-close-modal" id="btn-close-cash-shop" style="background:none; border:none; color:#aaa; font-size:1.3rem; cursor:pointer;">✖</button>
                 </div>
             </div>
             <div class="confirm-modal-body" style="padding:16px; display:flex; flex-direction:column; gap:12px;">
-                <!-- Filter Tabs: All, Pets, Auras, Consumables -->
+                <!-- Filter Tabs: All, Auras, Pets, Utility -->
                 <div class="shop-filter-tabs" style="display:flex; gap:8px; border-bottom:1px solid #334155; padding-bottom:8px;">
                     <button class="pill-btn active" data-tab="all" id="shop-tab-all">All Items</button>
-                    <button class="pill-btn" data-tab="pet" id="shop-tab-pet">🐾 Pets</button>
                     <button class="pill-btn" data-tab="aura" id="shop-tab-aura">✨ Auras</button>
+                    <button class="pill-btn" data-tab="pet" id="shop-tab-pet">🐾 Pets</button>
                     <button class="pill-btn" data-tab="utility" id="shop-tab-utility">💎 Utility</button>
                 </div>
-                <div id="cash-shop-items-grid" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(280px, 1fr)); gap:10px; max-height:60vh; overflow-y:auto; padding-right:4px;">
+                <div id="cash-shop-items-grid" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(320px, 1fr)); gap:12px; max-height:48vh; overflow-y:auto; padding-right:4px;">
                     <!-- Dynamically populated from CASH_SHOP_ITEMS -->
+                </div>
+                <!-- Steam Microtransaction Gem Packages (2D Replicated) -->
+                <div style="margin-top:6px; border-top:1px solid rgba(224,64,251,0.3); padding-top:12px; background:rgba(0,0,0,0.25); border-radius:8px; padding:12px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; flex-wrap:wrap; gap:6px;">
+                        <span style="color:#e040fb; font-weight:700; font-size:0.95rem;">💳 Get More Exo Gems (Steam Microtransactions):</span>
+                        <span style="color:#94a3b8; font-size:0.75rem;">1 Gem = $1.00 USD • Instant Steam Overlay Authorization</span>
+                    </div>
+                    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(140px, 1fr)); gap:8px;">
+                        <button class="btn" style="background:#0284c7; color:#fff; border:1px solid #38bdf8; padding:9px; font-weight:bold; border-radius:6px; cursor:pointer;" onclick="window.purchaseExoGems('gem_pack_15', 1500, '15 Exo Gems')">💎 15 Gems ($15)</button>
+                        <button class="btn" style="background:#7c3aed; color:#fff; border:1px solid #a855f7; padding:9px; font-weight:bold; border-radius:6px; cursor:pointer;" onclick="window.purchaseExoGems('gem_pack_50', 5000, '50 Exo Gems')">💎 50 Gems ($50)</button>
+                        <button class="btn" style="background:linear-gradient(45deg, #d97706, #e11d48); color:#fff; border:1px solid #f59e0b; padding:9px; font-weight:bold; border-radius:6px; cursor:pointer; box-shadow:0 0 10px rgba(245,158,11,0.4);" onclick="window.purchaseExoGems('gem_pack_75', 7500, '75 Exo Gems')" title="Divine Aura Package">👑 75 Gems ($75)</button>
+                        <button class="btn" style="background:linear-gradient(45deg, #059669, #0284c7); color:#fff; border:1px solid #34d399; padding:9px; font-weight:bold; border-radius:6px; cursor:pointer;" onclick="window.purchaseExoGems('gem_pack_100', 10000, '100 Exo Gems')">💎 100 Gems ($100)</button>
+                    </div>
                 </div>
             </div>
         </div>

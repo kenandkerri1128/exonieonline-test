@@ -1280,6 +1280,25 @@ export class GameApp {
                     }
                     this.appendChatLine('system', `⚔️ [Party Portal] <b>${data.from}</b> is waiting at <b>${data.portalName}</b>! Step on the portal to enter together!`);
                 });
+
+                // 💎 Cash Shop & Steam Microtransactions Realtime Balance Sync
+                this.socket.on('shopAuthState', (data) => {
+                    if (!this.player.baseStats) this.player.baseStats = {};
+                    this.player.baseStats.exoGems = data.exoGems || 0;
+                    const balEl = document.getElementById('ui-gem-balance');
+                    if (balEl) balEl.innerText = this.player.baseStats.exoGems;
+                });
+
+                this.socket.on('gemPurchaseSuccess', (data) => {
+                    if (!this.player.baseStats) this.player.baseStats = {};
+                    this.player.baseStats.exoGems = data.newGems;
+                    const balEl = document.getElementById('ui-gem-balance');
+                    if (balEl) balEl.innerText = data.newGems;
+                    this.saveCharacterToAccountSlot();
+                    if (this.ui) {
+                        this.ui.showToast(`💎 [EXO GEMS] Balance updated: ${data.newGems} Exo Gems!`);
+                    }
+                });
             }
         } catch (e) {
             console.log('Running in standalone local simulation mode', e);
