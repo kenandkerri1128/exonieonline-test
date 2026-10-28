@@ -582,78 +582,191 @@ export class Monster3D {
     }
 
     buildWraith(mainMat, darkArmorMat, borderGlowMat, outlineShellMat, eyeMat) {
+        // 👻 GASTLY-STYLE VOID WRAITH (MATCHING 2D EXONIE):
+        // Floating dark purple/black spherical ghost orb + billowing purple gaseous smoke + piercing glowing red eyes + fanged wicked grin!
         const hoverRoot = new THREE.Group();
-        hoverRoot.position.y = 0.35;
+        hoverRoot.position.y = 1.45; // Hovers at chest/eye height
         this.bodyGroup.add(hoverRoot);
         this.parts.hoverRoot = hoverRoot;
 
-        mainMat.transparent = true;
-        mainMat.opacity = 0.88;
+        // 1. Core Dark Shadow Orb (The Gastly Body/Head)
+        const orbGeo = new THREE.SphereGeometry(0.85, 28, 22);
+        const orbMat = new THREE.MeshStandardMaterial({
+            color: 0x140026,
+            roughness: 0.35,
+            metalness: 0.15,
+            emissive: 0x4a148c,
+            emissiveIntensity: 0.75
+        });
+        const gastlyOrb = new THREE.Mesh(orbGeo, orbMat);
+        gastlyOrb.castShadow = true;
+        hoverRoot.add(gastlyOrb);
+        this.addBorderShell(gastlyOrb, outlineShellMat, 1.06);
+        this.parts.gastlyOrb = gastlyOrb;
 
-        const cloakGeo = new THREE.ConeGeometry(0.95, 2.35, 16, 1, true);
-        const cloak = new THREE.Mesh(cloakGeo, mainMat);
-        cloak.position.y = 1.25;
-        cloak.castShadow = true;
-        hoverRoot.add(cloak);
-        this.addBorderShell(cloak, outlineShellMat, 1.06);
+        // 2. Swirling Voluminous Purple Gaseous Clouds (The Iconic Gastly Smoke Shroud!)
+        const smokeGroup = new THREE.Group();
+        hoverRoot.add(smokeGroup);
+        this.parts.smokeGroup = smokeGroup;
 
-        const mantle = new THREE.Mesh(chamferBox(1.15, 0.24, 0.68, 0.05), borderGlowMat);
-        mantle.position.y = 2.05;
-        hoverRoot.add(mantle);
-
-        const hood = new THREE.Mesh(new THREE.SphereGeometry(0.46, 18, 16), mainMat);
-        hood.position.y = 2.38;
-        hoverRoot.add(hood);
-        this.addBorderShell(hood, outlineShellMat, 1.08);
-
-        const voidFace = new THREE.Mesh(
-            new THREE.SphereGeometry(0.36, 14, 14),
-            new THREE.MeshBasicMaterial({ color: 0x05020a })
-        );
-        voidFace.position.set(0, 2.36, 0.14);
-        hoverRoot.add(voidFace);
-
-        [-1, 1].forEach(s => {
-            const eye = new THREE.Mesh(new THREE.SphereGeometry(0.075, 10, 10), eyeMat);
-            eye.position.set(s * 0.14, 2.38, 0.46);
-            hoverRoot.add(eye);
+        const smokeMat = new THREE.MeshBasicMaterial({
+            color: 0xba68c8,
+            transparent: true,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+            opacity: 0.50
+        });
+        const darkSmokeMat = new THREE.MeshBasicMaterial({
+            color: 0x7b1fa2,
+            transparent: true,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+            opacity: 0.60
         });
 
-        if (this.dbKey === 'floor_boss_wraith') {
-            const crown = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.32, 0.38, 8, 1, true), borderGlowMat);
-            crown.position.y = 2.86;
-            hoverRoot.add(crown);
+        this.parts.smokePuffs = [];
+        const smokeConfigs = [
+            { r: 0.48, x:  0.80, y:  0.35, z:  0.25, mat: smokeMat },
+            { r: 0.55, x: -0.85, y:  0.25, z: -0.20, mat: darkSmokeMat },
+            { r: 0.44, x:  0.65, y: -0.45, z:  0.40, mat: darkSmokeMat },
+            { r: 0.52, x: -0.70, y: -0.40, z: -0.35, mat: smokeMat },
+            { r: 0.60, x:  0.00, y:  0.88, z: -0.25, mat: smokeMat },
+            { r: 0.50, x:  0.25, y:  0.75, z:  0.55, mat: darkSmokeMat },
+            { r: 0.56, x: -0.35, y:  0.80, z:  0.45, mat: smokeMat },
+            { r: 0.45, x:  0.00, y: -0.80, z:  0.30, mat: darkSmokeMat }
+        ];
 
-            const voidHalo = new THREE.Mesh(new THREE.TorusGeometry(0.95, 0.04, 8, 32), borderGlowMat);
-            voidHalo.position.set(0, 2.35, -0.35);
-            hoverRoot.add(voidHalo);
-            this.parts.voidHalo = voidHalo;
+        smokeConfigs.forEach(cfg => {
+            const puff = new THREE.Mesh(new THREE.SphereGeometry(cfg.r, 14, 12), cfg.mat);
+            puff.position.set(cfg.x, cfg.y, cfg.z);
+            smokeGroup.add(puff);
+            this.parts.smokePuffs.push(puff);
+        });
+
+        // 3. Piercing Menacing Slanted Eyes (2D w-eye style)
+        const eyeGroup = new THREE.Group();
+        eyeGroup.position.set(0, 0.15, 0.72);
+        hoverRoot.add(eyeGroup);
+
+        const scleraMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+        const pupilMat = new THREE.MeshBasicMaterial({ color: 0xff1744 }); // Glowing crimson pupil
+
+        [-1, 1].forEach(s => {
+            const eyeRoot = new THREE.Group();
+            eyeRoot.position.set(s * 0.32, 0, 0);
+            eyeRoot.rotation.z = s * -0.35; // Slanted menacing gaze!
+            eyeRoot.rotation.y = s * 0.18;
+            eyeGroup.add(eyeRoot);
+
+            // Outer white angled eye
+            const sclera = new THREE.Mesh(new THREE.SphereGeometry(0.18, 14, 14), scleraMat);
+            sclera.scale.set(1.15, 0.70, 0.35);
+            eyeRoot.add(sclera);
+
+            // Piercing crimson pupil
+            const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.08, 10, 10), pupilMat);
+            pupil.position.set(0, 0, 0.08);
+            eyeRoot.add(pupil);
+        });
+
+        // 4. Wicked Fanged Ghostly Grin (Gastly Maw)
+        const mouthGroup = new THREE.Group();
+        mouthGroup.position.set(0, -0.25, 0.76);
+        hoverRoot.add(mouthGroup);
+        this.parts.mouth = mouthGroup;
+
+        // Dark gaping mouth opening
+        const mawMat = new THREE.MeshBasicMaterial({ color: 0x050010 });
+        const mawGeo = new THREE.CylinderGeometry(0.36, 0.28, 0.14, 16);
+        mawGeo.rotateX(Math.PI / 2);
+        mawGeo.scale(1.2, 0.65, 0.4);
+        const maw = new THREE.Mesh(mawGeo, mawMat);
+        mouthGroup.add(maw);
+
+        // Sharp White Fangs
+        const fangMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.2 });
+        const fangGeo = new THREE.ConeGeometry(0.06, 0.16, 6);
+        fangGeo.rotateX(Math.PI);
+
+        // Top Fangs
+        [-0.20, -0.07, 0.07, 0.20].forEach(fx => {
+            const fang = new THREE.Mesh(fangGeo, fangMat);
+            fang.position.set(fx, 0.08, 0.04);
+            mouthGroup.add(fang);
+        });
+
+        // Bottom Fangs
+        const botFangGeo = new THREE.ConeGeometry(0.05, 0.14, 6);
+        [-0.14, 0.0, 0.14].forEach(fx => {
+            const fang = new THREE.Mesh(botFangGeo, fangMat);
+            fang.position.set(fx, -0.08, 0.04);
+            mouthGroup.add(fang);
+        });
+
+        // 5. Undulating Ghostly Smoke Tendrils (matching 2D w-particles)
+        const tendrilGroup = new THREE.Group();
+        tendrilGroup.position.set(0, -0.45, 0);
+        hoverRoot.add(tendrilGroup);
+        this.parts.tendrilGroup = tendrilGroup;
+        this.parts.tendrils = [];
+
+        for (let i = 0; i < 5; i++) {
+            const tGeo = new THREE.ConeGeometry(0.12, 0.65, 6);
+            tGeo.rotateX(Math.PI);
+            const tMesh = new THREE.Mesh(tGeo, darkSmokeMat);
+            const ang = (i / 5) * Math.PI * 2;
+            tMesh.position.set(Math.cos(ang) * 0.42, -0.45, Math.sin(ang) * 0.42);
+            tendrilGroup.add(tMesh);
+            this.parts.tendrils.push(tMesh);
         }
 
-        [-1, 1].forEach(s => {
-            const arm = new THREE.Group();
-            arm.position.set(s * 0.68, 1.98, 0);
-            hoverRoot.add(arm);
+        // 6. Boss Accents (The Void King / Soul Reaper)
+        if (this.dbKey === 'floor_boss_wraith') {
+            // Floating Dark Coronal Void Crown of cosmic spikes
+            const crownGroup = new THREE.Group();
+            crownGroup.position.set(0, 1.15, 0);
+            hoverRoot.add(crownGroup);
 
-            const sleeve = new THREE.Mesh(new THREE.ConeGeometry(0.24, 0.95, 8), darkArmorMat);
-            sleeve.position.y = -0.42;
-            arm.add(sleeve);
-            this.addBorderShell(sleeve, outlineShellMat, 1.08);
-
-            if (s === 1) {
-                const scythe = new THREE.Group();
-                scythe.position.set(0, -0.65, 0.25);
-                const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 2.75, 10), darkArmorMat);
-                const crescent = new THREE.Mesh(chamferBox(1.25, 0.22, 0.05, 0.015), borderGlowMat);
-                crescent.position.set(0.52, 1.25, 0);
-                crescent.rotation.z = -0.32;
-                scythe.add(pole, crescent);
-                scythe.rotation.x = 0.45;
-                arm.add(scythe);
+            const spikeMat = new THREE.MeshStandardMaterial({
+                color: 0x2e004f,
+                emissive: 0x9c27b0,
+                emissiveIntensity: 0.9,
+                roughness: 0.2
+            });
+            for (let c = 0; c < 7; c++) {
+                const cSpike = new THREE.Mesh(new THREE.ConeGeometry(0.10, 0.55, 4), spikeMat);
+                const cAng = (c / 7) * Math.PI * 2;
+                cSpike.position.set(Math.cos(cAng) * 0.52, 0, Math.sin(cAng) * 0.52);
+                cSpike.rotation.x = 0.22;
+                cSpike.rotation.y = -cAng;
+                crownGroup.add(cSpike);
             }
 
-            this.parts[s < 0 ? 'lArm' : 'rArm'] = arm;
-        });
+            // Outer dark cosmic void ring (Halo)
+            const voidHalo = new THREE.Mesh(
+                new THREE.TorusGeometry(1.25, 0.035, 8, 36),
+                new THREE.MeshBasicMaterial({
+                    color: 0xba68c8,
+                    transparent: true,
+                    blending: THREE.AdditiveBlending,
+                    depthWrite: false,
+                    opacity: 0.85
+                })
+            );
+            voidHalo.position.set(0, 0, -0.15);
+            voidHalo.rotation.x = Math.PI / 2.3;
+            hoverRoot.add(voidHalo);
+            this.parts.voidHalo = voidHalo;
+        } else if (this.dbKey === 'mini_boss_wraith') {
+            // Soul Reaper Mini-Boss Horns
+            [-1, 1].forEach(s => {
+                const horn = new THREE.Mesh(new THREE.ConeGeometry(0.14, 0.65, 6), darkArmorMat);
+                horn.position.set(s * 0.55, 0.82, 0.15);
+                horn.rotation.z = s * -0.45;
+                horn.rotation.x = -0.25;
+                hoverRoot.add(horn);
+            });
+        }
     }
 
     buildMinotaur(mainMat, darkArmorMat, borderGlowMat, outlineShellMat, eyeMat) {
@@ -1190,10 +1303,35 @@ export class Monster3D {
         }
 
         if (p.hoverRoot) {
-            const baseHover = this.dbKey.includes('wraith') ? 0.35 : 1.70;
-            p.hoverRoot.position.y = baseHover + Math.sin(this.animTime * 3.8) * 0.22;
-            p.hoverRoot.position.z = attackImpulse * 0.75;
+            const baseHover = this.dbKey.includes('wraith') ? 1.45 : 1.70;
+            p.hoverRoot.position.y = baseHover + Math.sin(this.animTime * 3.8) * 0.18;
+            p.hoverRoot.position.z = attackImpulse * 0.85;
             p.hoverRoot.rotation.x = attackImpulse * 0.35;
+        }
+
+        // 👻 Gastly Void Wraith Animation Updates
+        if (p.smokeGroup) {
+            p.smokeGroup.rotation.y += dt * 1.6;
+            p.smokeGroup.rotation.z = Math.sin(this.animTime * 2.2) * 0.15;
+            if (p.smokePuffs) {
+                p.smokePuffs.forEach((puff, idx) => {
+                    const puffPulse = 0.90 + Math.sin(this.animTime * 3.5 + idx * 0.8) * 0.15;
+                    puff.scale.setScalar(puffPulse);
+                });
+            }
+        }
+        if (p.tendrilGroup && p.tendrils) {
+            p.tendrils.forEach((td, idx) => {
+                td.position.y = -0.45 - Math.abs(Math.sin(this.animTime * 4.0 + idx * 0.7)) * 0.20;
+                td.rotation.z = Math.sin(this.animTime * 3.2 + idx) * 0.22;
+            });
+        }
+        if (p.gastlyOrb) {
+            const orbPulse = 1.0 + Math.sin(this.animTime * 3.0) * 0.04;
+            p.gastlyOrb.scale.set(orbPulse, orbPulse * (1.0 + attackImpulse * 0.25), orbPulse);
+        }
+        if (p.mouth) {
+            p.mouth.scale.y = 1.0 + attackImpulse * 0.8;
         }
 
         if (p.dragonRoot) {
