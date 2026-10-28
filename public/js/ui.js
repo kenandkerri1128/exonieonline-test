@@ -1878,15 +1878,19 @@ export class UIManager {
         this.mazeGuideModal.style.display = 'flex';
     }
 
-    updateFloorBossTimer(remainingMs) {
+    updateFloorBossTimer(remainingMs, customLabel = null) {
         const el = document.getElementById('floor-boss-timer-ui');
         const valEl = document.getElementById('floor-boss-timer-val');
+        const lblEl = document.getElementById('floor-boss-timer-lbl');
         if (!el || !valEl) return;
         if (remainingMs <= 0) {
             el.style.display = 'none';
             return;
         }
         el.style.display = 'inline-flex';
+        if (lblEl) {
+            lblEl.textContent = customLabel || 'Floor Boss Respawns in:';
+        }
         const hrs = Math.floor(remainingMs / 3600000);
         const mins = Math.floor((remainingMs % 3600000) / 60000);
         const secs = Math.floor((remainingMs % 60000) / 1000);

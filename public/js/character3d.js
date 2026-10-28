@@ -1766,6 +1766,86 @@ export class Character3D {
         p.lKnee.rotation.x = damp(p.lKnee.rotation.x, lKneeRx, k, dt);
         p.rKnee.rotation.x = damp(p.rKnee.rotation.x, rKneeRx, k, dt);
     }
+
+    // ==========================================
+    // 🛡️ CLASS BUFF & SHIELD VISUAL EFFECTS
+    // ==========================================
+    attachGammaShield() {
+        if (this.shieldMesh) return;
+        const geo = new THREE.SphereGeometry(1.35, 24, 24);
+        const mat = new THREE.MeshStandardMaterial({
+            color: 0x00e5ff,
+            transparent: true,
+            opacity: 0.38,
+            roughness: 0.1,
+            metalness: 0.8,
+            emissive: 0x00e5ff,
+            emissiveIntensity: 0.65,
+            depthWrite: false
+        });
+        this.shieldMesh = new THREE.Mesh(geo, mat);
+        this.shieldMesh.position.set(0, 0.95, 0);
+        this.group.add(this.shieldMesh);
+    }
+
+    detachGammaShield() {
+        if (this.shieldMesh) {
+            this.group.remove(this.shieldMesh);
+            this.shieldMesh.geometry.dispose();
+            if (this.shieldMesh.material) this.shieldMesh.material.dispose();
+            this.shieldMesh = null;
+        }
+    }
+
+    attachFieryAura() {
+        if (this.fieryAuraMesh) return;
+        const geo = new THREE.CylinderGeometry(0.85, 1.05, 1.9, 18, 1, true);
+        const mat = new THREE.MeshBasicMaterial({
+            color: 0xff3d00,
+            side: THREE.DoubleSide,
+            transparent: true,
+            opacity: 0.45,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false
+        });
+        this.fieryAuraMesh = new THREE.Mesh(geo, mat);
+        this.fieryAuraMesh.position.set(0, 0.95, 0);
+        this.group.add(this.fieryAuraMesh);
+    }
+
+    detachFieryAura() {
+        if (this.fieryAuraMesh) {
+            this.group.remove(this.fieryAuraMesh);
+            this.fieryAuraMesh.geometry.dispose();
+            if (this.fieryAuraMesh.material) this.fieryAuraMesh.material.dispose();
+            this.fieryAuraMesh = null;
+        }
+    }
+
+    attachParryGuard() {
+        if (this.parryGuardMesh) return;
+        const geo = new THREE.TorusGeometry(0.95, 0.08, 8, 28);
+        const mat = new THREE.MeshBasicMaterial({
+            color: 0x00e5ff,
+            transparent: true,
+            opacity: 0.8,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false
+        });
+        this.parryGuardMesh = new THREE.Mesh(geo, mat);
+        this.parryGuardMesh.position.set(0, 1.05, 0);
+        this.parryGuardMesh.rotation.x = Math.PI / 4;
+        this.group.add(this.parryGuardMesh);
+    }
+
+    detachParryGuard() {
+        if (this.parryGuardMesh) {
+            this.group.remove(this.parryGuardMesh);
+            this.parryGuardMesh.geometry.dispose();
+            if (this.parryGuardMesh.material) this.parryGuardMesh.material.dispose();
+            this.parryGuardMesh = null;
+        }
+    }
 }
 
 window.Character3D = Character3D;

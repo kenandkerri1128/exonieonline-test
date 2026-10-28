@@ -6,7 +6,7 @@
     <title>Exonie 3D Remastered</title>
     <link rel="icon" type="image/png" href="favicon.png">
     <link rel="preload" as="image" href="loadingscreen.png">
-    <link rel="stylesheet" href="css/style.css?v=2.7">
+    <link rel="stylesheet" href="css/style.css?v=2.8">
 
     <!-- Native ES Module Import Map for Three.js -->
     <script type="importmap">
@@ -306,7 +306,7 @@
             <div id="tavern-timer-ui" style="display:none;">⏱️ 00:00.00</div>
             <div id="floor-boss-timer-ui" class="floor-boss-timer-badge" style="display:none;">
                 <span class="boss-timer-skull">💀</span>
-                <span class="boss-timer-label">Floor Boss Respawns in:</span>
+                <span id="floor-boss-timer-lbl" class="boss-timer-label">Floor Boss Respawns in:</span>
                 <span id="floor-boss-timer-val">00h 00m 00s</span>
             </div>
         </div>
@@ -1172,6 +1172,6 @@
     </div>
 
     <!-- Main Game Orchestrator Script -->
-    <script type="module" src="./js/game.js?v=2.7"></script>
+    <script type="module" src="./js/game.js?v=2.8"></script>
 </body>
 </html>

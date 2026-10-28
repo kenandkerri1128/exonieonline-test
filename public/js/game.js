@@ -554,11 +554,20 @@ export class GameApp {
                 this.socket.on('bossCooldownSync', (cooldowns) => {
                     if (cooldowns && typeof cooldowns === 'object') {
                         this.bossCooldowns = Object.assign({}, this.bossCooldowns, cooldowns);
+                        // Strict 2D Exonie: Haunted House, Town, and Tavern NEVER have cooldowns!
+                        delete this.bossCooldowns['hauntedhouse'];
+                        delete this.bossCooldowns['hh_wraith_king'];
+                        delete this.bossCooldowns['town'];
+                        delete this.bossCooldowns['trainingtavern'];
                     }
                 });
 
                 this.socket.on('bossCooldownActive', (data) => {
                     if (data && data.floorId) {
+                        if (data.floorId === 'hauntedhouse' || data.floorId === 'hh_wraith_king' || data.floorId === 'town' || data.floorId === 'trainingtavern') {
+                            delete this.bossCooldowns[data.floorId];
+                            return;
+                        }
                         if (data.remaining > 0) {
                             this.bossCooldowns[data.floorId] = Date.now() + data.remaining;
                         } else {
@@ -581,15 +590,52 @@ export class GameApp {
                 });
 
                 this.socket.on('applyGammaShield', (data) => {
-                    if (data && data.targetId === this.player.name) {
+                    if (!data) return;
+                    if (data.targetId === this.player.name) {
                         this.player.shieldHp = data.hp || 20;
                         this.createPlayerShieldVFX();
+                    } else {
+                        const rp = Object.values(this.remotePlayers || {}).find(p => p.name === data.targetId || p.id === data.targetId);
+                        if (rp && rp.char3D) {
+                            rp.char3D.attachGammaShield();
+                        }
                     }
                 });
 
                 this.socket.on('breakGammaShield', (data) => {
-                    if (data && data.targetId === this.player.name) {
+                    if (!data) return;
+                    if (data.targetId === this.player.name) {
                         this.destroyPlayerShieldVFX();
+                    } else {
+                        const rp = Object.values(this.remotePlayers || {}).find(p => p.name === data.targetId || p.id === data.targetId);
+                        if (rp && rp.char3D) {
+                            rp.char3D.detachGammaShield();
+                            this.engine.spawnHitSparks(rp.currentPos || rp.char3D.group.position, 0x00e5ff, 22);
+                        }
+                    }
+                });
+
+                this.socket.on('partyHeal', (data) => {
+                    if (!data || data.healerName === this.player.name) return;
+                    const healAmt = Number(data.healAmt) || 25;
+                    this.player.hp = Math.min(this.player.maxHp, this.player.hp + healAmt);
+                    this.combat.spawnFloatingDamage(this.player.pos, `+${healAmt} HP (${data.healerName})`, false, true);
+                    this.engine.spawnHitSparks(this.player.pos.clone().add(new THREE.Vector3(0, 1.2, 0)), 0x00e676, 20);
+                    if (this.ui) this.ui.updatePlayerHUD(this.player);
+                });
+
+                this.socket.on('partyRevive', (data) => {
+                    if (!data) return;
+                    if (this.isGhost) {
+                        this.isGhost = false;
+                        this.player.hp = this.player.maxHp;
+                        if (this.ui) {
+                            this.ui.hideDeathScreen();
+                            this.ui.updatePlayerHUD(this.player);
+                            this.ui.showToast(`✨ Revived by ${data.healerName}'s Purification miracle!`);
+                        }
+                        this.engine.spawnLevelUpVFX(this.player.pos);
+                        this.combat.spawnFloatingDamage(this.player.pos, `✨ REVIVED BY ${data.healerName}!`, true, true);
                     }
                 });
 
@@ -2158,6 +2204,10 @@ export class GameApp {
                 if (mapId === 'neutralzone' && (sp.category === 'floor_boss' || sp.isNeutralBoss) && neutralRemaining > 0) {
                     const hrs = (neutralRemaining / 3600000).toFixed(1);
                     this.ui.showToast(`⏳ [NEUTRAL ZONE WORLD BOSS] Respawns in ~${hrs} hours.`);
+                    const remMins = Math.ceil(neutralRemaining / 60000);
+                    const remHours = (remMins / 60).toFixed(1);
+                    const timeText = remMins > 120 ? `${remHours} hours` : `${remMins} minutes`;
+                    this.appendChatLine('world', `⏳ <span style="color:#aaa;">The boss of this area is dead. It will return in ${timeText}.</span>`);
                     continue;
                 }
                 // Battlefield boss cooldown check
@@ -2197,6 +2247,9 @@ export class GameApp {
     }
 
     onMonsterDefeated(mob) {
+        if (!mob || mob._isDefeatedProcessed) return;
+        mob._isDefeatedProcessed = true;
+
         this.audio.playSfx('bump');
         this.engine.spawnHitSparks(mob.group.position, 0xffea00, 25);
 
@@ -2205,8 +2258,9 @@ export class GameApp {
         this.player.gold += mob.goldYield;
         this.combat.spawnFloatingDamage(mob.group.position, `+${mob.expYield} EXP`, false, true);
 
-        // Authoritative 2D Loot Drop System + World Announcements for Rare/Boss Drops
+        // Authoritative 2D Loot Drop System + Single World Announcement for Highest-Tier Drop
         const drops = generateLoot(mob);
+        let bestLegendDrop = null;
         for (const drop of drops) {
             const added = this.addItemToInventory(drop);
             if (added) {
@@ -2218,14 +2272,21 @@ export class GameApp {
                     true
                 );
                 if (['Legendary', 'Godly', 'Divine'].includes(drop.rarity)) {
-                    this.ui.showWorldAnnouncement(
-                        `🌟 <strong style="color:#00e5ff;">${this.player.name}</strong> obtained <strong style="color:#ffd700;">[${drop.rarity}] ${drop.name}</strong> from <strong>${mob.name}</strong>!`,
-                        '#ffd700'
-                    );
+                    if (!bestLegendDrop || drop.rarity === 'Divine' || (drop.rarity === 'Godly' && bestLegendDrop.rarity !== 'Divine')) {
+                        bestLegendDrop = drop;
+                    }
                 }
             } else {
                 this.ui.showToast(`⚠️ Bag Full! Could not pick up ${drop.name}.`);
             }
+        }
+
+        // Show exactly ONE world announcement for rare drops per kill
+        if (bestLegendDrop) {
+            this.ui.showWorldAnnouncement(
+                `🌟 <strong style="color:#00e5ff;">${this.player.name}</strong> obtained <strong style="color:#ffd700;">[${bestLegendDrop.rarity}] ${bestLegendDrop.name}</strong> from <strong>${mob.name}</strong>!`,
+                '#ffd700'
+            );
         }
 
         // ============================================================
@@ -2355,6 +2416,7 @@ export class GameApp {
 
         // ============================================================
         // 2D HAUNTED HOUSE SOLO CHALLENGE VICTORY & LOOT
+        // (Wraith King is an unlimited solo minigame, NEVER has a cooldown or world announcement!)
         // ============================================================
         if (mob.isHauntedBoss || this.currentMapId === 'hauntedhouse') {
             this.audio.playSfx('lightning');
@@ -2369,6 +2431,7 @@ export class GameApp {
                     this.loadMap('town');
                 }
             }, 4200);
+            return; // 🛡️ CRITICAL: Never proceed to onFloorBossDefeated! Haunted House has NO boss cooldown.
         }
 
         // Boss defeat check
@@ -2387,20 +2450,24 @@ export class GameApp {
     }
 
     onFloorBossDefeated(mob) {
+        // 🛡️ STRICT 2D EXONIE: Haunted House, Tavern, Battlefield, Neutral Zone, Dungeons NEVER set floor cooldown!
+        if (mob.isTavernBoss || mob.isBattlefieldBoss || mob.isNeutralBoss || mob.isHauntedBoss || this.currentMapId === 'hauntedhouse' || this.currentMapId === 'trainingtavern' || this.currentMapId.startsWith('dungeon')) {
+            return;
+        }
+
         this.audio.playSfx('lightning');
         this.engine.addScreenshake(1.2);
         this.ui.showFloorCleared(this.currentMapId);
-        if (!mob.isTavernBoss && !mob.isBattlefieldBoss && !mob.isNeutralBoss) {
-            this.ui.showWorldAnnouncement(
-                `⚔️ <strong style="color:#00e5ff;">[WORLD ANNOUNCEMENT] ${this.player.name}</strong> has defeated <strong>[BOSS] ${mob.name} (Lv.${mob.level})</strong> on <strong>${this.currentMapId.toUpperCase()}</strong>!`,
-                '#00e5ff'
-            );
-            // 24-hour Floor Boss Cooldown matching 2D Exonie (persisted to Supabase boss_timers)
-            const respawnAt = Date.now() + (24 * 60 * 60 * 1000);
-            this.bossCooldowns[this.currentMapId] = respawnAt;
-            if (this.socket) {
-                this.socket.emit('floorBossKilled', { floorId: this.currentMapId, bossName: mob.name });
-            }
+
+        this.ui.showWorldAnnouncement(
+            `⚔️ <strong style="color:#00e5ff;">[WORLD ANNOUNCEMENT] ${this.player.name}</strong> has defeated <strong>[BOSS] ${mob.name} (Lv.${mob.level})</strong> on <strong>${this.currentMapId.toUpperCase()}</strong>!`,
+            '#00e5ff'
+        );
+        // 24-hour Floor Boss Cooldown matching 2D Exonie (persisted to Supabase boss_timers)
+        const respawnAt = Date.now() + (24 * 60 * 60 * 1000);
+        this.bossCooldowns[this.currentMapId] = respawnAt;
+        if (this.socket) {
+            this.socket.emit('floorBossKilled', { floorId: this.currentMapId, bossName: mob.name });
         }
 
         if (this.currentMapId === 'floor10') {
@@ -2453,26 +2520,73 @@ export class GameApp {
     onMonsterHitPlayer(rawDmg, attackType = 'Attack', monster = null) {
         if (this.isGhost || this.player.isInvulnerable) return;
 
+        // 1. 🌫️ Ninja Assassin: Smoke Bomb 75% enemy miss check
+        if (this.player.smokeBombActive && Math.random() < 0.75) {
+            this.combat.spawnFloatingDamage(this.player.pos, '💨 MISSED (SMOKE)!', false);
+            return;
+        }
+
+        // 2. 🍃 Ninja Assassin: Passive Agility Dodge (25% at Lv.25, 35% at Lv.75)
+        const pClass = this.player.baseStats?.playerClass || '';
+        const pLevel = this.player.level || 1;
+        if (pClass === 'Ninja Assassin' && pLevel >= 25) {
+            const dodgeChance = pLevel >= 75 ? 0.35 : 0.25;
+            if (Math.random() < dodgeChance) {
+                this.engine.spawnHitSparks(this.player.pos, 0xb388ff, 16);
+                this.combat.spawnFloatingDamage(this.player.pos, '🍃 DODGED!', true);
+                this.audio.playSfx('bump');
+                return;
+            }
+        }
+
+        // 3. ⚔️ Blademaster: Active Parry Check (70% parry for 10s)
+        if (this.player.isParrying && Math.random() < 0.70) {
+            this.engine.spawnHitSparks(this.player.pos, 0x00e5ff, 20);
+            this.engine.spawnSlashArc(this.player.pos, this.player.rotY, 0x00e5ff, 2.8);
+            this.combat.spawnFloatingDamage(this.player.pos, '⚔️ PARRIED!', true);
+            this.audio.playSfx('slash');
+            return;
+        }
+
         const cleanRaw = (typeof rawDmg === 'number' && Number.isFinite(rawDmg)) ? rawDmg : 15;
         const playerDef = (typeof this.player.def === 'number' && Number.isFinite(this.player.def)) ? this.player.def : 0;
         let dmg = Math.max(1, Math.floor(cleanRaw - playerDef));
+
+        // 4. 🌀 Phantom Striker: Shadow Step (80% Damage Reduction for 2s)
+        if (this.player.damageReductionTimer > 0) {
+            dmg = Math.max(1, Math.floor(dmg * 0.20));
+        }
+
+        // 5. 🐉 Dragon Passive: Level Gap adds to damage
         if (monster && monster.isDragon && monster.level > this.player.level) {
             dmg += (monster.level - this.player.level);
         }
 
-        // Tech Genius Gamma Shield absorption
+        // 6. 🛡️ Tech Genius Gamma Shield (Sturdy 2D Exonie: absorbs ENTIRE hit before breaking!)
         if ((this.player.shieldHp || 0) > 0) {
-            const absorbed = Math.min(this.player.shieldHp, dmg);
-            this.player.shieldHp -= absorbed;
-            dmg -= absorbed;
-            if (this.player.shieldHp <= 0) {
+            if (dmg >= this.player.shieldHp) {
+                dmg = 0; // Shield absorbs full hit!
+                this.player.shieldHp = 0;
                 this.destroyPlayerShieldVFX();
+                if (this.socket) this.socket.emit('breakGammaShield', { targetId: this.player.name });
             } else {
-                this.combat.spawnFloatingDamage(this.player.pos, `SHIELD (${this.player.shieldHp})`, false, true);
+                this.player.shieldHp -= dmg;
+                this.combat.spawnFloatingDamage(this.player.pos, `🛡️ SHIELD (${this.player.shieldHp})`, false, true);
+                dmg = 0;
             }
             if (dmg <= 0) return;
         }
 
+        // 7. 🩸 Berserker Lv.75 Passive: I Love PAIN (15% chance to heal 1/3 of incoming damage)
+        if (pClass === 'Berserker' && pLevel >= 75 && Math.random() < 0.15) {
+            const heal = Math.max(1, Math.floor(dmg / 3));
+            dmg = Math.max(1, dmg - heal);
+            this.player.hp = Math.min(this.player.maxHp, this.player.hp + heal);
+            this.combat.spawnFloatingDamage(this.player.pos, `🩸 +${heal} HP (PAIN!)`, false, true);
+            this.engine.spawnHitSparks(this.player.pos, 0xff1744, 12);
+        }
+
+        // 8. 🔥 Berserker Lv.50 Immortal Check (HP cannot drop below 1 for 10s)
         const currHp = (typeof this.player.hp === 'number' && Number.isFinite(this.player.hp)) ? this.player.hp : (this.player.maxHp || 105);
         this.player.hp = Math.max(this.player.isImmortal ? 1 : 0, currHp - dmg);
         this.audio.playSfx('bump');
@@ -2889,12 +3003,24 @@ export class GameApp {
             }
         }
 
-        // 2. Floor Boss Respawn Timer per floor (displayed whenever that floor's boss is dead)
-        const bossRemaining = (this.bossCooldowns && this.bossCooldowns[this.currentMapId]) ? (this.bossCooldowns[this.currentMapId] - Date.now()) : 0;
+        // 2. Floor Boss Respawn Timer per floor & Neutral Zone / Battlefield timers
+        const bossRemainingKey = this.currentMapId === 'neutralzone' ? 'neutralzone_boss' : (this.currentMapId === 'battlefield' ? 'battlefield_boss' : this.currentMapId);
+        const bossRemaining = (this.bossCooldowns && this.bossCooldowns[bossRemainingKey]) ? (this.bossCooldowns[bossRemainingKey] - Date.now()) : 0;
         if (bossRemaining > 0 && (this.currentMapId.startsWith('floor') || this.currentMapId === 'neutralzone' || this.currentMapId === 'battlefield')) {
-            this.ui.updateFloorBossTimer(bossRemaining);
+            const timerLabel = this.currentMapId === 'neutralzone' ? 'Neutral Zone Boss Respawns in:' : (this.currentMapId === 'battlefield' ? 'Raid Boss Respawns in:' : 'Floor Boss Respawns in:');
+            this.ui.updateFloorBossTimer(bossRemaining, timerLabel);
+            if (this.currentMapId === 'neutralzone' && this.world && this.world.updateNeutralBossAltarTimer) {
+                this.world.updateNeutralBossAltarTimer(bossRemaining);
+            }
         } else {
             this.ui.updateFloorBossTimer(0);
+            if (this.currentMapId === 'neutralzone' && this.world && this.world.updateNeutralBossAltarTimer) {
+                this.world.updateNeutralBossAltarTimer(0);
+            }
+        }
+
+        if (this.player.damageReductionTimer > 0) {
+            this.player.damageReductionTimer = Math.max(0, this.player.damageReductionTimer - delta);
         }
 
         // 3. Update Monsters AI, Respawn Timers & Combat

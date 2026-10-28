@@ -2252,6 +2252,8 @@ export class World3D {
             altarRing.position.set(0, 0.06, -22);
             this.worldGroup.add(altarRing);
 
+            this.createNeutralBossAltarTimer();
+
             this.queueSpawn(monsterSpawns, `nz_world_boss`, randomKey, 'floor_boss', randomLevel, 0, -22, {
                 isNeutralBoss: true,
                 noRespawn: true // 2D server.js respawnDelayMs: -1 (Controlled strictly by Supabase boss_timers!)
@@ -2842,6 +2844,95 @@ export class World3D {
                 prop.mesh.position.y = prop.baseY + Math.sin(time * 2.6) * 0.25;
             }
         }
+    }
+
+    // ==========================================
+    // 🌲 2D NEUTRAL ZONE IN-MAP WORLD BOSS ALTAR TIMER
+    // Mimics 2D Exonie's glowing "#world-boss-timer" over the central altar (0, -22)
+    // ==========================================
+    createNeutralBossAltarTimer() {
+        if (this.nzAltarTimerGroup) return;
+        this.nzAltarTimerGroup = new THREE.Group();
+        this.nzAltarTimerGroup.position.set(0, 4.0, -22);
+
+        this.nzAltarCanvas = document.createElement('canvas');
+        this.nzAltarCanvas.width = 512;
+        this.nzAltarCanvas.height = 160;
+        this.nzAltarTex = new THREE.CanvasTexture(this.nzAltarCanvas);
+        this.nzAltarTex.minFilter = THREE.LinearFilter;
+
+        const spriteMat = new THREE.SpriteMaterial({
+            map: this.nzAltarTex,
+            transparent: true,
+            depthTest: false
+        });
+        const sprite = new THREE.Sprite(spriteMat);
+        sprite.scale.set(8.2, 2.5, 1);
+        sprite.renderOrder = 999;
+        this.nzAltarTimerGroup.add(sprite);
+
+        // Ground runic cooldown circle
+        const runicMat = new THREE.MeshBasicMaterial({
+            color: 0xff9800,
+            side: THREE.DoubleSide,
+            transparent: true,
+            opacity: 0.55
+        });
+        const runicRing = new THREE.Mesh(new THREE.RingGeometry(3.2, 4.0, 32), runicMat);
+        runicRing.rotation.x = -Math.PI / 2;
+        runicRing.position.y = -3.92;
+        this.nzAltarTimerGroup.add(runicRing);
+
+        this.worldGroup.add(this.nzAltarTimerGroup);
+        this.nzAltarTimerGroup.visible = false;
+        this._lastNzAltarSec = -1;
+    }
+
+    updateNeutralBossAltarTimer(remainingMs) {
+        if (!this.nzAltarTimerGroup) this.createNeutralBossAltarTimer();
+        if (remainingMs <= 0) {
+            this.nzAltarTimerGroup.visible = false;
+            return;
+        }
+        this.nzAltarTimerGroup.visible = true;
+
+        const sec = Math.ceil(remainingMs / 1000);
+        if (sec === this._lastNzAltarSec) return;
+        this._lastNzAltarSec = sec;
+
+        const hrs = Math.floor(sec / 3600);
+        const mins = Math.floor((sec % 3600) / 60);
+        const remSecs = sec % 60;
+
+        const ctx = this.nzAltarCanvas.getContext('2d');
+        ctx.clearRect(0, 0, 512, 160);
+
+        // Background container matching 2D Exonie style
+        ctx.fillStyle = 'rgba(10, 14, 26, 0.88)';
+        ctx.strokeStyle = '#ff9800';
+        ctx.lineWidth = 5;
+        ctx.beginPath();
+        ctx.roundRect(12, 12, 488, 136, 24);
+        ctx.fill();
+        ctx.stroke();
+
+        // Title: BOSS RESPAWNS IN (2D Exonie exact text & styling)
+        ctx.textAlign = 'center';
+        ctx.font = '900 28px "Segoe UI", Arial, sans-serif';
+        ctx.fillStyle = '#ff9800';
+        ctx.shadowColor = 'red';
+        ctx.shadowBlur = 10;
+        ctx.fillText('BOSS RESPAWNS IN', 256, 58);
+
+        // Time countdown
+        ctx.font = '900 38px "Segoe UI", Arial, sans-serif';
+        ctx.fillStyle = '#ffd54f';
+        ctx.shadowColor = '#ff6f00';
+        ctx.shadowBlur = 12;
+        ctx.fillText(`${hrs}h ${mins}m ${remSecs}s`, 256, 114);
+        ctx.shadowBlur = 0;
+
+        this.nzAltarTex.needsUpdate = true;
     }
 }
 

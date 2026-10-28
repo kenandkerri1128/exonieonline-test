@@ -181,6 +181,16 @@ export class CombatSystem {
                 if (!mob.isAlive && onMonsterKilled) onMonsterKilled(mob);
             }, 95);
         }
+
+        // 6. Healer Lv.75 Passive: Healing Touch (Normal attacks heal player and party for 5% INT)
+        if (pClass === 'Healer' && lvl >= 75) {
+            const intVal = (player.baseStats && player.baseStats.int) || 10;
+            const healTouch = Math.max(1, Math.floor(intVal * 0.05));
+            player.hp = Math.min(player.maxHp, player.hp + healTouch);
+            this.spawnFloatingDamage(player.pos, `+${healTouch} HP`, false, true);
+            this.engine.spawnHitSparks(player.pos, 0x00e676, 8);
+            if (window.game?.ui) window.game.ui.updatePlayerHUD(player);
+        }
     }
 
     // Automatic Proximity Drone Attack for Tech Genius (2D Exonie 1000ms interval — requires Tech Genius class!)
@@ -557,8 +567,12 @@ export class CombatSystem {
                 this.engine.spawnSlashArc(player.pos, player.rotY, 0x00e5ff, 3.2);
                 if (this.audio) this.audio.playSfx('slash');
                 player.isParrying = true;
+                if (player.char3D?.attachParryGuard) player.char3D.attachParryGuard();
                 this.spawnFloatingDamage(player.pos, '⚔️ PARRY STANCE (10s)!', false, true);
-                setTimeout(() => { player.isParrying = false; }, 10000);
+                setTimeout(() => {
+                    player.isParrying = false;
+                    if (player.char3D?.detachParryGuard) player.char3D.detachParryGuard();
+                }, 10000);
                 this.damageMonstersInRadius(player, player.pos, 4.0, atkVal * 1.8, monsters, onMonsterKilled);
             } else {
                 // Mega Slash (Lv.50, 50s CD): 5x ATK Power
@@ -576,14 +590,14 @@ export class CombatSystem {
                     player.calloutActive = false;
                     if (window.game) window.game.recalculateStats();
                 }, 10000);
-                this.spawnFloatingDamage(player.pos, '🛡️ CALLOUT! (PROVOKE)', false, true);
-                this.engine.spawnGroundShockwave(player.pos, 0xff1744, 6.5);
+                this.spawnFloatingDamage(player.pos, '🛡️ CALLOUT! (DEF x3)', false, true);
+                this.engine.spawnGroundShockwave(player.pos, 0xff1744, 7.5);
                 if (this.audio) this.audio.playSfx('slash');
 
-                // Provoke all monsters within 18 units to aggro on Berserker
+                // Provoke all monsters within 22 units to aggro on Berserker
                 if (monsters) {
                     for (const mob of monsters) {
-                        if (mob && mob.isAlive && player.pos.distanceTo(mob.group.position) <= 18) {
+                        if (mob && mob.isAlive && player.pos.distanceTo(mob.group.position) <= 22) {
                             if (mob.provoke) mob.provoke(player, 10.0);
                         }
                     }
@@ -593,7 +607,11 @@ export class CombatSystem {
             } else {
                 // Immortal (Lv.50, 100s CD): HP cannot drop below 1 for 10s
                 player.isImmortal = true;
-                setTimeout(() => { player.isImmortal = false; }, 10000);
+                if (player.char3D?.attachFieryAura) player.char3D.attachFieryAura();
+                setTimeout(() => {
+                    player.isImmortal = false;
+                    if (player.char3D?.detachFieryAura) player.char3D.detachFieryAura();
+                }, 10000);
                 this.spawnFloatingDamage(player.pos, '🔥 IMMORTAL (10s)!', true, true);
                 this.engine.spawnLevelUpVFX(player.pos);
                 if (this.audio) this.audio.playSfx('splash');
@@ -606,7 +624,11 @@ export class CombatSystem {
                 player.hp = Math.min(player.maxHp, player.hp + healAmt);
                 this.spawnFloatingDamage(player.pos, `+${healAmt} HP`, false, true);
                 this.engine.spawnHitSparks(player.pos.clone().add(new THREE.Vector3(0, 1.5, 0)), 0x00e676, 28);
+                this.engine.spawnGroundShockwave(player.pos, 0x00e676, 6.0);
                 if (this.audio) this.audio.playSfx('splash');
+                if (window.game?.socket?.connected) {
+                    window.game.socket.emit('partyHeal', { healerName: player.name, healAmt: healAmt });
+                }
             } else {
                 // Purification (Lv.50, 100s CD): Full party heal & cleanse (Max 5/5 per run)
                 player.purificationUses = (Number(player.purificationUses) || 0) + 1;
@@ -618,6 +640,9 @@ export class CombatSystem {
                 this.spawnFloatingDamage(player.pos, `✨ PURIFICATION! (${player.purificationUses}/5)`, true, true);
                 this.engine.spawnLevelUpVFX(player.pos);
                 if (this.audio) this.audio.playSfx('splash');
+                if (window.game?.socket?.connected) {
+                    window.game.socket.emit('partyRevive', { healerName: player.name });
+                }
             }
         } else if (pClass === 'Summoner') {
             if (skillSlot === 1) {
@@ -644,30 +669,55 @@ export class CombatSystem {
                 if (this.audio) this.audio.playSfx('splash');
                 this.damageMonstersInRadius(player, player.pos, 6.0, intVal * 1.5, monsters, onMonsterKilled);
             } else {
-                // Enhance! (Lv.50, 100s CD): 4x AoE Earthquake
+                // Enhance! (Lv.50, 100s CD): Slimes gain 100% stats for 10s + Big Boss deals 1800 AoE Earthquake
                 this.engine.addScreenshake(1.0);
-                this.engine.spawnGroundShockwave(player.pos, 0x2196f3, 9.5);
-                this.damageMonstersInRadius(player, player.pos, 9.5, Math.max(atkVal * 4.0, intVal * 5.0), monsters, onMonsterKilled);
+                this.engine.spawnGroundShockwave(player.pos, 0xffd700, 9.5);
+                this.spawnFloatingDamage(player.pos, '✨ ENHANCE! (10s DOUBLE POWER)', true, true);
                 if (this.audio) this.audio.playSfx('bump');
+
+                const now = Date.now();
+                for (const sm of this.alliedMinions) {
+                    sm.enhancedUntil = now + 10000;
+                    if (sm.mesh && sm.mesh.material) {
+                        sm.mesh.material.emissive?.setHex(0xffd700);
+                        sm.mesh.material.emissiveIntensity = 1.2;
+                    }
+                    setTimeout(() => {
+                        if (sm.mesh && sm.mesh.material) {
+                            sm.mesh.material.emissive?.setHex(0x000000);
+                            sm.mesh.material.emissiveIntensity = 0;
+                        }
+                    }, 10000);
+                }
+                this.damageMonstersInRadius(player, player.pos, 9.5, Math.max(atkVal * 4.0, intVal * 5.0), monsters, onMonsterKilled);
             }
         } else if (pClass === 'Ice Master') {
             const isSplash = player.level >= 75; // Ice Splash Lv.75 makes skills AoE
             if (skillSlot === 1) {
-                // Icicle Spear (Lv.1, 25s CD): 2x MATK + Freeze + Giant Ice Burst
-                if (this.audio) this.audio.playSfx('lightning');
-                const impactPos = player.pos.clone().add(playerForward.clone().multiplyScalar(4.5));
-                this.engine.spawnGroundShockwave(impactPos, 0x00e5ff, isSplash ? 7.5 : 4.5);
-                this.engine.spawnHitSparks(impactPos, 0x80d8ff, 30);
-                this.spawnFloatingDamage(impactPos, '❄️ ICICLE SPEAR!', true);
-                this.damageMonstersInRadius(player, impactPos, isSplash ? 7.5 : 4.5, intVal * 2.5, monsters, onMonsterKilled, true);
+                // Icicle Spear (Lv.1, 25s CD): 3D Falling Icicle drops from the sky + Frost Nova + Freeze
+                const impactPos = player.pos.clone().add(playerForward.clone().multiplyScalar(5.0));
+                this.engine.spawnFallingIcicle(impactPos, () => {
+                    if (this.audio) this.audio.playSfx('lightning');
+                    this.spawnFloatingDamage(impactPos, '❄️ ICICLE SPEAR!', true);
+                    this.damageMonstersInRadius(player, impactPos, isSplash ? 7.5 : 4.5, intVal * 2.5, monsters, onMonsterKilled, true);
+                });
             } else {
-                // Icicle Storm (Lv.50, 100s CD): 3 Icicles AoE + Freeze
+                // Icicle Storm (Lv.50, 100s CD): 3 distinct 3D Icicles falling in rapid succession + Freeze
                 this.engine.addScreenshake(0.95);
-                this.engine.spawnGroundShockwave(player.pos, 0x00e5ff, 9.0);
-                this.engine.spawnHitSparks(player.pos, 0x80d8ff, 45);
-                if (this.audio) this.audio.playSfx('splash');
-                this.spawnFloatingDamage(player.pos, '❄️ ICICLE STORM (FROZEN)!', true);
-                this.damageMonstersInRadius(player, player.pos, 9.0, intVal * 5.0, monsters, onMonsterKilled, true);
+                const offsets = [
+                    player.pos.clone().add(playerForward.clone().multiplyScalar(4.0)),
+                    player.pos.clone().add(playerForward.clone().multiplyScalar(7.0).add(new THREE.Vector3(-2.2, 0, 0))),
+                    player.pos.clone().add(playerForward.clone().multiplyScalar(7.0).add(new THREE.Vector3(2.2, 0, 0)))
+                ];
+                offsets.forEach((pt, idx) => {
+                    setTimeout(() => {
+                        this.engine.spawnFallingIcicle(pt, () => {
+                            if (this.audio) this.audio.playSfx(idx === 0 ? 'splash' : 'lightning');
+                            this.spawnFloatingDamage(pt, '❄️ ICICLE STORM!', true);
+                            this.damageMonstersInRadius(player, pt, isSplash ? 8.5 : 5.5, intVal * 2.0, monsters, onMonsterKilled, true);
+                        });
+                    }, idx * 180);
+                });
             }
         } else if (pClass === 'Sniper') {
             if (skillSlot === 1) {
@@ -677,7 +727,7 @@ export class CombatSystem {
                 this.spawnFloatingDamage(player.pos, '⚡ SILVER BULLET!', true);
                 this.damageMonstersInCone(player, player.pos, playerForward, 20.0, atkVal * 2.2, monsters, onMonsterKilled);
             } else {
-                // Killshot (Lv.50, 50s CD): 4x ATK
+                // Killshot (Lv.50, 50s CD): 4x ATK with devastating bullet beam
                 this.engine.addScreenshake(0.85);
                 if (this.audio) this.audio.playSfx('gunshot');
                 this.spawnFloatingDamage(player.pos, '🎯 KILLSHOT!', true);
@@ -685,10 +735,10 @@ export class CombatSystem {
             }
         } else if (pClass === 'Explosives Expert') {
             if (skillSlot === 1) {
-                // Molotov (Lv.1, 12s CD; Improved Oil Lv.25 increases duration) — Persistent Burning Fire Zone!
+                // Molotov (Lv.1, 12s CD; Improved Oil Lv.25 increases duration to 10s)
                 if (this.audio) this.audio.playSfx('bump');
                 const firePos = player.pos.clone().add(playerForward.clone().multiplyScalar(5.0));
-                const dur = player.level >= 25 ? 6.5 : 4.5;
+                const dur = player.level >= 25 ? 10.0 : 3.0;
                 this.spawnMolotovFireZone(firePos, atkVal, dur);
                 this.spawnFloatingDamage(firePos, '🔥 MOLOTOV COCKTAIL (BURNING)!', true, true);
             } else {
@@ -704,14 +754,15 @@ export class CombatSystem {
             }
         } else if (pClass === 'Phantom Striker') {
             if (skillSlot === 1) {
-                // Shadow Step (Lv.1, 5s CD): Blink 8 units forward
+                // Shadow Step (Lv.1, 5s CD): Blink 8 units forward + 80% Damage Reduction for 2s!
                 if (this.audio) this.audio.playSfx('slash');
                 const targetPos = player.pos.clone().add(playerForward.clone().multiplyScalar(7.5));
                 if (Math.hypot(targetPos.x, targetPos.z) < 46) {
                     player.pos.copy(targetPos);
                 }
+                player.damageReductionTimer = 2.0; // 🛡️ 80% Damage Reduction for 2 seconds!
                 this.engine.spawnHitSparks(player.pos, 0x00e5ff, 22);
-                this.spawnFloatingDamage(player.pos, '💨 SHADOW STEP!', false, true);
+                this.spawnFloatingDamage(player.pos, '💨 SHADOW STEP (80% REDUCTION)!', false, true);
             } else {
                 // Blink Stab (Lv.50, 30s CD): Blink to nearest enemy and stab for 2x ATK
                 if (this.audio) this.audio.playSfx('slash');
@@ -724,30 +775,43 @@ export class CombatSystem {
             }
         } else if (pClass === 'Ninja Assassin') {
             if (skillSlot === 1) {
-                // Smoke Bomb (Lv.1, 10s CD): Enemies miss 75% of attacks for 10s
+                // Smoke Bomb (Lv.1, 10s CD): 3D Volumetric Smoke Cloud; enemies miss 75% of attacks for 10s
                 player.smokeBombActive = true;
-                setTimeout(() => { player.smokeBombActive = false; }, 10000);
-                this.engine.spawnGroundShockwave(player.pos, 0xb388ff, 6.0);
+                this.engine.spawnSmokeCloud(player.pos, 10.0);
                 this.spawnFloatingDamage(player.pos, '💨 SMOKE BOMB (75% EVADE)!', false, true);
                 if (this.audio) this.audio.playSfx('bump');
+                setTimeout(() => { player.smokeBombActive = false; }, 10000);
             } else {
-                // Shadow Copy (Lv.50, 50s CD): 200% stat clone for 10s
+                // Shadow Copy (Lv.50, 50s CD): 200% stat clone for 10s + 3D shadow clone model!
                 player.shadowCloneActive = true;
-                setTimeout(() => { player.shadowCloneActive = false; }, 10000);
+                this.spawnShadowClone(player);
                 this.engine.spawnLevelUpVFX(player.pos);
                 this.spawnFloatingDamage(player.pos, '👥 SHADOW COPY (2x DMG)!', true, true);
                 if (this.audio) this.audio.playSfx('lightning');
+                setTimeout(() => { player.shadowCloneActive = false; }, 10000);
             }
         } else if (pClass === 'Tech Genius') {
             if (skillSlot === 1) {
-                // Gamma Shield (Lv.25, 100s CD): Shields party for 100% INT
+                // Gamma Shield (Lv.25, 100s CD): Shields party & all summons for 100% INT
                 player.shieldHp = Math.max(20, intVal);
                 player.maxShieldHp = player.shieldHp;
                 this.spawnFloatingDamage(player.pos, `🛡️ GAMMA SHIELD (+${player.shieldHp})`, false, true);
                 this.engine.spawnGroundShockwave(player.pos, 0x00e5ff, 5.0);
                 if (this.audio) this.audio.playSfx('lightning');
+
+                // Attach shield to player
                 if (window.game && window.game.createPlayerShieldVFX) {
                     window.game.createPlayerShieldVFX();
+                }
+
+                // Attach shield to ALL active summons (Golem Buster, Allied Slimes, Drone)
+                for (const sm of this.alliedMinions) {
+                    this.attachMinionShield(sm, player.shieldHp);
+                }
+
+                // Broadcast to remote players and party members via socket
+                if (window.game?.socket?.connected) {
+                    window.game.socket.emit('applyGammaShield', { targetId: player.name, hp: player.shieldHp });
                 }
             } else {
                 // Golem Buster (Lv.50, 100s CD): Summons Golem Bot companion + Taunt + AoE blast
@@ -998,12 +1062,133 @@ export class CombatSystem {
             hopTime: 0
         };
 
+        // 🛡️ TECH GENIUS: Golem Buster spawns WITH Gamma Shield if shield is currently active!
+        if (player.shieldHp > 0) {
+            this.attachMinionShield(minion, player.shieldHp);
+        }
+
         this.alliedMinions.push(minion);
         return minion;
     }
 
+    // ==========================================
+    // 🛡️ MINION / SUMMON GAMMA SHIELD SYSTEM
+    // Attaches 3D glowing sphere mesh to Golem Buster, Slimes, and Drone
+    // ==========================================
+    attachMinionShield(minion, hp = 50) {
+        if (!minion || !minion.group) return;
+        if (minion.shieldMesh) {
+            minion.group.remove(minion.shieldMesh);
+            minion.shieldMesh = null;
+        }
+        const r = minion.isGolemBuster ? 1.85 : (minion.isBoss ? 1.4 : 0.85);
+        const y = minion.isGolemBuster ? 1.0 : (minion.isBoss ? 0.8 : 0.45);
+        const geo = new THREE.SphereGeometry(r, 24, 24);
+        const mat = new THREE.MeshStandardMaterial({
+            color: 0x00e5ff,
+            transparent: true,
+            opacity: 0.38,
+            roughness: 0.1,
+            metalness: 0.8,
+            emissive: 0x00e5ff,
+            emissiveIntensity: 0.65,
+            depthWrite: false
+        });
+        minion.shieldMesh = new THREE.Mesh(geo, mat);
+        minion.shieldMesh.position.set(0, y, 0);
+        minion.group.add(minion.shieldMesh);
+        minion.shieldHp = hp;
+        minion.maxShieldHp = hp;
+    }
+
+    detachMinionShield(minion) {
+        if (!minion || !minion.group) return;
+        if (minion.shieldMesh) {
+            this.engine.spawnHitSparks(minion.group.position, 0x00e5ff, 24);
+            this.engine.spawnGroundShockwave(minion.group.position, 0x00e5ff, 3.5);
+            this.spawnFloatingDamage(minion.group.position, '💥 SHIELD BROKEN!', true, true);
+            minion.group.remove(minion.shieldMesh);
+            minion.shieldMesh.geometry.dispose();
+            if (minion.shieldMesh.material) minion.shieldMesh.material.dispose();
+            minion.shieldMesh = null;
+        }
+        minion.shieldHp = 0;
+    }
+
+    // ==========================================
+    // 👥 NINJA ASSASSIN: 3D SHADOW CLONE SYSTEM
+    // ==========================================
+    spawnShadowClone(player) {
+        if (this.shadowCloneMesh) {
+            this.engine.scene.remove(this.shadowCloneMesh);
+            this.shadowCloneMesh = null;
+            this.shadowCloneChar = null;
+        }
+        const group = new THREE.Group();
+        const cloneChar = new Character3D({
+            name: `${player.name} (Clone)`,
+            gender: player.gender || 'male',
+            hairStyle: player.hairStyle || '1',
+            hairColor: '#000000',
+            skinColor: '#263238',
+            className: 'Ninja Assassin',
+            weaponType: 'dagger',
+            weaponRarity: 'Divine'
+        });
+        group.add(cloneChar.group);
+        group.position.set(player.pos.x - 1.5, 0, player.pos.z - 1.2);
+        this.engine.scene.add(group);
+        this.shadowCloneMesh = group;
+        this.shadowCloneTimer = 10.0;
+        this.shadowCloneChar = cloneChar;
+        this.engine.spawnHitSparks(group.position, 0xb388ff, 25);
+    }
+
+    updateShadowClone(delta, player, monsters, onMonsterKilled) {
+        if (!this.shadowCloneMesh || !player) return;
+        this.shadowCloneTimer -= delta;
+        if (this.shadowCloneTimer <= 0) {
+            this.engine.spawnHitSparks(this.shadowCloneMesh.position, 0xb388ff, 18);
+            this.engine.scene.remove(this.shadowCloneMesh);
+            this.shadowCloneMesh = null;
+            this.shadowCloneChar = null;
+            return;
+        }
+
+        const targetX = player.pos.x - Math.cos(player.rotY) * 1.5;
+        const targetZ = player.pos.z + Math.sin(player.rotY) * 1.5;
+        this.shadowCloneMesh.position.x = THREE.MathUtils.lerp(this.shadowCloneMesh.position.x, targetX, delta * 8);
+        this.shadowCloneMesh.position.z = THREE.MathUtils.lerp(this.shadowCloneMesh.position.z, targetZ, delta * 8);
+        this.shadowCloneMesh.position.y = player.pos.y;
+        this.shadowCloneMesh.rotation.y = player.rotY;
+
+        if (this.shadowCloneChar) {
+            this.shadowCloneChar.update(delta);
+        }
+    }
+
     updateAlliedMinions(delta, player, monsters, onMonsterKilled) {
         if (!this.alliedMinions || this.alliedMinions.length === 0) return;
+
+        // 1. Advance Medicine (Lv 75 Tech Genius: continuously heal shielded allies for 10% INT every 1s)
+        if (player && player.baseStats?.playerClass === 'Tech Genius' && player.level >= 75) {
+            this.medTimer = (this.medTimer || 1.0) - delta;
+            if (this.medTimer <= 0) {
+                this.medTimer = 1.0;
+                const intVal = (player.baseStats && player.baseStats.int) || 10;
+                const medHeal = Math.max(1, Math.floor(intVal * 0.10));
+                if (player.shieldHp > 0) {
+                    player.hp = Math.min(player.maxHp, player.hp + medHeal);
+                    this.spawnFloatingDamage(player.pos, `+${medHeal} HP (Med)`, false, true);
+                    this.engine.spawnHitSparks(player.pos, 0x00e676, 6);
+                }
+                for (const sm of this.alliedMinions) {
+                    if (sm.shieldHp > 0) {
+                        sm.hp = Math.min(sm.maxHp, sm.hp + medHeal);
+                    }
+                }
+            }
+        }
 
         for (let i = this.alliedMinions.length - 1; i >= 0; i--) {
             const m = this.alliedMinions[i];
@@ -1045,11 +1230,29 @@ export class CombatSystem {
                 }
                 m.group.position.y = hopY;
 
+                // Big Boss Slime Earthquake Stomp (every 4.0s when near enemies)
+                if (m.isBoss && !m.isGolemBuster) {
+                    m.eqCooldown = (m.eqCooldown || 4.0) - delta;
+                    if (m.eqCooldown <= 0 && dist <= 7.0) {
+                        m.eqCooldown = 4.0;
+                        const isEnhanced = m.enhancedUntil && Date.now() < m.enhancedUntil;
+                        const eqDmg = isEnhanced ? 1800 : 450;
+                        this.engine.addScreenshake(0.65);
+                        this.engine.spawnGroundShockwave(m.group.position, 0x00e5ff, 7.5);
+                        if (this.audio) this.audio.playSfx('bump');
+                        this.spawnFloatingDamage(m.group.position, `👑 EARTHQUAKE: ${eqDmg}`, true, true);
+                        this.damageMonstersInRadius(player, m.group.position, 7.5, eqDmg, monsters, onMonsterKilled);
+                    }
+                }
+
                 if (dist <= 2.8 && m.attackCooldown <= 0) {
                     m.attackCooldown = m.isGolemBuster ? 1.5 : 1.1;
+                    const isEnhanced = m.enhancedUntil && Date.now() < m.enhancedUntil;
+                    const enhanceMult = isEnhanced ? 2.0 : 1.0;
+
                     let dmg = 0;
                     if (m.isGolemBuster) {
-                        const rawDmg = Math.floor(m.matk || (m.intVal * 2.5));
+                        const rawDmg = Math.floor((m.matk || (m.intVal * 2.5)) * enhanceMult);
                         dmg = Math.max(1, rawDmg - (target.def || 0));
                         target.takeDamage(dmg);
                         if (target.provoke) target.provoke(m, 10.0);
@@ -1057,7 +1260,7 @@ export class CombatSystem {
                         this.engine.spawnGroundShockwave(target.group.position, 0x00e5ff, 3.2);
                         this.spawnFloatingDamage(target.group.position, `🤖 BUSTER SLAM: ${dmg}`, true, true);
                     } else {
-                        const mult = m.isBoss ? 3.0 : 1.5;
+                        const mult = (m.isBoss ? 3.0 : 1.5) * enhanceMult;
                         const rawDmg = Math.floor(m.intVal * mult);
                         dmg = Math.max(1, rawDmg - (target.def || 0));
                         target.takeDamage(dmg);
@@ -1180,6 +1383,9 @@ export class CombatSystem {
 
         // Update Active 3D Allied Minions
         this.updateAlliedMinions(delta, player, monsters, onMonsterKilled);
+
+        // Update Ninja Assassin 3D Shadow Clone
+        this.updateShadowClone(delta, player, monsters, onMonsterKilled);
 
         // Update Persistent Fire Zones
         this.updateFireZones(delta, player, monsters, onMonsterKilled);

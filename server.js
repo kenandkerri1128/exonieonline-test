@@ -45,6 +45,11 @@ try {
     if (supabaseUrl && supabaseKey) {
         supabase = createClient(supabaseUrl, supabaseKey);
         console.log(`✅ [Supabase] Connected to live database at: ${supabaseUrl}`);
+
+        // 🛡️ IMMEDIATELY PURGE INVALID COOLDOWNS (Haunted House is an unlimited challenge, NEVER has a cooldown!)
+        supabase.from('boss_timers').delete().in('boss_id', ['hauntedhouse', 'hh_wraith_king', 'town', 'trainingtavern']).then(() => {
+            console.log('✅ [Supabase Cleanup] Successfully purged hauntedhouse, town, and tavern from boss_timers.');
+        }).catch(err => console.warn('[Supabase Cleanup Warning]:', err.message));
     } else {
         console.warn('⚠️ [Supabase Notice] SUPABASE_URL or SUPABASE_KEY missing. Database calls will safely use memory fallback.');
     }
@@ -1451,6 +1456,11 @@ io.on('connection', (socket) => {
                     if (bTimers) {
                         const now = Date.now();
                         bTimers.forEach(t => {
+                            // 🛡️ STRICT 2D EXONIE: Haunted House, Town, and Tavern NEVER have cooldowns! Purge if found.
+                            if (t.boss_id === 'hauntedhouse' || t.boss_id === 'hh_wraith_king' || t.boss_id === 'town' || t.boss_id === 'trainingtavern') {
+                                supabase.from('boss_timers').delete().eq('boss_id', t.boss_id).then(() => {});
+                                return;
+                            }
                             const deathTime = parseInt(t.last_death_time) || 0;
                             let rem = 0;
                             if (t.boss_id === 'neutralzone_boss') {
@@ -1471,6 +1481,11 @@ io.on('connection', (socket) => {
             } else {
                 activeCooldowns = Object.assign({}, bossTimersMemory);
             }
+            // Remove invalid keys from memory fallback as well
+            delete activeCooldowns['hauntedhouse'];
+            delete activeCooldowns['hh_wraith_king'];
+            delete activeCooldowns['town'];
+            delete activeCooldowns['trainingtavern'];
             socket.emit('bossCooldownSync', activeCooldowns);
 
             console.log(`[WORLD] ${finalName} (Email: ${userEmail}, Slot ${slotIdx + 1}) entered 3D world (Socket: ${socket.id})`);
@@ -1488,6 +1503,10 @@ io.on('connection', (socket) => {
                 if (bTimers) {
                     const now = Date.now();
                     bTimers.forEach(t => {
+                        if (t.boss_id === 'hauntedhouse' || t.boss_id === 'hh_wraith_king' || t.boss_id === 'town' || t.boss_id === 'trainingtavern') {
+                            supabase.from('boss_timers').delete().eq('boss_id', t.boss_id).then(() => {});
+                            return;
+                        }
                         const deathTime = parseInt(t.last_death_time) || 0;
                         let rem = 0;
                         if (t.boss_id === 'neutralzone_boss') {
@@ -1508,6 +1527,10 @@ io.on('connection', (socket) => {
         } else {
             activeCooldowns = Object.assign({}, bossTimersMemory);
         }
+        delete activeCooldowns['hauntedhouse'];
+        delete activeCooldowns['hh_wraith_king'];
+        delete activeCooldowns['town'];
+        delete activeCooldowns['trainingtavern'];
         socket.emit('bossCooldownSync', activeCooldowns);
     });
 
@@ -1604,12 +1627,13 @@ io.on('connection', (socket) => {
     });
 
     // ==========================================
-    // 📢 WORLD ANNOUNCEMENTS & GLOBAL SYNC
+    // 📢 WORLD ANNOUNCEMENTS & GLOBAL SYNC (No Self-Echo!)
     // ==========================================
     socket.on('broadcastWorldAnnouncement', (data) => {
         if (data && data.html) {
-            io.emit('worldAnnouncement', data);
-            io.emit('worldChatMessage', { id: 'ANNOUNCEMENT', text: data.html.replace(/<[^>]+>/g, '') });
+            // Use broadcast so the triggering client (who already rendered it locally) does NOT get a duplicate echo!
+            socket.broadcast.emit('worldAnnouncement', data);
+            socket.broadcast.emit('worldChatMessage', { id: 'ANNOUNCEMENT', text: data.html.replace(/<[^>]+>/g, '') });
         }
     });
 
@@ -1619,6 +1643,11 @@ io.on('connection', (socket) => {
     socket.on('floorBossKilled', async (data) => {
         if (!data || !data.floorId) return;
         const floorId = String(data.floorId).toLowerCase();
+
+        // 🛡️ STRICT 2D EXONIE RULE: Instanced / Private maps NEVER set 24h floor cooldown or world announcements
+        const noAnnounceMaps = ['town', 'neutralzone', 'battlefield', 'hauntedhouse', 'trainingtavern'];
+        if (noAnnounceMaps.includes(floorId) || floorId.startsWith('dungeon')) return;
+
         const now = Date.now();
         const cdDuration = 24 * 60 * 60 * 1000; // 24 Hours matching 2D Exonie
         bossTimersMemory[floorId] = now + cdDuration;
@@ -1718,6 +1747,34 @@ io.on('connection', (socket) => {
         clearTimeout(global.bfBossDespawnTimer);
         clearTimeout(global.bfBossSpawnTimer);
         scheduleBattlefieldBoss();
+    });
+
+    // ==========================================
+    // 🛡️ MULTIPLAYER SKILL EFFECTS & SHIELD BROADCASTS
+    // ==========================================
+    socket.on('applyGammaShield', (data) => {
+        if (!data) return;
+        socket.broadcast.emit('applyGammaShield', data);
+    });
+
+    socket.on('breakGammaShield', (data) => {
+        if (!data) return;
+        socket.broadcast.emit('breakGammaShield', data);
+    });
+
+    socket.on('remoteSkillEffect', (data) => {
+        if (!data) return;
+        socket.broadcast.emit('remoteSkillEffect', data);
+    });
+
+    socket.on('partyHeal', (data) => {
+        if (!data) return;
+        socket.broadcast.emit('partyHeal', data);
+    });
+
+    socket.on('partyRevive', (data) => {
+        if (!data) return;
+        socket.broadcast.emit('partyRevive', data);
     });
 
     // ==========================================

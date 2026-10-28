@@ -572,6 +572,85 @@ export class Engine3D {
         }
     }
 
+    // ==========================================
+    // ❄️ ICE MASTER: 3D FALLING ICICLE DROP
+    // ==========================================
+    spawnFallingIcicle(targetPos, onImpact = null) {
+        const group = new THREE.Group();
+        const startY = targetPos.y + 11.0;
+        group.position.set(targetPos.x, startY, targetPos.z);
+
+        const geo = new THREE.ConeGeometry(0.35, 2.2, 8);
+        geo.rotateX(Math.PI); // Point downward!
+        const mat = new THREE.MeshStandardMaterial({
+            color: 0x80d8ff,
+            emissive: 0x00e5ff,
+            emissiveIntensity: 0.8,
+            roughness: 0.1,
+            metalness: 0.9,
+            transparent: true,
+            opacity: 0.85
+        });
+        const cone = new THREE.Mesh(geo, mat);
+        group.add(cone);
+        this.scene.add(group);
+
+        const fallDuration = 0.26;
+        let elapsed = 0;
+        const tickInterval = setInterval(() => {
+            elapsed += 0.016;
+            const t = Math.min(1.0, elapsed / fallDuration);
+            group.position.y = THREE.MathUtils.lerp(startY, targetPos.y + 0.2, t * t);
+            if (t >= 1.0) {
+                clearInterval(tickInterval);
+                this.scene.remove(group);
+                geo.dispose();
+                mat.dispose();
+                this.spawnGroundShockwave(targetPos, 0x00e5ff, 4.5);
+                this.spawnHitSparks(targetPos, 0x80d8ff, 28);
+                if (onImpact) onImpact();
+            }
+        }, 16);
+    }
+
+    // ==========================================
+    // 🌫️ NINJA ASSASSIN: 3D VOLUMETRIC SMOKE CLOUD
+    // ==========================================
+    spawnSmokeCloud(pos, durationSec = 10.0) {
+        const group = new THREE.Group();
+        group.position.set(pos.x, 0.15, pos.z);
+
+        for (let i = 0; i < 4; i++) {
+            const r = 2.4 + i * 0.7;
+            const geo = new THREE.CircleGeometry(r, 20);
+            const mat = new THREE.MeshBasicMaterial({
+                color: 0x424242,
+                transparent: true,
+                opacity: 0.35 - i * 0.06,
+                depthWrite: false,
+                side: THREE.DoubleSide
+            });
+            const mesh = new THREE.Mesh(geo, mat);
+            mesh.rotation.x = -Math.PI / 2;
+            mesh.position.y = i * 0.08;
+            group.add(mesh);
+        }
+        this.scene.add(group);
+
+        const startTs = performance.now();
+        const intervalId = setInterval(() => {
+            const age = (performance.now() - startTs) / 1000;
+            if (age >= durationSec) {
+                clearInterval(intervalId);
+                this.scene.remove(group);
+            } else {
+                group.rotation.y += 0.015;
+                const scale = 1.0 + Math.sin(age * 2) * 0.12;
+                group.scale.set(scale, 1, scale);
+            }
+        }, 32);
+    }
+
     updateParticles(dt) {
         let activeCount = 0;
         for (let i = 0; i < MAX_PARTICLES; i++) {
