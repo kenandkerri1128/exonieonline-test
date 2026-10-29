@@ -358,6 +358,65 @@ export class UIManager {
             };
         }
 
+        // ==========================================
+        // UNIFIED GAME MENU DROPDOWN EVENTS
+        // ==========================================
+        const btnMenuToggle = document.getElementById('btn-main-menu-toggle');
+        if (btnMenuToggle) {
+            btnMenuToggle.onclick = (e) => {
+                e.stopPropagation();
+                this.toggleDropdownMenu();
+            };
+        }
+
+        const btnCloseDrop = document.getElementById('btn-close-dropdown');
+        if (btnCloseDrop) {
+            btnCloseDrop.onclick = (e) => {
+                e.stopPropagation();
+                this.closeDropdownMenu();
+            };
+        }
+
+        // Close dropdown when clicking outside
+        window.addEventListener('click', (e) => {
+            const wrapper = document.querySelector('.hud-menu-dropdown-wrapper');
+            if (wrapper && !wrapper.contains(e.target)) {
+                this.closeDropdownMenu();
+            }
+        });
+
+        // Close dropdown when any item in the dropdown is clicked
+        document.querySelectorAll('.dropdown-menu-item').forEach(item => {
+            item.addEventListener('click', () => {
+                this.closeDropdownMenu();
+            });
+        });
+
+        // Additional Dropdown Menu Actions
+        const btnDropShop = document.getElementById('btn-dropdown-shop');
+        if (btnDropShop) {
+            btnDropShop.onclick = () => {
+                this.closeDropdownMenu();
+                this.toggleMarketplace();
+            };
+        }
+
+        const btnDropTavern = document.getElementById('btn-dropdown-tavern');
+        if (btnDropTavern) {
+            btnDropTavern.onclick = () => {
+                this.closeDropdownMenu();
+                this.openTavernModal();
+            };
+        }
+
+        const btnDropPotion = document.getElementById('btn-dropdown-potion');
+        if (btnDropPotion) {
+            btnDropPotion.onclick = () => {
+                this.closeDropdownMenu();
+                this.game?.useHealthPotion();
+            };
+        }
+
         const chkHighQuality = document.getElementById('chk-high-quality');
         if (chkHighQuality) {
             chkHighQuality.onchange = (e) => {
@@ -782,11 +841,21 @@ export class UIManager {
                 hbName2.textContent = s2 ? (player.level >= s2.unlock ? s2.name : `${s2.name} (Lv.${s2.unlock})`) : 'Passive';
                 hbName2.style.color = (s2 && player.level >= s2.unlock) ? '#38bdf8' : '#94a3b8';
             }
-            if (hbIcon1) hbIcon1.textContent = pClass === 'Healer' ? '💚' : (pClass === 'Ice Master' ? '❄️' : '⚡');
-            if (hbIcon2) hbIcon2.textContent = pClass === 'Healer' ? '✨' : (pClass === 'Ice Master' ? '🌨️' : '🔥');
+            if (hbIcon1) hbIcon1.textContent = '1';
+            if (hbIcon2) hbIcon2.textContent = '2';
+            const mIcon1 = document.getElementById('m-icon-skill1');
+            if (mIcon1) mIcon1.textContent = '1';
+            const mIcon2 = document.getElementById('m-icon-skill2');
+            if (mIcon2) mIcon2.textContent = '2';
         } else {
             if (hbName1) { hbName1.textContent = 'Skill 1'; hbName1.style.color = '#94a3b8'; }
             if (hbName2) { hbName2.textContent = 'Skill 2'; hbName2.style.color = '#94a3b8'; }
+            if (hbIcon1) hbIcon1.textContent = '1';
+            if (hbIcon2) hbIcon2.textContent = '2';
+            const mIcon1 = document.getElementById('m-icon-skill1');
+            if (mIcon1) mIcon1.textContent = '1';
+            const mIcon2 = document.getElementById('m-icon-skill2');
+            if (mIcon2) mIcon2.textContent = '2';
         }
 
         this.refreshKeybindLabels();
@@ -861,6 +930,7 @@ export class UIManager {
     // 🏰 GUILD SYSTEM UI (2D REPLICATED)
     // ==========================================
     toggleGuildModal() {
+        this.closeDropdownMenu();
         let modal = document.getElementById('guild-modal');
         if (!modal) {
             modal = document.createElement('div');
@@ -1157,7 +1227,21 @@ export class UIManager {
         setAttr('btn-cash-shop', 'title', `Cash Shop [${this.formatKeyLabel(kb.shop)}]`);
     }
 
+    toggleDropdownMenu(forceState = null) {
+        const menu = document.getElementById('hud-dropdown-menu');
+        if (!menu) return;
+        const isHidden = (forceState !== null)
+            ? !forceState
+            : (menu.style.display === 'none' || !menu.style.display);
+        menu.style.display = isHidden ? 'flex' : 'none';
+    }
+
+    closeDropdownMenu() {
+        this.toggleDropdownMenu(false);
+    }
+
     toggleStats() {
+        this.closeDropdownMenu();
         if (!this.statsModal) return;
         const isHidden = this.statsModal.style.display === 'none' || !this.statsModal.style.display;
         this.statsModal.style.display = isHidden ? 'flex' : 'none';
@@ -1284,6 +1368,7 @@ export class UIManager {
     // INVENTORY / BAG SCREEN
     // ==========================================
     toggleInventory() {
+        this.closeDropdownMenu();
         if (!this.inventoryModal) return;
         const isHidden = this.inventoryModal.style.display === 'none' || !this.inventoryModal.style.display;
         this.inventoryModal.style.display = isHidden ? 'flex' : 'none';
@@ -1822,6 +1907,7 @@ export class UIManager {
     // SKILLS & CLASS CHOOSING SCREEN
     // ==========================================
     toggleSkills() {
+        this.closeDropdownMenu();
         if (!this.skillModal) return;
         const isHidden = this.skillModal.style.display === 'none' || !this.skillModal.style.display;
         this.skillModal.style.display = isHidden ? 'flex' : 'none';
@@ -1835,6 +1921,13 @@ export class UIManager {
     // ESC SETTINGS MENU & MARKETPLACE MODAL
     // ==========================================
     toggleSettings() {
+        // If dropdown menu is open, pressing ESC closes that first
+        const dropMenu = document.getElementById('hud-dropdown-menu');
+        if (dropMenu && dropMenu.style.display === 'flex') {
+            this.closeDropdownMenu();
+            return;
+        }
+
         // If another modal is open, pressing ESC closes that modal first
         if (this.statsModal && this.statsModal.style.display === 'flex') {
             this.statsModal.style.display = 'none';
@@ -1926,6 +2019,7 @@ export class UIManager {
     }
 
     closeAllModals() {
+        this.closeDropdownMenu();
         const modals = [
             this.marketplaceModal, this.storageModal, this.dailyMissionsModal,
             this.tavernModal, this.leaderboardModal, this.dungeonModal,
@@ -2322,6 +2416,7 @@ export class UIManager {
     // 🤝 FRIENDS SYSTEM (HOTKEY 'F')
     // ==========================================
     openFriendsModal() {
+        this.closeDropdownMenu();
         if (!this.friendsModal) return;
         document.exitPointerLock?.();
         this.friendsModal.style.display = 'flex';
@@ -2797,6 +2892,7 @@ export class UIManager {
     // 📬 SYSTEM MAILBOX UI (2D EXONIE REPLICATED)
     // ==========================================
     toggleMailbox() {
+        this.closeDropdownMenu();
         const modal = document.getElementById('mailbox-modal');
         if (!modal) return;
         const isHidden = modal.style.display === 'none' || !modal.style.display;
@@ -2883,6 +2979,7 @@ export class UIManager {
     // 💎 CASH SHOP (EXO EMPORIUM) UI METHODS (STEAM IAP REPLICATED)
     // ==========================================
     toggleCashShop() {
+        this.closeDropdownMenu();
         if (!this.cashShopModal) this.cashShopModal = document.getElementById('cash-shop-modal');
         if (!this.cashShopModal) return;
 

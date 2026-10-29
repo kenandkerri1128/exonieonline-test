@@ -35,7 +35,7 @@
       }
     </script>
     <link rel="preload" as="image" href="loadingscreen.png">
-    <link rel="stylesheet" href="css/style.css?v=3.9">
+    <link rel="stylesheet" href="css/style.css?v=4.0">
 
     <!-- Native ES Module Import Map for Three.js -->
     <script type="importmap">
@@ -357,19 +357,78 @@
 
         <!-- Top Right: Gold, Menu & Minimap -->
         <div class="hud-top-right">
-            <div class="gold-counter">🪙 <span id="gold-val">500</span></div>
-            <div class="hud-menu-buttons">
-                <button class="hud-btn" id="btn-stats" title="Player Stats [P]">📊</button>
-                <button class="hud-btn" id="btn-inventory" title="Inventory [B]">🎒</button>
-                <button class="hud-btn" id="btn-skills" title="Skills & Class [K]">📜</button>
-                <button class="hud-btn" id="btn-guild" title="Guild [G]" onclick="window.game?.ui?.toggleGuildModal()">🏰</button>
-                <button class="hud-btn" id="btn-friends" title="Friends [F]" onclick="window.game?.ui?.toggleFriendsModal()">👥</button>
-                <button class="hud-btn" id="btn-mailbox" title="System Mail [M]" onclick="window.game?.ui?.toggleMailbox()" style="position:relative;">
-                    ✉️
-                    <span id="hud-mail-badge" style="display:none; position:absolute; top:-4px; right:-4px; background:#ef4444; color:#fff; font-size:10px; font-weight:bold; width:16px; height:16px; border-radius:50%; line-height:16px; text-align:center; box-shadow:0 0 6px #ef4444;">1</span>
-                </button>
-                <button class="hud-btn" id="btn-cash-shop" title="Cash Shop [C]" style="color:#e040fb; text-shadow:0 0 8px #e040fb;">💎</button>
-                <button class="hud-btn" id="btn-settings" title="Settings [ESC]">⚙️</button>
+            <div class="hud-top-right-header" style="display:flex; align-items:center; gap:8px;">
+                <div class="gold-counter">🪙 <span id="gold-val">500</span></div>
+                
+                <!-- Circuit Siege Style Unified Game Menu Dropdown -->
+                <div class="hud-menu-dropdown-wrapper">
+                    <button type="button" class="hud-btn-menu-toggle" id="btn-main-menu-toggle" title="Game Menu">
+                        <span class="menu-icon">☰</span>
+                        <span class="menu-label">MENU</span>
+                        <span id="hud-mail-badge" class="menu-mail-indicator" style="display:none;">1</span>
+                    </button>
+                    <div id="hud-dropdown-menu" class="hud-dropdown-menu" style="display:none;">
+                        <div class="dropdown-header">
+                            <span class="dropdown-title">⚔️ EXONIE MENU</span>
+                            <button type="button" class="btn-close-dropdown" id="btn-close-dropdown">✖</button>
+                        </div>
+                        <div class="dropdown-items-grid">
+                            <button type="button" class="dropdown-menu-item" id="btn-inventory" title="Inventory [B]">
+                                <span class="d-icon">🎒</span>
+                                <span class="d-text">Bag</span>
+                                <span class="d-badge">B</span>
+                            </button>
+                            <button type="button" class="dropdown-menu-item" id="btn-stats" title="Player Stats [P]">
+                                <span class="d-icon">📊</span>
+                                <span class="d-text">Stats</span>
+                                <span class="d-badge">P</span>
+                            </button>
+                            <button type="button" class="dropdown-menu-item" id="btn-skills" title="Skills & Class [K]">
+                                <span class="d-icon">📜</span>
+                                <span class="d-text">Skills</span>
+                                <span class="d-badge">K</span>
+                            </button>
+                            <button type="button" class="dropdown-menu-item" id="btn-dropdown-shop" title="Marketplace">
+                                <span class="d-icon">🏪</span>
+                                <span class="d-text">Shop</span>
+                            </button>
+                            <button type="button" class="dropdown-menu-item" id="btn-dropdown-tavern" title="Training Tavern Speedrun">
+                                <span class="d-icon">🍺</span>
+                                <span class="d-text">Tavern</span>
+                            </button>
+                            <button type="button" class="dropdown-menu-item" id="btn-cash-shop" title="Cash Shop [C]" style="color:#e040fb;">
+                                <span class="d-icon">💎</span>
+                                <span class="d-text" style="color:#e040fb;">Cash Shop</span>
+                                <span class="d-badge" style="color:#e040fb; border-color:rgba(224,64,251,0.4);">C</span>
+                            </button>
+                            <button type="button" class="dropdown-menu-item" id="btn-guild" title="Guild [G]">
+                                <span class="d-icon">🏰</span>
+                                <span class="d-text">Guild</span>
+                                <span class="d-badge">G</span>
+                            </button>
+                            <button type="button" class="dropdown-menu-item" id="btn-friends" title="Friends & Party [F]">
+                                <span class="d-icon">👥</span>
+                                <span class="d-text">Party</span>
+                                <span class="d-badge">F</span>
+                            </button>
+                            <button type="button" class="dropdown-menu-item" id="btn-mailbox" title="System Mail [M]">
+                                <span class="d-icon">✉️</span>
+                                <span class="d-text">Mailbox</span>
+                                <span class="d-badge">M</span>
+                            </button>
+                            <button type="button" class="dropdown-menu-item" id="btn-dropdown-potion" title="Health Potion [3]">
+                                <span class="d-icon">🧪</span>
+                                <span class="d-text">Potion (<span id="m-potion-qty">10</span>)</span>
+                                <span class="d-badge">3</span>
+                            </button>
+                            <button type="button" class="dropdown-menu-item" id="btn-settings" title="Settings [ESC]">
+                                <span class="d-icon">⚙️</span>
+                                <span class="d-text">Settings</span>
+                                <span class="d-badge">ESC</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
             </div>
             <div id="minimap-container">
                 <canvas id="minimap-canvas"></canvas>
@@ -412,14 +471,14 @@
         <div id="desktop-hotbar">
             <div class="hotbar-slot" id="hotbar-1" title="Active Skill 1">
                 <span class="hotbar-key" id="hb-key-1">1 / Q</span>
-                <span class="hotbar-icon" id="hb-icon-1">⚔️</span>
+                <span class="hotbar-icon" id="hb-icon-1" style="font-weight:900; font-family:'Orbitron', sans-serif;">1</span>
                 <span class="hotbar-skill-name" id="hb-name-1">Locked</span>
                 <div class="cd-overlay" id="cd-1"></div>
                 <span class="cd-text" id="cdt-1"></span>
             </div>
             <div class="hotbar-slot" id="hotbar-2" title="Active Skill 2">
                 <span class="hotbar-key" id="hb-key-2">2 / E</span>
-                <span class="hotbar-icon" id="hb-icon-2">🔥</span>
+                <span class="hotbar-icon" id="hb-icon-2" style="font-weight:900; font-family:'Orbitron', sans-serif;">2</span>
                 <span class="hotbar-skill-name" id="hb-name-2">Locked</span>
                 <div class="cd-overlay" id="cd-2"></div>
                 <span class="cd-text" id="cdt-2"></span>
@@ -439,15 +498,6 @@
          CRISP MOBILE TOUCH CONTROLS
          ============================================================ -->
     <div id="mobile-controls" style="display:none;">
-        <!-- Mobile Top Shortcut Bar (Stats, Bag, Skills, Potion) -->
-        <div id="mobile-menu-shortcuts">
-            <button class="mobile-short-btn" id="m-btn-stats">📊 Stats</button>
-            <button class="mobile-short-btn" id="m-btn-inventory">🎒 Bag</button>
-            <button class="mobile-short-btn" id="m-btn-skills">📜 Skills</button>
-            <button class="mobile-short-btn" id="m-btn-shop" style="color:#e040fb;">💎 Shop</button>
-            <button class="mobile-short-btn" id="m-btn-potion">🧪 Potion (<span id="m-potion-qty">10</span>)</button>
-        </div>
-
         <!-- Circuit Siege Circular Virtual D-Pad Thumbstick (Bottom Left) -->
         <div id="mobile-dpad-container" class="mobile-dpad-wrap pointer-events-auto">
             <div id="mobile-dpad" class="mobile-dpad">
@@ -468,26 +518,26 @@
                 <span class="btn-icon">🎯</span>
             </button>
 
-            <!-- Skill 2 -->
+            <!-- Skill 2 (Plain 2) -->
             <button class="touch-btn" id="btn-touch-skill2" title="Skill 2">
-                <span class="btn-icon" id="m-icon-skill2">🔥</span>
+                <span class="btn-icon" id="m-icon-skill2" style="font-size:1.45rem; font-weight:900; font-family:'Orbitron', sans-serif;">2</span>
                 <div class="btn-cooldown-overlay" id="m-cd-skill2"></div>
                 <span class="btn-cooldown-txt" id="m-cdt-skill2"></span>
             </button>
 
-            <!-- Skill 1 -->
+            <!-- Skill 1 (Plain 1) -->
             <button class="touch-btn" id="btn-touch-skill1" title="Skill 1">
-                <span class="btn-icon" id="m-icon-skill1">⚡</span>
+                <span class="btn-icon" id="m-icon-skill1" style="font-size:1.45rem; font-weight:900; font-family:'Orbitron', sans-serif;">1</span>
                 <div class="btn-cooldown-overlay" id="m-cd-skill1"></div>
                 <span class="btn-cooldown-txt" id="m-cdt-skill1"></span>
             </button>
 
-            <!-- Jump Button (Touch) -->
+            <!-- Jump Button (Touch) - Placed besides Dodge -->
             <button class="touch-btn" id="btn-touch-jump" title="Jump [Space]">
                 <span class="btn-icon">🦘</span>
             </button>
 
-            <!-- Dodge Roll -->
+            <!-- Dodge Roll (Touch) -->
             <button class="touch-btn" id="btn-touch-dodge" title="Dodge Roll [Shift]">
                 <span class="btn-icon">💨</span>
             </button>
