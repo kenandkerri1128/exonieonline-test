@@ -407,7 +407,6 @@ export class UIManager {
         bindMobBtn('m-menu-guild', () => this.toggleGuildModal());
         bindMobBtn('m-menu-party', () => this.toggleFriendsModal());
         bindMobBtn('m-menu-mail', () => this.toggleMailbox());
-        bindMobBtn('m-menu-pot', () => this.game?.useHealthPotion());
         bindMobBtn('m-menu-settings', () => this.toggleSettings());
 
         const chkHighQuality = document.getElementById('chk-high-quality');
