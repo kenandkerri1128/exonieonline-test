@@ -874,6 +874,17 @@ export class GameApp {
                     }
                     const cleanToast = rawText.startsWith('<') ? rawText.replace(/<[^>]+>/g, '') : rawText;
                     this.ui.showToast(`📢 ${cleanToast}`);
+
+                    // Universal Not Enough Gold Popup Trigger if server returned insufficient funds
+                    const textLower = rawText.toLowerCase();
+                    if ((textLower.includes('not enough gold') || textLower.includes('insufficient funds') || (textLower.includes('need') && textLower.includes('gold'))) && !textLower.includes('gems')) {
+                        let req = 0;
+                        const match = rawText.match(/([\d,]+)\s*(?:G|Gold)/i);
+                        if (match) req = parseInt(match[1].replace(/,/g, ''), 10);
+                        if (this.ui?.showNotEnoughGoldModal) {
+                            this.ui.showNotEnoughGoldModal(req || 1000000, this.player.gold || 0, 'Server Transaction');
+                        }
+                    }
                 });
 
                 this.socket.on('worldAnnouncement', (data) => {
@@ -2024,6 +2035,15 @@ export class GameApp {
             this.ui.showToast('⚠️ No Training Tavern entries remaining today (0/5)!');
             return;
         }
+
+        // Close all modal windows immediately when entering the Tavern
+        if (this.ui) {
+            this.ui.closeAllModals?.();
+            if (this.ui.tavernModal) this.ui.tavernModal.style.display = 'none';
+            if (this.ui.leaderboardModal) this.ui.leaderboardModal.style.display = 'none';
+        }
+        document.querySelectorAll('.game-modal').forEach(m => m.style.display = 'none');
+
         this.player.tavernEntries = Math.max(0, (this.player.tavernEntries || 5) - 1);
         this.saveCharacterToAccountSlot();
         this.world.tavernChallengeConfig = { bossType, level };
@@ -2033,6 +2053,9 @@ export class GameApp {
 
         if (window.showLoadingTransition) {
             window.showLoadingTransition('Training Tavern', subText, 1300, () => {
+                document.querySelectorAll('.game-modal').forEach(m => m.style.display = 'none');
+                if (this.ui?.tavernModal) this.ui.tavernModal.style.display = 'none';
+                if (this.ui?.leaderboardModal) this.ui.leaderboardModal.style.display = 'none';
                 this.loadMap('trainingtavern');
                 this.tavernTimerActive = true;
                 this.tavernStartTime = performance.now();
@@ -2138,6 +2161,9 @@ export class GameApp {
         if ((this.player.gold || 0) < cost) {
             this.audio.playSfx('bump');
             this.ui.showToast(`⚠️ Not enough gold! You need ${cost.toLocaleString()} G.`);
+            if (this.ui?.showNotEnoughGoldModal) {
+                this.ui.showNotEnoughGoldModal(cost, this.player.gold || 0, `Haunted House (${difficulty.toUpperCase()})`);
+            }
             return;
         }
 
@@ -3044,6 +3070,14 @@ export class GameApp {
         const data = this.world.loadMap(mapId, targetX, targetY);
         this.player.pos.copy(data.spawn);
 
+        // Ensure all modal windows are completely closed upon entering any map (including Tavern)
+        if (this.ui) {
+            this.ui.closeAllModals?.();
+            if (this.ui.tavernModal) this.ui.tavernModal.style.display = 'none';
+            if (this.ui.leaderboardModal) this.ui.leaderboardModal.style.display = 'none';
+        }
+        document.querySelectorAll('.game-modal').forEach(m => m.style.display = 'none');
+
         // Notify server to transfer socket instance room (Private Solo/Party instance for Home/Dungeons)
         if (this.socket && this.socket.connected) {
             this.socket.emit('changeMap', {
@@ -3279,17 +3313,15 @@ export class GameApp {
             this.recordTavernRun(cfg.bossType, mob.level, elapsedMs);
 
             const secStr = (elapsedMs / 1000).toFixed(2);
-            this.ui.showWorldAnnouncement(
-                `🍺 <strong style="color:#00e5ff;">[TAVERN RANKING] ${this.player.name}</strong> defeated Lv.${mob.level} <strong>${mob.name}</strong> in <strong style="color:#fde047;">${secStr}s</strong>!`,
-                '#ffab00'
-            );
+            // Strict user requirement: Tavern announcement is strictly LOCAL, NEVER broadcast to WORLD
+            this.appendChatLine('local', `🍺 <strong style="color:#00e5ff;">[TAVERN]</strong> Defeated Lv.${mob.level} <strong>${mob.name}</strong> in <strong style="color:#fde047;">${secStr}s</strong>!`);
+            this.ui.showToast(`🍺 [TAVERN] Defeated Lv.${mob.level} ${mob.name} in ${secStr}s!`);
 
-            // Auto-teleport back to town after victory matching 2D Exonie
+            // Auto-teleport back to town after victory matching 2D Exonie (No window popup per user request)
             setTimeout(() => {
                 if (this.currentMapId === 'trainingtavern') {
                     this.ui.updateTavernTimer(0, false);
                     this.loadMap('town');
-                    this.ui.openLeaderboardModal(cfg.bossType);
                 }
             }, 3400);
         }
@@ -4024,9 +4056,21 @@ export class GameApp {
             revival: 500
         };
         const cost = prices[kind] || 100;
-        if (this.player.gold < cost) {
+        const currentGold = this.player.gold || 0;
+        if (currentGold < cost) {
             this.audio.playSfx('bump');
             this.ui.showToast(`⚠️ Not enough Gold! Need ${cost} Gold.`);
+            const itemLabels = {
+                potion: 'Health Potion x5',
+                potions: 'Health Potion x5',
+                refinement: 'Refinement Stone',
+                stone: 'Refinement Stone',
+                gem: 'Power Gem',
+                revival: 'Revival Juice'
+            };
+            if (this.ui?.showNotEnoughGoldModal) {
+                this.ui.showNotEnoughGoldModal(cost, currentGold, `Marketplace (${itemLabels[kind] || kind})`);
+            }
             return;
         }
 

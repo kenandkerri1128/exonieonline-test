@@ -44,6 +44,7 @@ export class UIManager {
         this.mazeGuideModal = document.getElementById('maze-guide-modal');
         this.hauntedHouseModal = document.getElementById('haunted-house-modal');
         this.cashShopModal = document.getElementById('cash-shop-modal');
+        this.notEnoughGoldModal = document.getElementById('not-enough-gold-modal');
         this.tradeDialog = document.getElementById('trade-dialog');
         this.tradeScreen = document.getElementById('trade-screen');
         this.isTradeOpen = false;
@@ -507,9 +508,28 @@ export class UIManager {
         };
 
         window.enterHauntedHouseChallenge = (difficulty) => {
+            let cost = 1000;
+            if (difficulty === 'normal') cost = 10000;
+            else if (difficulty === 'hard') cost = 500000;
+            const currentGold = this.game?.player?.gold || 0;
+            if (currentGold < cost) {
+                this.showNotEnoughGoldModal(cost, currentGold, `Haunted House (${difficulty.toUpperCase()})`);
+                return;
+            }
             if (this.hauntedHouseModal) this.hauntedHouseModal.style.display = 'none';
             if (this.game) this.game.enterHauntedHouse(difficulty);
         };
+
+        const btnNegClose = document.getElementById('btn-neg-close');
+        if (btnNegClose) {
+            btnNegClose.onclick = () => {
+                if (this.notEnoughGoldModal) this.notEnoughGoldModal.style.display = 'none';
+                else {
+                    const m = document.getElementById('not-enough-gold-modal');
+                    if (m) m.style.display = 'none';
+                }
+            };
+        }
 
         // 🤝 Friends List [F] & Party Event Listeners
         const btnCloseFriends = document.getElementById('btn-close-friends');
@@ -1695,11 +1715,54 @@ export class UIManager {
             this.tavernModal, this.leaderboardModal, this.dungeonModal,
             this.mazeGuideModal, this.settingsModal, this.statsModal,
             this.inventoryModal, this.skillsModal, this.inspectModal,
-            this.cashShopModal, this.tradeScreen,
+            this.cashShopModal, this.tradeScreen, this.notEnoughGoldModal,
             document.getElementById('home-sale-modal'),
-            document.getElementById('guild-modal')
+            document.getElementById('guild-modal'),
+            document.getElementById('not-enough-gold-modal')
         ];
         return modals.some(m => m && (m.style.display === 'flex' || m.style.display === 'block'));
+    }
+
+    closeAllModals() {
+        const modals = [
+            this.marketplaceModal, this.storageModal, this.dailyMissionsModal,
+            this.tavernModal, this.leaderboardModal, this.dungeonModal,
+            this.mazeGuideModal, this.settingsModal, this.statsModal,
+            this.inventoryModal, this.skillsModal, this.inspectModal,
+            this.cashShopModal, this.tradeScreen, this.notEnoughGoldModal,
+            document.getElementById('home-sale-modal'),
+            document.getElementById('guild-modal'),
+            document.getElementById('guild-invite-dialog'),
+            document.getElementById('friends-modal'),
+            document.getElementById('mailbox-modal'),
+            document.getElementById('cosmetic-preview-modal'),
+            document.getElementById('not-enough-gold-modal')
+        ];
+        modals.forEach(m => {
+            if (m) m.style.display = 'none';
+        });
+        document.querySelectorAll('.game-modal').forEach(m => m.style.display = 'none');
+        document.querySelectorAll('.game-modal-dialog').forEach(m => m.style.display = 'none');
+    }
+
+    showNotEnoughGoldModal(required, current, actionName = 'this action') {
+        window.game?.audio?.playSfx?.('bump');
+        const modal = document.getElementById('not-enough-gold-modal');
+        if (!modal) {
+            alert(`Not enough Gold! You need ${Number(required || 0).toLocaleString()} G.`);
+            return;
+        }
+        const reqEl = document.getElementById('neg-modal-required');
+        const curEl = document.getElementById('neg-modal-current');
+        const msgEl = document.getElementById('neg-modal-msg');
+        if (reqEl) reqEl.textContent = `${Number(required || 0).toLocaleString()} G`;
+        if (curEl) curEl.textContent = `${Number(current || 0).toLocaleString()} G`;
+        if (msgEl) {
+            const deficit = Math.max(0, (Number(required) || 0) - (Number(current) || 0));
+            msgEl.innerHTML = `You do not have enough Gold for <strong>${actionName}</strong>.<br><span style="color:#94a3b8; font-size:0.83rem;">You are short by <strong style="color:#fde047;">${deficit.toLocaleString()} G</strong>.</span>`;
+        }
+        modal.style.display = 'flex';
+        document.exitPointerLock?.();
     }
 
     openInspectModal(data) {
@@ -2956,6 +3019,13 @@ window.ahList = function() {
 };
 
 window.ahBuy = function(auctionId, price, itemName) {
+    const currentGold = window.game?.player?.gold || 0;
+    const cost = Number(price) || 0;
+    if (currentGold < cost) {
+        window.game?.audio?.playSfx?.('bump');
+        window.game?.ui?.showNotEnoughGoldModal(cost, currentGold, `Auction Listing: ${itemName}`);
+        return;
+    }
     if (!confirm(`Buy ${itemName} for ${Number(price).toLocaleString()} Gold?`)) return;
     const socket = window.game?.socket;
     if (socket?.connected) {
@@ -3131,7 +3201,8 @@ window.attemptDivineForge = function() {
     }
 
     if ((player.gold || 0) < reqGold) {
-        alert(`You need ${reqGold.toLocaleString()} Gold to forge this ascension.`);
+        window.game?.audio?.playSfx?.('bump');
+        window.game?.ui?.showNotEnoughGoldModal(reqGold, player.gold || 0, 'Divine Forge Ascension');
         return;
     }
 
@@ -3206,7 +3277,8 @@ window.craftStatForger = function() {
     if (!player) return;
 
     if ((player.gold || 0) < 300000) {
-        alert('You need 300,000 Gold to craft a Stat Forger.');
+        window.game?.audio?.playSfx?.('bump');
+        window.game?.ui?.showNotEnoughGoldModal(300000, player.gold || 0, 'Unique Stat Forger Crafting');
         return;
     }
 
@@ -3505,6 +3577,13 @@ window.requestMazeTeleport = function(floorNum) {
 };
 
 window.createGuildPrompt = function() {
+    const currentGold = window.game?.player?.gold || 0;
+    const reqGold = 1000000;
+    if (currentGold < reqGold) {
+        window.game?.audio?.playSfx?.('bump');
+        window.game?.ui?.showNotEnoughGoldModal(reqGold, currentGold, 'Guild Establishment');
+        return;
+    }
     const name = prompt("Enter a name for your new Guild (3-15 chars):");
     if (name && name.trim().length >= 3 && name.trim().length <= 15) {
         window.game?.socket?.emit('createGuild', name.trim());
@@ -3521,6 +3600,11 @@ window.applyToGuild = function(gName) {
 window.donateGuildPrompt = function() {
     const currentGold = window.game?.player?.gold || 0;
     const charName = window.game?.player?.name || 'Your character';
+    if (currentGold <= 0) {
+        window.game?.audio?.playSfx?.('bump');
+        window.game?.ui?.showNotEnoughGoldModal(1, 0, 'Guild Donation');
+        return;
+    }
     const amtStr = prompt(`How much Gold would you like to donate to Guild Funds?\n\nAvailable Personal Gold (${charName}): ${currentGold.toLocaleString()} G`);
     if (amtStr === null) return;
     const parsed = parseInt(amtStr.replace(/,/g, '').trim(), 10);
@@ -3532,6 +3616,7 @@ window.donateGuildPrompt = function() {
     if (parsed > currentGold) {
         window.game?.audio?.playSfx?.('bump');
         window.game?.ui?.showToast(`⚠️ Insufficient Gold! ${charName} only has ${currentGold.toLocaleString()} G.`);
+        window.game?.ui?.showNotEnoughGoldModal(parsed, currentGold, 'Guild Donation');
         return;
     }
     window.game?.socket?.emit('donateGuildGold', parsed);
@@ -3546,6 +3631,12 @@ window.guildLevelUpConfirm = function() {
         return;
     }
     const nextLvl = currentLevel + 1;
+    const reqFunds = 1000000;
+    if (guildGold < reqFunds) {
+        window.game?.audio?.playSfx?.('bump');
+        window.game?.ui?.showNotEnoughGoldModal(reqFunds, guildGold, `Guild Level Up to Lv.${nextLvl} (Guild Funds)`);
+        return;
+    }
     if (confirm(`Level up the Guild to Level ${nextLvl} for 1,000,000 Guild Funds?\n\nAvailable Guild Funds: ${guildGold.toLocaleString()} G\nNext Level Perks:\n• +${nextLvl * 2}% All Combat Stats (+${nextLvl * 2}% to HP, ATK, MAG, DEF)\n• +${nextLvl * 2}% Bonus Monster & Boss EXP\n• ${20 + (nextLvl * 5)} Max Guild Members`)) {
         window.game?.socket?.emit('requestGuildLevelUp');
     }
@@ -3578,9 +3669,11 @@ window.openHomeSaleUI = function() {
 window.buyHome = function() {
     const charName = window.game?.player?.name || 'This character';
     const currentGold = window.game?.player?.gold || 0;
-    if (currentGold < 1000000) {
+    const cost = 1000000;
+    if (currentGold < cost) {
         window.game?.audio?.playSfx?.('bump');
         window.game?.ui?.showToast(`⚠️ ${charName} needs 1,000,000 Gold to purchase a Home! (Current: ${currentGold.toLocaleString()} G)`);
+        window.game?.ui?.showNotEnoughGoldModal(cost, currentGold, 'Home Deed Purchase');
         return;
     }
     const modal = document.getElementById('home-sale-modal');
@@ -3597,6 +3690,12 @@ window.buyHome = function() {
 
 window.buyGuildBaseConfirm = function() {
     const guildGold = window.game?.ui?.lastGuildData?.guildGold || 0;
+    const cost = 1000000;
+    if (guildGold < cost) {
+        window.game?.audio?.playSfx?.('bump');
+        window.game?.ui?.showNotEnoughGoldModal(cost, guildGold, 'Guild Base Purchase (Guild Funds)');
+        return;
+    }
     if (confirm(`Spend 1,000,000 Guild Funds to purchase a Guild Base? (Available in Guild Funds: ${guildGold.toLocaleString()} G)\nOnly the Guild Master can purchase the Base.`)) {
         window.game?.socket?.emit('requestBuyGuildBase');
     }
@@ -3832,4 +3931,13 @@ window.tryOnCosmetic = function(type, cosmId, itemName) {
             game.player.char3D.setCosmeticPet(originalPet);
         }
     }, 8000);
+};
+
+// Global Universal Gold Modal trigger
+window.showNotEnoughGoldModal = function(required, current, actionName) {
+    if (window.game?.ui?.showNotEnoughGoldModal) {
+        window.game.ui.showNotEnoughGoldModal(required, current, actionName);
+    } else {
+        alert(`Not enough gold! You need ${Number(required || 0).toLocaleString()} G.`);
+    }
 };

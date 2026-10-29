@@ -118,7 +118,11 @@ export class Monster3D {
         this.isWraith = keyLower.includes('wraith') || origLower.includes('wraith') || nameLower.includes('wraith') || nameLower.includes('void') || nameLower.includes('reaper');
         this.isMinotaur = keyLower.includes('minotaur') || origLower.includes('minotaur') || nameLower.includes('minotaur') || nameLower.includes('gorehorn') || nameLower.includes('asterion');
         this.isDragon = keyLower.includes('dragon') || origLower.includes('dragon') || nameLower.includes('dragon') || nameLower.includes('drake') || nameLower.includes('ignis');
-        this.isBoss = this.type === 'mini_boss' || this.type === 'floor_boss' || catLower === 'mini_boss' || catLower === 'floor_boss' || keyLower.includes('mini_boss') || keyLower.includes('floor_boss') || this.isTavernBoss || this.isNeutralBoss || this.isBattlefieldBoss;
+        
+        // Strict 2D Exonie: Common Mobs NEVER have boss status or boss AoE skills (e.g. Earthquake)
+        const isCommonMob = this.type === 'common_mobs' || this.type === 'common' || catLower === 'common_mobs' || catLower === 'common' || keyLower.includes('common_mobs') || origLower.includes('common_mobs');
+        this.isCommon = isCommonMob;
+        this.isBoss = !isCommonMob && (this.type === 'mini_boss' || this.type === 'floor_boss' || catLower === 'mini_boss' || catLower === 'floor_boss' || keyLower.includes('mini_boss') || keyLower.includes('floor_boss') || this.isNeutralBoss || this.isBattlefieldBoss || (this.isTavernBoss && !isCommonMob));
 
         // Aggro & Attack Range (Significantly expanded per user request, especially ranged mobs)
         if (this.isRanged) {
@@ -1407,7 +1411,8 @@ export class Monster3D {
             const distToPlayer = this.pos.distanceTo(targetPos);
             const distToSpawn = this.pos.distanceTo(this.spawnPos);
 
-            if (this.isMinotaur) {
+            // Minotaur Charge / Bull Rush Skill (Mini & Floor Bosses Only, NEVER Common Mobs)
+            if (this.isMinotaur && !this.isCommon && this.isBoss) {
                 this.chargeCooldown = Math.max(0, this.chargeCooldown - dt);
                 if (this.chargeTimer > 0) {
                     this.chargeTimer -= dt;
@@ -1442,9 +1447,9 @@ export class Monster3D {
                 }
             }
 
-            // Universal Earthquake Skill (ALL Mini Bosses & Floor Bosses per 2D Exonie rules!)
+            // Universal Earthquake Skill (ALL Mini Bosses & Floor Bosses per 2D Exonie rules! STRICTLY BLOCKED FOR COMMON MOBS)
             const isFloorBoss = this.type === 'floor_boss' || this.category === 'floor_boss' || this.dbKey.includes('floor_boss') || this.isBattlefieldBoss;
-            if (this.isBoss && this.isAlive && this.hp > 0 && this.state !== 'dead' && distToPlayer <= this.aggroRange && distToSpawn < 90) {
+            if (!this.isCommon && this.isBoss && this.isAlive && this.hp > 0 && this.state !== 'dead' && distToPlayer <= this.aggroRange && distToSpawn < 90) {
                 this.earthquakeCooldown = (this.earthquakeCooldown || 10.0) - dt;
                 if (this.earthquakeCooldown <= 0) {
                     this.earthquakeCooldown = isFloorBoss ? 8.5 : 12.0;
@@ -1476,8 +1481,8 @@ export class Monster3D {
                 }
             }
 
-            // Void Blink / Vanish Skill (Spectral Wraiths, Soul Reaper, The Void King)
-            if (this.isWraith && this.isAlive && this.hp > 0 && this.state !== 'dead' && distToPlayer <= this.aggroRange && distToPlayer > 3.0 && distToSpawn < 90) {
+            // Void Blink / Vanish Skill (Spectral Wraiths, Soul Reaper, The Void King - Bosses Only, NEVER Common Mobs)
+            if (this.isWraith && !this.isCommon && this.isBoss && this.isAlive && this.hp > 0 && this.state !== 'dead' && distToPlayer <= this.aggroRange && distToPlayer > 3.0 && distToSpawn < 90) {
                 this.voidBlinkCooldown = (this.voidBlinkCooldown || 9.0) - dt;
                 if (this.voidBlinkCooldown <= 0) {
                     this.voidBlinkCooldown = this.type === 'floor_boss' ? 7.5 : 11.0;
