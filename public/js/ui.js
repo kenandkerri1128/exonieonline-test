@@ -359,63 +359,56 @@ export class UIManager {
         }
 
         // ==========================================
-        // UNIFIED GAME MENU DROPDOWN EVENTS
+        // CIRCUIT SIEGE MOBILE MENU EVENTS (CENTERED POPUP MODAL)
         // ==========================================
         const btnMenuToggle = document.getElementById('btn-main-menu-toggle');
         if (btnMenuToggle) {
             btnMenuToggle.onclick = (e) => {
                 e.stopPropagation();
-                this.toggleDropdownMenu();
+                this.toggleMobileMenu();
             };
         }
 
-        const btnCloseDrop = document.getElementById('btn-close-dropdown');
-        if (btnCloseDrop) {
-            btnCloseDrop.onclick = (e) => {
+        const btnCloseMobile = document.getElementById('btn-close-mobile-menu');
+        if (btnCloseMobile) {
+            btnCloseMobile.onclick = (e) => {
                 e.stopPropagation();
-                this.closeDropdownMenu();
+                this.closeMobileMenu();
             };
         }
 
-        // Close dropdown when clicking outside
-        window.addEventListener('click', (e) => {
-            const wrapper = document.querySelector('.hud-menu-dropdown-wrapper');
-            if (wrapper && !wrapper.contains(e.target)) {
-                this.closeDropdownMenu();
-            }
-        });
-
-        // Close dropdown when any item in the dropdown is clicked
-        document.querySelectorAll('.dropdown-menu-item').forEach(item => {
-            item.addEventListener('click', () => {
-                this.closeDropdownMenu();
+        // Close mobile menu when clicking modal backdrop
+        const mobMenuModal = document.getElementById('mobile-menu-modal');
+        if (mobMenuModal) {
+            mobMenuModal.addEventListener('click', (e) => {
+                if (e.target === mobMenuModal) {
+                    this.closeMobileMenu();
+                }
             });
-        });
-
-        // Additional Dropdown Menu Actions
-        const btnDropShop = document.getElementById('btn-dropdown-shop');
-        if (btnDropShop) {
-            btnDropShop.onclick = () => {
-                this.closeDropdownMenu();
-                this.toggleMarketplace();
-            };
         }
 
-        const btnDropTavern = document.getElementById('btn-dropdown-tavern');
-        if (btnDropTavern) {
-            btnDropTavern.onclick = () => {
-                this.closeDropdownMenu();
-                this.openTavernModal();
-            };
-        }
+        // Mobile Menu Button Actions
+        const bindMobBtn = (id, action) => {
+            const btn = document.getElementById(id);
+            if (btn) {
+                btn.onclick = () => {
+                    this.closeMobileMenu();
+                    action();
+                };
+            }
+        };
 
-        const btnDropPotion = document.getElementById('btn-dropdown-potion');
-        if (btnDropPotion) {
-            btnDropPotion.onclick = () => {
-                this.closeDropdownMenu();
-                this.game?.useHealthPotion();
-            };
-        }
+        bindMobBtn('m-menu-inv', () => this.toggleInventory());
+        bindMobBtn('m-menu-stats', () => this.toggleStats());
+        bindMobBtn('m-menu-skills', () => this.toggleSkills());
+        bindMobBtn('m-menu-shop', () => this.toggleMarketplace());
+        bindMobBtn('m-menu-tavern', () => this.openTavernModal());
+        bindMobBtn('m-menu-cash', () => this.toggleCashShop());
+        bindMobBtn('m-menu-guild', () => this.toggleGuildModal());
+        bindMobBtn('m-menu-party', () => this.toggleFriendsModal());
+        bindMobBtn('m-menu-mail', () => this.toggleMailbox());
+        bindMobBtn('m-menu-pot', () => this.game?.useHealthPotion());
+        bindMobBtn('m-menu-settings', () => this.toggleSettings());
 
         const chkHighQuality = document.getElementById('chk-high-quality');
         if (chkHighQuality) {
@@ -930,7 +923,7 @@ export class UIManager {
     // 🏰 GUILD SYSTEM UI (2D REPLICATED)
     // ==========================================
     toggleGuildModal() {
-        this.closeDropdownMenu();
+        this.closeMobileMenu();
         let modal = document.getElementById('guild-modal');
         if (!modal) {
             modal = document.createElement('div');
@@ -1227,21 +1220,30 @@ export class UIManager {
         setAttr('btn-cash-shop', 'title', `Cash Shop [${this.formatKeyLabel(kb.shop)}]`);
     }
 
-    toggleDropdownMenu(forceState = null) {
-        const menu = document.getElementById('hud-dropdown-menu');
-        if (!menu) return;
-        const isHidden = (forceState !== null)
-            ? !forceState
-            : (menu.style.display === 'none' || !menu.style.display);
-        menu.style.display = isHidden ? 'flex' : 'none';
+    openMobileMenu() {
+        const modal = document.getElementById('mobile-menu-modal');
+        if (!modal) return;
+        document.exitPointerLock?.();
+        modal.style.display = 'flex';
     }
 
-    closeDropdownMenu() {
-        this.toggleDropdownMenu(false);
+    closeMobileMenu() {
+        const modal = document.getElementById('mobile-menu-modal');
+        if (modal) modal.style.display = 'none';
+    }
+
+    toggleMobileMenu() {
+        const modal = document.getElementById('mobile-menu-modal');
+        if (!modal) return;
+        if (modal.style.display === 'flex') {
+            this.closeMobileMenu();
+        } else {
+            this.openMobileMenu();
+        }
     }
 
     toggleStats() {
-        this.closeDropdownMenu();
+        this.closeMobileMenu();
         if (!this.statsModal) return;
         const isHidden = this.statsModal.style.display === 'none' || !this.statsModal.style.display;
         this.statsModal.style.display = isHidden ? 'flex' : 'none';
@@ -1368,7 +1370,7 @@ export class UIManager {
     // INVENTORY / BAG SCREEN
     // ==========================================
     toggleInventory() {
-        this.closeDropdownMenu();
+        this.closeMobileMenu();
         if (!this.inventoryModal) return;
         const isHidden = this.inventoryModal.style.display === 'none' || !this.inventoryModal.style.display;
         this.inventoryModal.style.display = isHidden ? 'flex' : 'none';
@@ -1907,7 +1909,7 @@ export class UIManager {
     // SKILLS & CLASS CHOOSING SCREEN
     // ==========================================
     toggleSkills() {
-        this.closeDropdownMenu();
+        this.closeMobileMenu();
         if (!this.skillModal) return;
         const isHidden = this.skillModal.style.display === 'none' || !this.skillModal.style.display;
         this.skillModal.style.display = isHidden ? 'flex' : 'none';
@@ -1921,10 +1923,10 @@ export class UIManager {
     // ESC SETTINGS MENU & MARKETPLACE MODAL
     // ==========================================
     toggleSettings() {
-        // If dropdown menu is open, pressing ESC closes that first
-        const dropMenu = document.getElementById('hud-dropdown-menu');
-        if (dropMenu && dropMenu.style.display === 'flex') {
-            this.closeDropdownMenu();
+        // If mobile menu modal is open, pressing ESC closes that first
+        const mobModal = document.getElementById('mobile-menu-modal');
+        if (mobModal && mobModal.style.display === 'flex') {
+            this.closeMobileMenu();
             return;
         }
 
@@ -2013,13 +2015,14 @@ export class UIManager {
             this.enhancementModal,
             document.getElementById('home-sale-modal'),
             document.getElementById('guild-modal'),
+            document.getElementById('mobile-menu-modal'),
             document.getElementById('not-enough-gold-modal')
         ];
         return modals.some(m => m && (m.style.display === 'flex' || m.style.display === 'block'));
     }
 
     closeAllModals() {
-        this.closeDropdownMenu();
+        this.closeMobileMenu();
         const modals = [
             this.marketplaceModal, this.storageModal, this.dailyMissionsModal,
             this.tavernModal, this.leaderboardModal, this.dungeonModal,
@@ -2032,6 +2035,7 @@ export class UIManager {
             document.getElementById('guild-invite-dialog'),
             document.getElementById('friends-modal'),
             document.getElementById('mailbox-modal'),
+            document.getElementById('mobile-menu-modal'),
             document.getElementById('cosmetic-preview-modal'),
             document.getElementById('not-enough-gold-modal')
         ];
@@ -2416,7 +2420,7 @@ export class UIManager {
     // 🤝 FRIENDS SYSTEM (HOTKEY 'F')
     // ==========================================
     openFriendsModal() {
-        this.closeDropdownMenu();
+        this.closeMobileMenu();
         if (!this.friendsModal) return;
         document.exitPointerLock?.();
         this.friendsModal.style.display = 'flex';
@@ -2892,7 +2896,7 @@ export class UIManager {
     // 📬 SYSTEM MAILBOX UI (2D EXONIE REPLICATED)
     // ==========================================
     toggleMailbox() {
-        this.closeDropdownMenu();
+        this.closeMobileMenu();
         const modal = document.getElementById('mailbox-modal');
         if (!modal) return;
         const isHidden = modal.style.display === 'none' || !modal.style.display;
@@ -2917,6 +2921,11 @@ export class UIManager {
         if (badge) {
             badge.innerText = count;
             badge.style.display = count > 0 ? 'block' : 'none';
+        }
+        const mBadge = document.getElementById('mobile-mail-badge');
+        if (mBadge) {
+            mBadge.innerText = count;
+            mBadge.style.display = count > 0 ? 'flex' : 'none';
         }
 
         if (count === 0) {
@@ -2972,6 +2981,13 @@ export class UIManager {
             badge.innerText = next;
             badge.style.display = next > 0 ? 'block' : 'none';
         }
+        const mBadge = document.getElementById('mobile-mail-badge');
+        if (mBadge) {
+            const cur = parseInt(mBadge.innerText, 10) || 1;
+            const next = Math.max(0, cur - 1);
+            mBadge.innerText = next;
+            mBadge.style.display = next > 0 ? 'flex' : 'none';
+        }
         this.showToast('🎁 Reward claimed successfully to your inventory!');
     }
 
@@ -2979,7 +2995,7 @@ export class UIManager {
     // 💎 CASH SHOP (EXO EMPORIUM) UI METHODS (STEAM IAP REPLICATED)
     // ==========================================
     toggleCashShop() {
-        this.closeDropdownMenu();
+        this.closeMobileMenu();
         if (!this.cashShopModal) this.cashShopModal = document.getElementById('cash-shop-modal');
         if (!this.cashShopModal) return;
 

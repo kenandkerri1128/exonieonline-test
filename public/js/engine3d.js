@@ -371,7 +371,7 @@ export class Engine3D {
 
         window.addEventListener('pointerdown', (e) => {
             if (e.pointerType === 'mouse') return;
-            if (e.target && e.target.closest && e.target.closest('#mobile-dpad-container, #joystick-zone, #touch-actions-zone, #hud-dropdown-menu, .hud-menu-dropdown-wrapper, #persistent-chat-box, .game-modal, button, input, a, select')) return;
+            if (e.target && e.target.closest && e.target.closest('#mobile-dpad-container, #joystick-zone, #touch-actions-zone, #mobile-menu-modal, .hud-mobile-menu-wrapper, #persistent-chat-box, .game-modal, button, input, a, select')) return;
 
             lookPointerId = e.pointerId;
             lastLookX = e.clientX;

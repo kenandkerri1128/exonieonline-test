@@ -976,10 +976,36 @@ html, body {
     box-shadow: 0 2px 10px rgba(0,0,0,0.5);
 }
 
-/* ============================================================
-   CIRCUIT SIEGE STYLE UNIFIED GAME MENU DROPDOWN
-   ============================================================ */
-.hud-menu-dropdown-wrapper {
+/* Desktop HUD Menu Buttons (Row of buttons for Desktop Players) */
+.hud-menu-buttons {
+    display: flex;
+    gap: 8px;
+}
+
+.hud-btn {
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    background: var(--bg-dark);
+    border: 1px solid var(--border-color);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.1rem;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.4);
+}
+
+.hud-btn:hover {
+    background: rgba(255, 255, 255, 0.15);
+    border-color: #00e5ff;
+}
+
+/* Mobile-Only Menu Button (Hidden on Desktop) */
+.hud-mobile-menu-wrapper {
+    display: none;
     position: relative;
     pointer-events: auto;
 }
@@ -1034,76 +1060,44 @@ html, body {
     box-shadow: 0 0 8px #ef4444;
 }
 
-.hud-dropdown-menu {
-    position: absolute;
-    top: calc(100% + 8px);
-    right: 0;
-    width: 280px;
-    background: radial-gradient(circle at 50% 10%, rgba(30, 41, 59, 0.98), rgba(15, 23, 42, 0.99));
-    border: 2px solid rgba(56, 189, 248, 0.55);
-    border-radius: 12px;
-    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.85), 0 0 24px rgba(56, 189, 248, 0.25);
-    padding: 10px;
-    z-index: 100000;
-    backdrop-filter: blur(12px);
+/* Centered Mobile Menu Dialog Styles */
+#mobile-menu-modal {
+    display: none;
+}
+
+.mobile-menu-dialog {
+    background: radial-gradient(circle at 50% 10%, #1e293b, #0f172a);
+    border: 2px solid #38bdf8;
+    border-radius: 14px;
+    box-shadow: 0 0 35px rgba(56, 189, 248, 0.45);
+    padding: 16px;
+    width: min(360px, 92vw);
+    max-height: 85vh;
+    overflow-y: auto;
+    color: #fff;
+    margin: auto;
     display: flex;
     flex-direction: column;
-    gap: 8px;
-    animation: dropdownPop 0.15s ease-out;
-}
-
-@keyframes dropdownPop {
-    from { opacity: 0; transform: translateY(-8px) scale(0.97); }
-    to { opacity: 1; transform: translateY(0) scale(1); }
-}
-
-.dropdown-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    border-bottom: 1px solid rgba(56, 189, 248, 0.25);
-    padding-bottom: 6px;
-    margin-bottom: 2px;
-}
-
-.dropdown-title {
-    font-size: 0.78rem;
-    font-weight: 800;
-    color: #38bdf8;
-    letter-spacing: 0.08em;
-}
-
-.btn-close-dropdown {
-    background: none;
-    border: none;
-    color: #94a3b8;
-    font-size: 1rem;
-    cursor: pointer;
-    padding: 2px 6px;
-    border-radius: 4px;
-}
-
-.btn-close-dropdown:hover {
-    color: #fff;
-    background: rgba(255, 255, 255, 0.1);
+    gap: 10px;
+    animation: modalPop 0.18s ease-out;
 }
 
 .dropdown-items-grid {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
-    gap: 6px;
+    gap: 8px;
 }
 
 .dropdown-menu-item {
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 7px 9px;
+    padding: 9px 12px;
     background: rgba(15, 23, 42, 0.85);
     border: 1px solid rgba(148, 163, 184, 0.2);
     border-radius: 8px;
     color: #e2e8f0;
-    font-size: 0.82rem;
+    font-size: 0.85rem;
     font-weight: 700;
     cursor: pointer;
     transition: all 0.12s ease;
@@ -1113,14 +1107,14 @@ html, body {
 
 .dropdown-menu-item:hover,
 .dropdown-menu-item:active {
-    background: rgba(56, 189, 248, 0.15);
+    background: rgba(56, 189, 248, 0.18);
     border-color: #38bdf8;
     color: #fff;
     transform: translateY(-1px);
 }
 
 .dropdown-menu-item .d-icon {
-    font-size: 1.15rem;
+    font-size: 1.25rem;
     flex-shrink: 0;
 }
 
@@ -3100,33 +3094,39 @@ body.touch-enabled #mobile-controls {
         padding: 3px 8px !important;
     }
 
+    /* Mobile: Hide desktop horizontal buttons, show single Menu toggle button */
+    #desktop-menu-buttons {
+        display: none !important;
+    }
+
+    .hud-mobile-menu-wrapper {
+        display: flex !important;
+    }
+
     .hud-btn-menu-toggle {
         padding: 4px 10px !important;
         font-size: 0.75rem !important;
     }
 
-    .hud-dropdown-menu {
-        position: fixed !important;
-        top: 48px !important;
-        right: 8px !important;
-        width: min(290px, 86vw) !important;
-        max-height: calc(100vh - 60px) !important;
-        overflow-y: auto !important;
-        padding: 8px !important;
+    /* Centered Mobile Menu Dialog */
+    .mobile-menu-dialog {
+        width: min(340px, 92vw) !important;
+        padding: 14px !important;
+        margin: auto !important;
     }
 
     .dropdown-items-grid {
         grid-template-columns: repeat(2, 1fr) !important;
-        gap: 5px !important;
+        gap: 6px !important;
     }
 
     .dropdown-menu-item {
-        padding: 6px 8px !important;
-        font-size: 0.78rem !important;
+        padding: 7px 10px !important;
+        font-size: 0.8rem !important;
     }
 
     .dropdown-menu-item .d-icon {
-        font-size: 1rem !important;
+        font-size: 1.1rem !important;
     }
 
     #minimap-container {
@@ -3224,6 +3224,18 @@ body.touch-enabled #mobile-controls {
 
 body.touch-enabled #desktop-hotbar {
     display: none !important;
+}
+
+@media (min-width: 951px) and (pointer: fine) {
+    #desktop-menu-buttons {
+        display: flex !important;
+    }
+    .hud-mobile-menu-wrapper {
+        display: none !important;
+    }
+    #mobile-menu-modal {
+        display: none !important;
+    }
 }
 
 /* ============================================================
