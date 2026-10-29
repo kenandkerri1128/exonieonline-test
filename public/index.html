@@ -35,7 +35,7 @@
       }
     </script>
     <link rel="preload" as="image" href="loadingscreen.png">
-    <link rel="stylesheet" href="css/style.css?v=4.1">
+    <link rel="stylesheet" href="css/style.css?v=4.2">
 
     <!-- Native ES Module Import Map for Three.js -->
     <script type="importmap">
@@ -374,13 +374,63 @@
                 <button class="hud-btn" id="btn-settings" title="Settings [ESC]">⚙️</button>
             </div>
 
-            <!-- Mobile Only Menu Button (Replaces cluttered buttons on phones) -->
+            <!-- Mobile Only Menu Button & Top-Right Dropdown Menu -->
             <div class="hud-mobile-menu-wrapper" id="mobile-menu-wrapper" style="display:none;">
                 <button type="button" class="hud-btn-menu-toggle" id="btn-main-menu-toggle" title="Game Menu">
                     <span class="menu-icon">☰</span>
                     <span class="menu-label">MENU</span>
                     <span id="mobile-mail-badge" class="menu-mail-indicator" style="display:none;">1</span>
                 </button>
+
+                <!-- Top-Right Dropdown Menu (Drops down directly in top-right) -->
+                <div id="hud-dropdown-menu" class="hud-dropdown-menu" style="display:none;">
+                    <div class="dropdown-header">
+                        <span class="dropdown-title">⚔️ GAME MENU</span>
+                        <button type="button" class="btn-close-dropdown" id="btn-close-dropdown">✖</button>
+                    </div>
+                    <div class="dropdown-items-grid">
+                        <button type="button" class="dropdown-menu-item" id="m-menu-inv">
+                            <span class="d-icon">🎒</span>
+                            <span class="d-text">Bag</span>
+                        </button>
+                        <button type="button" class="dropdown-menu-item" id="m-menu-stats">
+                            <span class="d-icon">📊</span>
+                            <span class="d-text">Stats</span>
+                        </button>
+                        <button type="button" class="dropdown-menu-item" id="m-menu-skills">
+                            <span class="d-icon">📜</span>
+                            <span class="d-text">Skills</span>
+                        </button>
+                        <button type="button" class="dropdown-menu-item" id="m-menu-shop">
+                            <span class="d-icon">🏪</span>
+                            <span class="d-text">Shop</span>
+                        </button>
+                        <button type="button" class="dropdown-menu-item" id="m-menu-tavern">
+                            <span class="d-icon">🍺</span>
+                            <span class="d-text">Tavern</span>
+                        </button>
+                        <button type="button" class="dropdown-menu-item" id="m-menu-cash" style="color:#e040fb;">
+                            <span class="d-icon">💎</span>
+                            <span class="d-text" style="color:#e040fb;">Cash Shop</span>
+                        </button>
+                        <button type="button" class="dropdown-menu-item" id="m-menu-guild">
+                            <span class="d-icon">🏰</span>
+                            <span class="d-text">Guild</span>
+                        </button>
+                        <button type="button" class="dropdown-menu-item" id="m-menu-party">
+                            <span class="d-icon">👥</span>
+                            <span class="d-text">Party</span>
+                        </button>
+                        <button type="button" class="dropdown-menu-item" id="m-menu-mail">
+                            <span class="d-icon">✉️</span>
+                            <span class="d-text">Mailbox</span>
+                        </button>
+                        <button type="button" class="dropdown-menu-item" id="m-menu-settings">
+                            <span class="d-icon">⚙️</span>
+                            <span class="d-text">Settings</span>
+                        </button>
+                    </div>
+                </div>
             </div>
 
             <div id="minimap-container">
@@ -464,6 +514,13 @@
             <div id="joystick-zone" style="display:none;"><div id="joystick-thumb"></div></div>
         </div>
 
+        <!-- Mobile Floating Chat Button (Above Movement D-Pad, opens Fullscreen Chat) -->
+        <button type="button" id="btn-mobile-chat-toggle" class="hud-mobile-chat-btn" title="Open Chat">
+            <span class="m-chat-icon">💬</span>
+            <span class="m-chat-label">Chat</span>
+            <span id="m-chat-unread-badge" class="m-chat-unread-badge" style="display:none;"></span>
+        </button>
+
         <!-- Action Buttons (Bottom Right Arc) -->
         <div id="touch-actions-zone">
             <!-- Target Lock -->
@@ -521,62 +578,6 @@
 
     <!-- Floating Rich Item Hover Tooltip -->
     <div id="item-hover-tooltip" style="display:none;"></div>
-
-    <!-- ============================================================
-         CIRCUIT SIEGE CENTERED MOBILE POPUP MENU MODAL (CLOSED BY DEFAULT)
-         ============================================================ -->
-    <div class="game-modal" id="mobile-menu-modal" style="display:none; z-index:99999;">
-        <div class="modal-dialog mobile-menu-dialog" style="max-width:360px; width:92vw; background:radial-gradient(circle at 50% 10%, #1e293b, #0f172a); border:2px solid #38bdf8; border-radius:14px; box-shadow:0 0 35px rgba(56, 189, 248, 0.45); padding:16px; color:#fff;">
-            <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #334155; padding-bottom:8px; margin-bottom:12px;">
-                <h3 style="color:#38bdf8; margin:0; font-size:1.05rem; display:flex; align-items:center; gap:8px;">
-                    ⚔️ Game Menu
-                </h3>
-                <button type="button" class="btn-close-modal" id="btn-close-mobile-menu" style="background:none; border:none; color:#94a3b8; font-size:1.3rem; cursor:pointer;">✖</button>
-            </div>
-            <div class="dropdown-items-grid" style="display:grid; grid-template-columns:repeat(2, 1fr); gap:8px;">
-                <button type="button" class="dropdown-menu-item" id="m-menu-inv">
-                    <span class="d-icon">🎒</span>
-                    <span class="d-text">Bag</span>
-                </button>
-                <button type="button" class="dropdown-menu-item" id="m-menu-stats">
-                    <span class="d-icon">📊</span>
-                    <span class="d-text">Stats</span>
-                </button>
-                <button type="button" class="dropdown-menu-item" id="m-menu-skills">
-                    <span class="d-icon">📜</span>
-                    <span class="d-text">Skills</span>
-                </button>
-                <button type="button" class="dropdown-menu-item" id="m-menu-shop">
-                    <span class="d-icon">🏪</span>
-                    <span class="d-text">Shop</span>
-                </button>
-                <button type="button" class="dropdown-menu-item" id="m-menu-tavern">
-                    <span class="d-icon">🍺</span>
-                    <span class="d-text">Tavern</span>
-                </button>
-                <button type="button" class="dropdown-menu-item" id="m-menu-cash" style="color:#e040fb;">
-                    <span class="d-icon">💎</span>
-                    <span class="d-text" style="color:#e040fb;">Cash Shop</span>
-                </button>
-                <button type="button" class="dropdown-menu-item" id="m-menu-guild">
-                    <span class="d-icon">🏰</span>
-                    <span class="d-text">Guild</span>
-                </button>
-                <button type="button" class="dropdown-menu-item" id="m-menu-party">
-                    <span class="d-icon">👥</span>
-                    <span class="d-text">Party</span>
-                </button>
-                <button type="button" class="dropdown-menu-item" id="m-menu-mail">
-                    <span class="d-icon">✉️</span>
-                    <span class="d-text">Mailbox</span>
-                </button>
-                <button type="button" class="dropdown-menu-item" id="m-menu-settings">
-                    <span class="d-icon">⚙️</span>
-                    <span class="d-text">Settings</span>
-                </button>
-            </div>
-        </div>
-    </div>
 
     <!-- ============================================================
          PLAYER STATS MODAL (AUTHENTIC 2D EXONIE STATS WINDOW [P])
@@ -1502,6 +1503,38 @@
     </div>
 
     <!-- ============================================================
+         FULLSCREEN POPUP CHAT SYSTEM (FOR MOBILE & TOUCH)
+         ============================================================ -->
+    <div id="fullscreen-chat-modal" class="fullscreen-chat-modal" style="display:none; z-index:99999;">
+        <div class="fullscreen-chat-dialog">
+            <!-- Header Bar with Channel Tabs and Exit Button -->
+            <div class="fullscreen-chat-header">
+                <div class="chat-modal-tabs">
+                    <button type="button" class="chat-tab-btn active" id="modal-tab-local">💬 Local</button>
+                    <button type="button" class="chat-tab-btn" id="modal-tab-world">🌐 World <span id="modal-world-unread-dot" class="unread-dot" style="display:none;"></span></button>
+                </div>
+                <button type="button" class="btn-close-chat-modal" id="btn-close-chat-modal" title="Exit Chat (Return to Game)">✖</button>
+            </div>
+
+            <!-- Chat Message Logs with Big Readable Font -->
+            <div class="fullscreen-chat-body" id="fullscreen-chat-body">
+                <div id="modal-chat-local-content" class="modal-chat-content">
+                    <div class="chat-line system-line">🛡️ Welcome to Exonie 3D! Type below to chat with nearby players.</div>
+                </div>
+                <div id="modal-chat-world-content" class="modal-chat-content" style="display:none;">
+                    <div class="chat-line system-line">🌐 Connected to World Channel. Broadcast messages visible to all players.</div>
+                </div>
+            </div>
+
+            <!-- Chat Input Row with Clear Send Button -->
+            <form id="modal-chat-form" class="fullscreen-chat-footer">
+                <input type="text" id="modal-chat-input" placeholder="Type a message... (Enter to send)" maxlength="120" autocomplete="off">
+                <button type="submit" id="btn-modal-chat-send" class="btn-chat-send-large">Send</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- ============================================================
          AUTHENTIC 2D EXONIE PERSISTENT CHAT BOX & INPUT (LOCAL + WORLD)
          ============================================================ -->
     <div id="persistent-chat-box" style="display:none !important;">
@@ -1536,6 +1569,6 @@
     </div>
 
     <!-- Main Game Orchestrator Script -->
-    <script type="module" src="./js/game.js?v=3.8"></script>
+    <script type="module" src="./js/game.js?v=3.9"></script>
 </body>
 </html>

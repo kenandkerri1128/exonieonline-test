@@ -132,15 +132,21 @@ export class UIManager {
         const mBtnPot = document.getElementById('m-btn-potion');
         if (mBtnPot) mBtnPot.onclick = () => this.game.useHealthPotion();
 
-        const hb3 = document.getElementById('hotbar-3');
-        if (hb3) hb3.onclick = () => this.game.useHealthPotion();
-
-        // Hotbar Skill Click
-        const hb1 = document.getElementById('hotbar-1');
-        if (hb1) hb1.onclick = () => this.game.onSkillTrigger(1);
-
-        const hb2 = document.getElementById('hotbar-2');
-        if (hb2) hb2.onclick = () => this.game.onSkillTrigger(2);
+        // Hotbar Skill & Potion Click/Touch Binds
+        const bindSlot = (id, fn) => {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.onclick = fn;
+            el.addEventListener('pointerdown', (e) => {
+                if (e.pointerType !== 'mouse') {
+                    e.stopPropagation();
+                    fn();
+                }
+            });
+        };
+        bindSlot('hotbar-1', () => this.game?.onSkillTrigger(1));
+        bindSlot('hotbar-2', () => this.game?.onSkillTrigger(2));
+        bindSlot('hotbar-3', () => this.game?.useHealthPotion());
 
         // Confirm Modal Buttons
         const btnNo = document.getElementById('btn-confirm-no');
@@ -369,23 +375,23 @@ export class UIManager {
             };
         }
 
-        const btnCloseMobile = document.getElementById('btn-close-mobile-menu');
-        if (btnCloseMobile) {
-            btnCloseMobile.onclick = (e) => {
+        const btnCloseDropdown = document.getElementById('btn-close-dropdown') || document.getElementById('btn-close-mobile-menu');
+        if (btnCloseDropdown) {
+            btnCloseDropdown.onclick = (e) => {
                 e.stopPropagation();
                 this.closeMobileMenu();
             };
         }
 
-        // Close mobile menu when clicking modal backdrop
-        const mobMenuModal = document.getElementById('mobile-menu-modal');
-        if (mobMenuModal) {
-            mobMenuModal.addEventListener('click', (e) => {
-                if (e.target === mobMenuModal) {
+        // Close dropdown when clicking outside the wrapper
+        window.addEventListener('click', (e) => {
+            const drop = document.getElementById('hud-dropdown-menu');
+            if (drop && drop.style.display === 'flex') {
+                if (!e.target.closest('#mobile-menu-wrapper')) {
                     this.closeMobileMenu();
                 }
-            });
-        }
+            }
+        });
 
         // Mobile Menu Button Actions
         const bindMobBtn = (id, action) => {
@@ -1220,21 +1226,21 @@ export class UIManager {
     }
 
     openMobileMenu() {
-        const modal = document.getElementById('mobile-menu-modal');
-        if (!modal) return;
+        const menu = document.getElementById('hud-dropdown-menu') || document.getElementById('mobile-menu-modal');
+        if (!menu) return;
         document.exitPointerLock?.();
-        modal.style.display = 'flex';
+        menu.style.display = 'flex';
     }
 
     closeMobileMenu() {
-        const modal = document.getElementById('mobile-menu-modal');
-        if (modal) modal.style.display = 'none';
+        const menu = document.getElementById('hud-dropdown-menu') || document.getElementById('mobile-menu-modal');
+        if (menu) menu.style.display = 'none';
     }
 
     toggleMobileMenu() {
-        const modal = document.getElementById('mobile-menu-modal');
-        if (!modal) return;
-        if (modal.style.display === 'flex') {
+        const menu = document.getElementById('hud-dropdown-menu') || document.getElementById('mobile-menu-modal');
+        if (!menu) return;
+        if (menu.style.display === 'flex') {
             this.closeMobileMenu();
         } else {
             this.openMobileMenu();
@@ -2014,7 +2020,7 @@ export class UIManager {
             this.enhancementModal,
             document.getElementById('home-sale-modal'),
             document.getElementById('guild-modal'),
-            document.getElementById('mobile-menu-modal'),
+            document.getElementById('fullscreen-chat-modal'),
             document.getElementById('not-enough-gold-modal')
         ];
         return modals.some(m => m && (m.style.display === 'flex' || m.style.display === 'block'));
@@ -2034,7 +2040,7 @@ export class UIManager {
             document.getElementById('guild-invite-dialog'),
             document.getElementById('friends-modal'),
             document.getElementById('mailbox-modal'),
-            document.getElementById('mobile-menu-modal'),
+            document.getElementById('fullscreen-chat-modal'),
             document.getElementById('cosmetic-preview-modal'),
             document.getElementById('not-enough-gold-modal')
         ];

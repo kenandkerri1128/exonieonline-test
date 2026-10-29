@@ -262,6 +262,10 @@ window.ExonieFlow = {
             chatBox.classList.remove('in-game');
             chatBox.style.display = 'none';
         }
+        const fullscreenChat = document.getElementById('fullscreen-chat-modal');
+        if (fullscreenChat) fullscreenChat.style.display = 'none';
+        const dropdownMenu = document.getElementById('hud-dropdown-menu');
+        if (dropdownMenu) dropdownMenu.style.display = 'none';
         const chatInput = document.getElementById('chat-input-container');
         if (chatInput) {
             chatInput.classList.remove('in-game', 'open');

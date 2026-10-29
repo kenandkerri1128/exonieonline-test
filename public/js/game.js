@@ -1532,24 +1532,77 @@ export class GameApp {
 
         window.switchChatTab = (tab) => {
             this.activeChatTab = tab;
+            // Desktop tabs
             document.querySelectorAll('.chat-tab').forEach(b => b.classList.remove('active'));
             const tabBtn = document.getElementById(`chat-tab-${tab}`);
             if (tabBtn) tabBtn.classList.add('active');
 
+            // Modal tabs
+            document.querySelectorAll('.chat-tab-btn').forEach(b => b.classList.remove('active'));
+            const modalTabBtn = document.getElementById(`modal-tab-${tab}`);
+            if (modalTabBtn) modalTabBtn.classList.add('active');
+
             const localContent = document.getElementById('chat-tab-content-local');
             const worldContent = document.getElementById('chat-tab-content-world');
+            const modalLocalContent = document.getElementById('modal-chat-local-content');
+            const modalWorldContent = document.getElementById('modal-chat-world-content');
+
             if (tab === 'local') {
                 if (localContent) localContent.style.display = 'flex';
                 if (worldContent) worldContent.style.display = 'none';
+                if (modalLocalContent) modalLocalContent.style.display = 'flex';
+                if (modalWorldContent) modalWorldContent.style.display = 'none';
             } else {
                 if (localContent) localContent.style.display = 'none';
                 if (worldContent) worldContent.style.display = 'flex';
+                if (modalLocalContent) modalLocalContent.style.display = 'none';
+                if (modalWorldContent) modalWorldContent.style.display = 'flex';
                 const unreadDot = document.getElementById('world-unread-dot');
                 if (unreadDot) unreadDot.style.display = 'none';
+                const modalUnreadDot = document.getElementById('modal-world-unread-dot');
+                if (modalUnreadDot) modalUnreadDot.style.display = 'none';
             }
         };
 
+        window.switchModalChatTab = (tab) => window.switchChatTab(tab);
         window.submitChat = () => this.submitChat();
+        window.submitModalChat = () => {
+            const modalInput = document.getElementById('modal-chat-input');
+            if (!modalInput) return;
+            const text = modalInput.value.trim();
+            if (text.length > 0) {
+                this.sendChatMessage(text);
+                modalInput.value = '';
+            }
+        };
+
+        // Mobile chat toggle and close buttons
+        const btnMobChat = document.getElementById('btn-mobile-chat-toggle');
+        if (btnMobChat) {
+            btnMobChat.onclick = () => this.openFullscreenChat();
+        }
+
+        const btnCloseMobChat = document.getElementById('btn-close-chat-modal');
+        if (btnCloseMobChat) {
+            btnCloseMobChat.onclick = () => this.closeFullscreenChat();
+        }
+
+        const modalForm = document.getElementById('modal-chat-form');
+        const modalInput = document.getElementById('modal-chat-input');
+        if (modalForm && modalInput) {
+            modalForm.onsubmit = (e) => {
+                e.preventDefault();
+                window.submitModalChat();
+            };
+            modalInput.addEventListener('keydown', (e) => {
+                if (e.code === 'Escape') {
+                    e.preventDefault();
+                    this.closeFullscreenChat();
+                }
+            });
+            modalInput.addEventListener('focus', () => { this.isChatting = true; });
+            modalInput.addEventListener('blur', () => { this.isChatting = false; });
+        }
 
         if (chatInput) {
             chatInput.addEventListener('keydown', (e) => {
@@ -1570,6 +1623,29 @@ export class GameApp {
                 this.isChatting = false;
             });
         }
+    }
+
+    openFullscreenChat() {
+        const modal = document.getElementById('fullscreen-chat-modal');
+        if (!modal) return;
+        document.exitPointerLock?.();
+        modal.style.display = 'flex';
+        const unread = document.getElementById('m-chat-unread-badge');
+        if (unread) unread.style.display = 'none';
+        const body = document.getElementById('fullscreen-chat-body');
+        if (body) body.scrollTop = body.scrollHeight;
+        setTimeout(() => {
+            const input = document.getElementById('modal-chat-input');
+            if (input) input.focus();
+        }, 60);
+    }
+
+    closeFullscreenChat() {
+        const modal = document.getElementById('fullscreen-chat-modal');
+        if (modal) modal.style.display = 'none';
+        const input = document.getElementById('modal-chat-input');
+        if (input) input.blur();
+        this.isChatting = false;
     }
 
     submitChat() {
@@ -1627,19 +1703,43 @@ export class GameApp {
     }
 
     appendChatLine(channel, htmlContent) {
+        // 1. Desktop container
         const container = channel === 'world'
             ? document.getElementById('world-chat-content')
             : document.getElementById('persistent-chat-content');
-        if (!container) return;
+        if (container) {
+            const line = document.createElement('div');
+            line.className = `chat-line ${channel}-line`;
+            line.innerHTML = htmlContent;
+            container.appendChild(line);
 
-        const line = document.createElement('div');
-        line.className = `chat-line ${channel}-line`;
-        line.innerHTML = htmlContent;
-        container.appendChild(line);
+            const parent = container.parentElement;
+            if (parent) {
+                parent.scrollTop = parent.scrollHeight;
+            }
+        }
 
-        const parent = container.parentElement;
-        if (parent) {
-            parent.scrollTop = parent.scrollHeight;
+        // 2. Fullscreen popup chat container
+        const modalContainer = channel === 'world'
+            ? document.getElementById('modal-chat-world-content')
+            : document.getElementById('modal-chat-local-content');
+        if (modalContainer) {
+            const mLine = document.createElement('div');
+            mLine.className = `chat-line ${channel}-line`;
+            mLine.innerHTML = htmlContent;
+            modalContainer.appendChild(mLine);
+
+            const mBody = document.getElementById('fullscreen-chat-body');
+            if (mBody) {
+                mBody.scrollTop = mBody.scrollHeight;
+            }
+        }
+
+        // 3. Unread indicator for mobile chat button if modal is closed
+        const chatModal = document.getElementById('fullscreen-chat-modal');
+        if (!chatModal || chatModal.style.display === 'none') {
+            const badge = document.getElementById('m-chat-unread-badge');
+            if (badge) badge.style.display = 'block';
         }
     }
 

@@ -955,11 +955,15 @@ html, body {
 
 /* Top Right: Gold, Menu & Minimap */
 .hud-top-right {
+    position: absolute;
+    top: 14px;
+    right: 14px;
     display: flex;
     flex-direction: column;
     align-items: flex-end;
     gap: 10px;
     pointer-events: auto;
+    z-index: 25;
 }
 
 .gold-counter {
@@ -1060,26 +1064,60 @@ html, body {
     box-shadow: 0 0 8px #ef4444;
 }
 
-/* Centered Mobile Menu Dialog Styles */
-#mobile-menu-modal {
+/* Top-Right Dropdown Menu (Attached to Menu Toggle in Top Right) */
+.hud-dropdown-menu {
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    width: 260px;
+    background: radial-gradient(circle at 50% 10%, rgba(30, 41, 59, 0.98), rgba(15, 23, 42, 0.99));
+    border: 2px solid rgba(56, 189, 248, 0.65);
+    border-radius: 12px;
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.85), 0 0 24px rgba(56, 189, 248, 0.35);
+    padding: 10px;
+    z-index: 100000;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
     display: none;
+    flex-direction: column;
+    gap: 8px;
+    animation: dropdownPop 0.15s ease-out;
 }
 
-.mobile-menu-dialog {
-    background: radial-gradient(circle at 50% 10%, #1e293b, #0f172a);
-    border: 2px solid #38bdf8;
-    border-radius: 14px;
-    box-shadow: 0 0 35px rgba(56, 189, 248, 0.45);
-    padding: 16px;
-    width: min(360px, 92vw);
-    max-height: 85vh;
-    overflow-y: auto;
-    color: #fff;
-    margin: auto;
+@keyframes dropdownPop {
+    from { opacity: 0; transform: translateY(-8px) scale(0.97); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.dropdown-header {
     display: flex;
-    flex-direction: column;
-    gap: 10px;
-    animation: modalPop 0.18s ease-out;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid rgba(56, 189, 248, 0.25);
+    padding-bottom: 6px;
+    margin-bottom: 2px;
+}
+
+.dropdown-title {
+    font-size: 0.82rem;
+    font-weight: 800;
+    color: #38bdf8;
+    letter-spacing: 0.08em;
+}
+
+.btn-close-dropdown {
+    background: none;
+    border: none;
+    color: #94a3b8;
+    font-size: 1.1rem;
+    cursor: pointer;
+    padding: 2px 6px;
+    border-radius: 4px;
+}
+
+.btn-close-dropdown:hover {
+    color: #fff;
+    background: rgba(255, 255, 255, 0.1);
 }
 
 .dropdown-items-grid {
@@ -2169,7 +2207,7 @@ body.touch-enabled #mobile-controls {
     transform: translateX(-50%) translateY(0);
 }
 
-/* Desktop Bottom Hotbar */
+/* Bottom Skill Hotbar (Slots 1, 2, 3 - Accessible on Desktop & Mobile) */
 #desktop-hotbar {
     position: absolute;
     bottom: 24px;
@@ -2179,12 +2217,6 @@ body.touch-enabled #mobile-controls {
     gap: 10px;
     z-index: 20;
     pointer-events: auto;
-}
-
-@media (max-width: 768px) {
-    #desktop-hotbar {
-        display: none !important;
-    }
 }
 
 .hotbar-slot {
@@ -3002,6 +3034,211 @@ body.touch-enabled #mobile-controls {
 }
 
 /* ============================================================
+   MOBILE FLOATING CHAT BUTTON & FULLSCREEN POPUP CHAT SYSTEM
+   ============================================================ */
+.hud-mobile-chat-btn {
+    display: none;
+    position: fixed;
+    left: 14px;
+    bottom: 136px;
+    z-index: 24;
+    background: radial-gradient(circle at 50% 0%, rgba(30, 41, 59, 0.95), rgba(15, 23, 42, 0.98));
+    border: 1.5px solid rgba(56, 189, 248, 0.6);
+    border-radius: 20px;
+    padding: 6px 14px;
+    color: #38bdf8;
+    font-size: 0.8rem;
+    font-weight: 800;
+    cursor: pointer;
+    pointer-events: auto;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6), 0 0 10px rgba(56, 189, 248, 0.25);
+    align-items: center;
+    gap: 6px;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    transition: all 0.15s ease;
+}
+
+.hud-mobile-chat-btn:active {
+    transform: scale(0.94);
+    background: rgba(56, 189, 248, 0.25);
+}
+
+.m-chat-unread-badge {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #ef4444;
+    box-shadow: 0 0 8px #ef4444;
+    display: inline-block;
+}
+
+/* Fullscreen Popup Chat Modal */
+.fullscreen-chat-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(4, 7, 18, 0.88);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    z-index: 99999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 12px;
+    box-sizing: border-box;
+}
+
+.fullscreen-chat-dialog {
+    background: radial-gradient(circle at 50% 0%, #1e293b, #0f172a);
+    border: 2px solid #38bdf8;
+    border-radius: 16px;
+    width: min(600px, 96vw);
+    height: min(480px, 92vh);
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 0 45px rgba(56, 189, 248, 0.45);
+    overflow: hidden;
+}
+
+.fullscreen-chat-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 14px;
+    border-bottom: 1px solid rgba(56, 189, 248, 0.25);
+    background: rgba(15, 23, 42, 0.7);
+}
+
+.chat-modal-tabs {
+    display: flex;
+    gap: 8px;
+}
+
+.chat-tab-btn {
+    background: transparent;
+    border: 1px solid rgba(148, 163, 184, 0.25);
+    border-radius: 8px;
+    color: #94a3b8;
+    font-size: 0.85rem;
+    font-weight: 800;
+    padding: 6px 14px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 0.15s ease;
+}
+
+.chat-tab-btn.active {
+    background: rgba(56, 189, 248, 0.2);
+    border-color: #38bdf8;
+    color: #fff;
+    box-shadow: 0 0 10px rgba(56, 189, 248, 0.3);
+}
+
+.btn-close-chat-modal {
+    background: none;
+    border: none;
+    color: #94a3b8;
+    font-size: 1.4rem;
+    cursor: pointer;
+    padding: 4px 10px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+    transition: all 0.15s ease;
+}
+
+.btn-close-chat-modal:hover,
+.btn-close-chat-modal:active {
+    color: #fff;
+    background: rgba(239, 68, 68, 0.25);
+}
+
+.fullscreen-chat-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    background: rgba(10, 15, 30, 0.5);
+}
+
+.modal-chat-content {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.fullscreen-chat-body .chat-line {
+    font-size: 14px !important;
+    line-height: 1.5;
+    word-break: break-word;
+}
+
+.fullscreen-chat-body .chat-line.system-line {
+    color: #94a3b8;
+    font-size: 12.5px !important;
+    font-style: italic;
+}
+
+.fullscreen-chat-body .chat-line.world-line {
+    color: #f59e0b;
+}
+
+.fullscreen-chat-body .chat-line.local-line {
+    color: #f1f5f9;
+}
+
+.fullscreen-chat-footer {
+    display: flex;
+    gap: 8px;
+    padding: 10px 14px;
+    border-top: 1px solid rgba(56, 189, 248, 0.25);
+    background: rgba(15, 23, 42, 0.85);
+}
+
+#modal-chat-input {
+    flex: 1;
+    background: rgba(15, 23, 42, 0.95);
+    border: 1.5px solid rgba(56, 189, 248, 0.5);
+    border-radius: 10px;
+    padding: 10px 14px;
+    color: #fff;
+    font-size: 14px;
+    outline: none;
+}
+
+#modal-chat-input:focus {
+    border-color: #38bdf8;
+    box-shadow: 0 0 12px rgba(56, 189, 248, 0.4);
+}
+
+.btn-chat-send-large {
+    background: linear-gradient(135deg, #0284c7, #38bdf8);
+    border: none;
+    border-radius: 10px;
+    color: #fff;
+    font-weight: 800;
+    font-size: 14px;
+    padding: 0 20px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.btn-chat-send-large:active {
+    transform: scale(0.96);
+}
+
+/* ============================================================
    CIRCUIT SIEGE ADAPTIVE MOBILE HUD SCALING & RESPONSIVENESS
    ============================================================ */
 @media (max-width: 950px), (pointer: coarse) {
@@ -3013,66 +3250,13 @@ body.touch-enabled #mobile-controls {
         left: 8px !important;
     }
 
-    /* 2. Responsive Combat Chat (Safely Elevated Above Movement D-Pad) */
+    /* 2. Mobile Chat: Hide desktop combat box, show floating Chat button */
     #persistent-chat-box {
-        position: fixed !important;
-        left: 14px !important;
-        bottom: 136px !important; /* Floats safely ABOVE the 112px D-pad thumbstick */
-        width: 224px !important;
-        height: 98px !important;
-        font-size: 10px !important;
-        z-index: 25 !important;
-        padding: 4px 6px !important;
-        background: rgba(15, 23, 42, 0.88) !important;
-        backdrop-filter: blur(8px) !important;
-        border-radius: 8px !important;
-        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6) !important;
-        transition: height 0.2s ease, transform 0.2s ease !important;
-    }
-
-    #persistent-chat-box.minimized {
-        height: 28px !important;
-        overflow: hidden !important;
-    }
-
-    #persistent-chat-box.minimized .chat-tab-content,
-    #persistent-chat-box.minimized #chat-input-form {
         display: none !important;
     }
 
-    #persistent-chat-box.minimized #chat-tab-bar {
-        border-bottom: none !important;
-        margin-bottom: 0 !important;
-        padding-bottom: 0 !important;
-    }
-
-    #persistent-chat-content,
-    #world-chat-content {
-        height: 42px !important;
-        font-size: 9.5px !important;
-        line-height: 1.35 !important;
-    }
-
-    .chat-tab {
-        font-size: 9.5px !important;
-        padding: 2px 7px !important;
-    }
-
-    .chat-input-row {
-        margin-top: 3px !important;
-        gap: 3px !important;
-    }
-
-    .chat-input-row input {
-        font-size: 9.5px !important;
-        padding: 2px 6px !important;
-        height: 22px !important;
-    }
-
-    .btn-chat-send {
-        font-size: 9px !important;
-        padding: 2px 6px !important;
-        height: 22px !important;
+    .hud-mobile-chat-btn {
+        display: flex !important;
     }
 
     /* 3. Scaled Top Center Zone / Floor Title */
@@ -3108,11 +3292,11 @@ body.touch-enabled #mobile-controls {
         font-size: 0.75rem !important;
     }
 
-    /* Centered Mobile Menu Dialog */
-    .mobile-menu-dialog {
-        width: min(340px, 92vw) !important;
-        padding: 14px !important;
-        margin: auto !important;
+    /* Top-Right Dropdown Menu */
+    .hud-dropdown-menu {
+        width: 250px !important;
+        top: calc(100% + 6px) !important;
+        right: 0 !important;
     }
 
     .dropdown-items-grid {
@@ -3159,9 +3343,47 @@ body.touch-enabled #mobile-controls {
         transform-origin: bottom right !important;
     }
 
-    /* 7. Hide Desktop Hotbar on Mobile Screens */
+    /* 7. Bottom 1, 2, 3 Hotbar (Skill 1, Skill 2, Potion - Visible and Touch-Ready) */
     #desktop-hotbar {
-        display: none !important;
+        display: flex !important;
+        position: fixed !important;
+        bottom: 12px !important;
+        left: 50% !important;
+        transform: translateX(-50%) !important;
+        gap: 8px !important;
+        z-index: 30 !important;
+        pointer-events: auto !important;
+    }
+
+    .hotbar-slot {
+        min-width: 64px !important;
+        height: 54px !important;
+        padding: 3px 6px !important;
+        border-radius: 10px !important;
+        user-select: none !important;
+        touch-action: manipulation !important;
+        -webkit-tap-highlight-color: transparent !important;
+    }
+
+    .hotbar-key {
+        font-size: 0.62rem !important;
+        top: 2px !important;
+        left: 5px !important;
+    }
+
+    .hotbar-icon {
+        font-size: 1.15rem !important;
+        margin-top: 2px !important;
+    }
+
+    .hotbar-skill-name {
+        font-size: 0.58rem !important;
+    }
+
+    .hotbar-qty {
+        font-size: 0.72rem !important;
+        bottom: 2px !important;
+        right: 5px !important;
     }
 }
 
@@ -3173,15 +3395,10 @@ body.touch-enabled #mobile-controls {
         left: 6px !important;
     }
 
-    #persistent-chat-box {
-        bottom: 122px !important;
-        height: 86px !important;
-        width: 206px !important;
-    }
-
-    #persistent-chat-content,
-    #world-chat-content {
-        height: 35px !important;
+    .hud-mobile-chat-btn {
+        bottom: 116px !important;
+        padding: 4px 10px !important;
+        font-size: 0.75rem !important;
     }
 
     .hud-top-center {
@@ -3220,10 +3437,12 @@ body.touch-enabled #mobile-controls {
         right: 6px !important;
         transform: scale(0.82) !important;
     }
-}
 
-body.touch-enabled #desktop-hotbar {
-    display: none !important;
+    #desktop-hotbar {
+        bottom: 6px !important;
+        transform: translateX(-50%) scale(0.92) !important;
+        transform-origin: bottom center !important;
+    }
 }
 
 @media (min-width: 951px) and (pointer: fine) {
@@ -3233,7 +3452,10 @@ body.touch-enabled #desktop-hotbar {
     .hud-mobile-menu-wrapper {
         display: none !important;
     }
-    #mobile-menu-modal {
+    .hud-dropdown-menu {
+        display: none !important;
+    }
+    .hud-mobile-chat-btn {
         display: none !important;
     }
 }
