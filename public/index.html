@@ -4,9 +4,38 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Exonie 3D Remastered</title>
-    <link rel="icon" type="image/png" href="favicon.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="favicon.png">
+    <link rel="apple-touch-icon" href="favicon.png">
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#020617">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="full-screen" content="yes">
+    <meta name="browsermode" content="application">
+    <meta name="screen-orientation" content="landscape">
+    <script>
+      window.__deferredPwaPrompt = null;
+      window.addEventListener('beforeinstallprompt', function(e) {
+        e.preventDefault();
+        window.__deferredPwaPrompt = e;
+        try { localStorage.removeItem('exonie_pwa_installed'); } catch (_) {}
+        window.dispatchEvent(new CustomEvent('exonie-pwa-ready'));
+      });
+      window.addEventListener('appinstalled', function() {
+        window.__deferredPwaPrompt = null;
+        try { localStorage.setItem('exonie_pwa_installed', '1'); } catch (_) {}
+        window.dispatchEvent(new CustomEvent('exonie-pwa-installed'));
+      });
+      if ((window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || window.navigator.standalone === true) {
+        try { localStorage.setItem('exonie_pwa_installed', '1'); } catch (_) {}
+      }
+      if ('serviceWorker' in navigator && /^https?:/i.test(window.location.protocol)) {
+        navigator.serviceWorker.register('sw.js').catch(function() {});
+      }
+    </script>
     <link rel="preload" as="image" href="loadingscreen.png">
-    <link rel="stylesheet" href="css/style.css?v=3.8">
+    <link rel="stylesheet" href="css/style.css?v=3.9">
 
     <!-- Native ES Module Import Map for Three.js -->
     <script type="importmap">
@@ -92,7 +121,16 @@
 
             <button class="btn-auth-primary" id="btn-login" onclick="window.ExonieFlow.attemptLogin()">LOGIN</button>
             
-            <span class="auth-link" id="link-to-register" onclick="window.ExonieFlow.switchAuth('register')">Create an Account</span>
+            <div style="display:flex; justify-content:space-between; align-items:center; width:100%; margin-top:10px;">
+                <span class="auth-link" id="link-to-register" onclick="window.ExonieFlow.switchAuth('register')">Create an Account</span>
+                <span class="auth-link pwa-install-trigger" style="color:#38bdf8; font-weight:700;" onclick="window.triggerPwaInstall && window.triggerPwaInstall()">📲 Install App</span>
+            </div>
+
+            <!-- Circuit Siege PWA Install Button -->
+            <button id="title-btn-install-pwa" type="button" class="btn-install-pwa" onclick="window.triggerPwaInstall && window.triggerPwaInstall()" style="display:flex; align-items:center; justify-content:center; gap:8px; width:100%; padding:10px 16px; margin-top:14px; border-radius:8px; border:1px solid rgba(56, 189, 248, 0.45); background:radial-gradient(circle, rgba(15, 23, 42, 0.95), rgba(2, 6, 23, 0.98)); color:#38bdf8; font-size:0.82rem; font-weight:800; letter-spacing:0.06em; cursor:pointer; box-shadow:0 0 16px rgba(56, 189, 248, 0.22); transition:all 0.2s;" title="Download &amp; Install Exonie 3D App">
+                <span style="font-size:1.05rem;">📲</span>
+                <span id="title-pwa-text">DOWNLOAD &amp; INSTALL APP</span>
+            </button>
         </div>
 
         <!-- Register Form -->
@@ -113,7 +151,10 @@
             <input type="password" id="reg-pass" class="auth-input" placeholder="Password (Min 4 chars)" autocomplete="new-password">
 
             <button class="btn-auth-primary" id="btn-register" onclick="window.ExonieFlow.attemptRegister()">CREATE ACCOUNT</button>
-            <span class="auth-link" id="link-to-login" onclick="window.ExonieFlow.switchAuth('login')">Back to Login</span>
+            <div style="display:flex; justify-content:space-between; align-items:center; width:100%; margin-top:10px;">
+                <span class="auth-link" id="link-to-login" onclick="window.ExonieFlow.switchAuth('login')">Back to Login</span>
+                <span class="auth-link pwa-install-trigger" style="color:#38bdf8; font-weight:700;" onclick="window.triggerPwaInstall && window.triggerPwaInstall()">📲 Install App</span>
+            </div>
         </div>
     </section>
 
@@ -407,9 +448,17 @@
             <button class="mobile-short-btn" id="m-btn-potion">🧪 Potion (<span id="m-potion-qty">10</span>)</button>
         </div>
 
-        <!-- Virtual Joystick (Bottom Left) -->
-        <div id="joystick-zone">
-            <div id="joystick-thumb"></div>
+        <!-- Circuit Siege Circular Virtual D-Pad Thumbstick (Bottom Left) -->
+        <div id="mobile-dpad-container" class="mobile-dpad-wrap pointer-events-auto">
+            <div id="mobile-dpad" class="mobile-dpad">
+                <div class="mobile-dpad-arrow up">▲</div>
+                <div class="mobile-dpad-arrow down">▼</div>
+                <div class="mobile-dpad-arrow left">◀</div>
+                <div class="mobile-dpad-arrow right">▶</div>
+                <div id="mobile-dpad-stick" class="mobile-dpad-stick"></div>
+            </div>
+            <!-- Alias zone for joystick tracking -->
+            <div id="joystick-zone" style="display:none;"><div id="joystick-thumb"></div></div>
         </div>
 
         <!-- Action Buttons (Bottom Right Arc) -->
@@ -1364,12 +1413,43 @@
     </div>
 
     <!-- ============================================================
+         CIRCUIT SIEGE IOS / SAFARI PWA INSTALL GUIDE MODAL
+         ============================================================ -->
+    <div class="game-modal" id="pwa-ios-modal" style="display:none; z-index:99999;">
+        <div class="modal-dialog" style="max-width:440px; width:92vw; background:radial-gradient(circle at 50% 15%, #1e293b, #0f172a); border:2px solid #38bdf8; border-radius:14px; box-shadow:0 0 35px rgba(56, 189, 248, 0.45); padding:20px; color:#fff;">
+            <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #334155; padding-bottom:10px; margin-bottom:14px;">
+                <h3 style="color:#38bdf8; margin:0; font-size:1.1rem; display:flex; align-items:center; gap:8px;">
+                    📲 Install on iPhone / iPad
+                </h3>
+                <button type="button" onclick="document.getElementById('pwa-ios-modal').style.display='none'" style="background:none; border:none; color:#94a3b8; font-size:1.3rem; cursor:pointer;">✖</button>
+            </div>
+            <p style="font-size:0.85rem; color:#cbd5e1; line-height:1.5; margin-bottom:12px;">Apple Safari installs <strong>Exonie 3D</strong> directly to your Home Screen in 3 quick steps:</p>
+            <div style="background:rgba(15,23,42,0.8); border:1px solid rgba(56,189,248,0.25); border-radius:10px; padding:12px; display:flex; flex-direction:column; gap:10px; font-size:0.8rem; color:#e2e8f0;">
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <span style="width:24px; height:24px; border-radius:50%; background:#0369a1; border:1px solid #38bdf8; display:flex; align-items:center; justify-content:center; font-weight:bold; font-size:0.75rem; color:#fff; shrink-0;">1</span>
+                    <span>Tap the <strong>Share button</strong> (box with arrow pointing up <span style="font-size:1.1rem;">⎋</span>) at the bottom or top of Safari.</span>
+                </div>
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <span style="width:24px; height:24px; border-radius:50%; background:#0369a1; border:1px solid #38bdf8; display:flex; align-items:center; justify-content:center; font-weight:bold; font-size:0.75rem; color:#fff; shrink-0;">2</span>
+                    <span>Scroll down and tap <strong>Add to Home Screen</strong> (<span style="font-size:1.1rem;">⊞</span>).</span>
+                </div>
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <span style="width:24px; height:24px; border-radius:50%; background:#0369a1; border:1px solid #38bdf8; display:flex; align-items:center; justify-content:center; font-weight:bold; font-size:0.75rem; color:#fff; shrink-0;">3</span>
+                    <span>Tap <strong>Add</strong> in the top-right corner. Launch directly from your Home Screen in full-screen!</span>
+                </div>
+            </div>
+            <button type="button" onclick="document.getElementById('pwa-ios-modal').style.display='none'" style="margin-top:16px; width:100%; padding:10px; border-radius:8px; border:none; background:linear-gradient(135deg, #0284c7, #38bdf8); color:#fff; font-weight:bold; cursor:pointer;">Got It</button>
+        </div>
+    </div>
+
+    <!-- ============================================================
          AUTHENTIC 2D EXONIE PERSISTENT CHAT BOX & INPUT (LOCAL + WORLD)
          ============================================================ -->
     <div id="persistent-chat-box" style="display:none !important;">
         <div id="chat-tab-bar">
             <button id="chat-tab-local" class="chat-tab active" onclick="window.switchChatTab && window.switchChatTab('local')">Local</button>
             <button id="chat-tab-world" class="chat-tab" onclick="window.switchChatTab && window.switchChatTab('world')">World <span id="world-unread-dot" class="unread-dot" style="display:none;"></span></button>
+            <button id="chat-minimize-btn" class="chat-tab" type="button" style="margin-left:auto; font-size:11px; padding:2px 8px; color:#94a3b8;" onclick="window.toggleChatBoxMinimized && window.toggleChatBoxMinimized()" title="Minimize / Expand Chat">▾</button>
         </div>
         <div id="chat-tab-content-local" class="chat-tab-content">
             <div id="persistent-chat-content">

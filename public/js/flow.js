@@ -31,6 +31,7 @@ window.ExonieFlow = {
         console.log('🛡️ [EXONIE 3D] Flow Manager initialized');
         this.cacheDOM();
         this.bindEvents();
+        this.initPwaAndMobile();
         window.showLoadingTransition = (title, subtitle, durationMs, onMidpoint) => {
             this.showLoadingTransition(title, subtitle, durationMs, onMidpoint);
         };
@@ -1350,6 +1351,93 @@ window.ExonieFlow = {
                 }
             };
             tryLaunch();
+        });
+    },
+
+    // ============================================================
+    // CIRCUIT SIEGE PWA INSTALL ENGINE & MOBILE ADAPTIVE SUPPORT
+    // ============================================================
+    initPwaAndMobile() {
+        const ua = navigator.userAgent || '';
+        const isMobileUA = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(ua);
+        const hasTouch = (typeof navigator.maxTouchPoints === 'number' && navigator.maxTouchPoints > 0) || ('ontouchstart' in window);
+        const isCoarse = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+        const isMobile = isMobileUA || (hasTouch && isCoarse);
+
+        if (document.body) {
+            document.body.classList.toggle('touch-enabled', isMobile);
+        }
+
+        // PWA install trigger (Exact Circuit Siege behavior)
+        window.triggerPwaInstall = async () => {
+            let promptEvent = window.__deferredPwaPrompt;
+            if (!promptEvent) {
+                await new Promise((resolve) => {
+                    const onReady = () => { window.removeEventListener('exonie-pwa-ready', onReady); resolve(); };
+                    window.addEventListener('exonie-pwa-ready', onReady);
+                    setTimeout(resolve, 1000);
+                });
+                promptEvent = window.__deferredPwaPrompt;
+            }
+
+            if (promptEvent) {
+                try {
+                    promptEvent.prompt();
+                    const choice = await promptEvent.userChoice;
+                    window.__deferredPwaPrompt = null;
+                    this.updatePwaButtonState();
+                    if (choice && choice.outcome === 'accepted') {
+                        try { localStorage.setItem('exonie_pwa_installed', '1'); } catch (_) {}
+                        alert('🎉 Exonie 3D installed to your device! Launch anytime from your Home Screen or Apps menu.');
+                    }
+                    return;
+                } catch (_) {}
+            }
+
+            // Check iOS Safari
+            const isIOS = /iPhone|iPad|iPod/.test(ua);
+            const isSafari = /Safari/.test(ua) && !/Chrome|Chromium|Edg\//.test(ua);
+            if (isIOS || (isSafari && !('onbeforeinstallprompt' in window))) {
+                const iosModal = document.getElementById('pwa-ios-modal');
+                if (iosModal) iosModal.style.display = 'flex';
+                return;
+            }
+
+            if ((window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || localStorage.getItem('exonie_pwa_installed') === '1') {
+                alert('✓ Exonie 3D is already installed as a progressive web app on your device!');
+            } else {
+                alert('To install Exonie 3D, tap your browser menu (⋮ or Share) and select "Add to Home Screen" or "Install App".');
+            }
+        };
+
+        this.updatePwaButtonState();
+        window.addEventListener('exonie-pwa-ready', () => this.updatePwaButtonState());
+        window.addEventListener('exonie-pwa-installed', () => {
+            window.__deferredPwaPrompt = null;
+            try { localStorage.setItem('exonie_pwa_installed', '1'); } catch (_) {}
+            this.updatePwaButtonState();
+        });
+
+        // Chat minimize / expand toggle
+        window.toggleChatBoxMinimized = () => {
+            const chatBox = document.getElementById('persistent-chat-box');
+            if (!chatBox) return;
+            const isMin = chatBox.classList.toggle('minimized');
+            const btn = document.getElementById('chat-minimize-btn');
+            if (btn) btn.textContent = isMin ? '▲' : '▾';
+        };
+    },
+
+    updatePwaButtonState() {
+        const isStandalone = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || window.navigator.standalone === true;
+        const isInstalled = isStandalone || localStorage.getItem('exonie_pwa_installed') === '1';
+
+        document.querySelectorAll('.btn-install-pwa').forEach(btn => {
+            if (isInstalled) {
+                btn.style.opacity = '0.75';
+                const txt = btn.querySelector('#title-pwa-text') || btn.querySelector('span:last-child');
+                if (txt) txt.textContent = '✓ APP INSTALLED';
+            }
         });
     }
 };

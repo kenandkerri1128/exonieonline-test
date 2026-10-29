@@ -571,68 +571,91 @@ export class UIManager {
     }
 
     setupMobileControls() {
-        const joyZone = document.getElementById('joystick-zone');
-        const joyThumb = document.getElementById('joystick-thumb');
+        const dpadContainer = document.getElementById('mobile-dpad-container') || document.getElementById('joystick-zone');
+        const dpadEl = document.getElementById('mobile-dpad') || dpadContainer;
+        const stickEl = document.getElementById('mobile-dpad-stick') || document.getElementById('joystick-thumb');
 
-        if (!joyZone || !joyThumb) return;
+        if (dpadEl && stickEl) {
+            const upArrow = dpadEl.querySelector ? dpadEl.querySelector('.up') : null;
+            const downArrow = dpadEl.querySelector ? dpadEl.querySelector('.down') : null;
+            const leftArrow = dpadEl.querySelector ? dpadEl.querySelector('.left') : null;
+            const rightArrow = dpadEl.querySelector ? dpadEl.querySelector('.right') : null;
 
-        const maxRadius = 45;
+            let stickPointerId = null;
 
-        // Joystick Touch Start
-        joyZone.addEventListener('touchstart', (e) => {
-            const touch = e.changedTouches[0];
-            this.joystick.active = true;
-            this.joystick.touchId = touch.identifier;
-            const rect = joyZone.getBoundingClientRect();
-            this.joystick.startX = rect.left + rect.width / 2;
-            this.joystick.startY = rect.top + rect.height / 2;
-        }, { passive: true });
+            const updateStick = (clientX, clientY) => {
+                const rect = dpadEl.getBoundingClientRect();
+                const cx = rect.left + rect.width / 2;
+                const cy = rect.top + rect.height / 2;
+                const dx = clientX - cx;
+                const dy = clientY - cy;
+                const dist = Math.hypot(dx, dy);
+                const maxR = rect.width * 0.36;
+                const clampedDist = Math.min(dist, maxR);
+                const angle = Math.atan2(dy, dx);
+                const puckX = Math.cos(angle) * clampedDist;
+                const puckY = Math.sin(angle) * clampedDist;
 
-        // Joystick Touch Move
-        window.addEventListener('touchmove', (e) => {
-            if (!this.joystick.active) return;
-            for (let i = 0; i < e.changedTouches.length; i++) {
-                const touch = e.changedTouches[i];
-                if (touch.identifier === this.joystick.touchId) {
-                    let dx = touch.clientX - this.joystick.startX;
-                    let dy = touch.clientY - this.joystick.startY;
-                    const dist = Math.hypot(dx, dy);
+                stickEl.style.transform = `translate(${puckX}px, ${puckY}px)`;
+                this.joystick.active = true;
+                this.joystick.vectorX = maxR > 0 ? puckX / maxR : 0;
+                this.joystick.vectorY = maxR > 0 ? puckY / maxR : 0;
 
-                    if (dist > maxRadius) {
-                        dx = (dx / dist) * maxRadius;
-                        dy = (dy / dist) * maxRadius;
-                    }
+                if (upArrow) upArrow.classList.toggle('active', this.joystick.vectorY < -0.32);
+                if (downArrow) downArrow.classList.toggle('active', this.joystick.vectorY > 0.32);
+                if (leftArrow) leftArrow.classList.toggle('active', this.joystick.vectorX < -0.32);
+                if (rightArrow) rightArrow.classList.toggle('active', this.joystick.vectorX > 0.32);
+            };
 
-                    joyThumb.style.transform = `translate(${dx}px, ${dy}px)`;
-                    this.joystick.vectorX = dx / maxRadius;
-                    this.joystick.vectorY = dy / maxRadius;
+            const resetStick = () => {
+                stickPointerId = null;
+                this.joystick.active = false;
+                this.joystick.vectorX = 0;
+                this.joystick.vectorY = 0;
+                stickEl.style.transform = 'translate(0px, 0px)';
+                if (upArrow) upArrow.classList.remove('active');
+                if (downArrow) downArrow.classList.remove('active');
+                if (leftArrow) leftArrow.classList.remove('active');
+                if (rightArrow) rightArrow.classList.remove('active');
+            };
+
+            dpadEl.addEventListener('pointerdown', (e) => {
+                e.preventDefault();
+                stickPointerId = e.pointerId;
+                try { dpadEl.setPointerCapture(e.pointerId); } catch (_) {}
+                updateStick(e.clientX, e.clientY);
+            });
+
+            dpadEl.addEventListener('pointermove', (e) => {
+                if (e.pointerId === stickPointerId) {
+                    e.preventDefault();
+                    updateStick(e.clientX, e.clientY);
                 }
-            }
-        }, { passive: true });
+            });
 
-        // Joystick Touch End
-        const resetJoy = (e) => {
-            for (let i = 0; i < e.changedTouches.length; i++) {
-                if (e.changedTouches[i].identifier === this.joystick.touchId) {
-                    this.joystick.active = false;
-                    this.joystick.touchId = null;
-                    this.joystick.vectorX = 0;
-                    this.joystick.vectorY = 0;
-                    joyThumb.style.transform = `translate(0px, 0px)`;
+            const onPointerEnd = (e) => {
+                if (e.pointerId === stickPointerId) {
+                    try { dpadEl.releasePointerCapture(e.pointerId); } catch (_) {}
+                    resetStick();
                 }
-            }
-        };
-        window.addEventListener('touchend', resetJoy);
-        window.addEventListener('touchcancel', resetJoy);
+            };
+            dpadEl.addEventListener('pointerup', onPointerEnd);
+            dpadEl.addEventListener('pointercancel', onPointerEnd);
+        }
 
-        // Touch Combat Action Buttons
+        // Touch Combat Action Buttons (Circuit Siege Style with active press feedback)
         const bindTouchBtn = (id, action) => {
             const btn = document.getElementById(id);
             if (!btn) return;
-            btn.addEventListener('touchstart', (e) => {
+            btn.addEventListener('pointerdown', (e) => {
                 e.preventDefault();
+                btn.classList.add('active');
                 action();
             });
+            const endBtn = () => btn.classList.remove('active');
+            btn.addEventListener('pointerup', endBtn);
+            btn.addEventListener('pointercancel', endBtn);
+            btn.addEventListener('pointerleave', endBtn);
         };
 
         bindTouchBtn('btn-touch-attack', () => this.game.onAttackTrigger());

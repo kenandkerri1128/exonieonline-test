@@ -363,6 +363,63 @@ export class Engine3D {
             this.cameraDistance = Math.max(4.5, Math.min(22, this.cameraDistance + e.deltaY * 0.008));
         }, { passive: true });
 
+        // Circuit Siege Mobile Touch Camera Look (Drag screen outside HUD buttons to rotate camera)
+        let lookPointerId = null;
+        let lastLookX = 0, lastLookY = 0;
+        let initialPinchDist = null;
+        let initialCamDist = null;
+
+        window.addEventListener('pointerdown', (e) => {
+            if (e.pointerType === 'mouse') return;
+            if (e.target && e.target.closest && e.target.closest('#mobile-dpad-container, #joystick-zone, #touch-actions-zone, #mobile-menu-shortcuts, #persistent-chat-box, .game-modal, button, input, a, select')) return;
+
+            lookPointerId = e.pointerId;
+            lastLookX = e.clientX;
+            lastLookY = e.clientY;
+        }, { passive: true });
+
+        window.addEventListener('pointermove', (e) => {
+            if (e.pointerId === lookPointerId) {
+                const dx = e.clientX - lastLookX;
+                const dy = e.clientY - lastLookY;
+                lastLookX = e.clientX;
+                lastLookY = e.clientY;
+                if (Math.abs(dx) < 300 && Math.abs(dy) < 300) {
+                    this.cameraYaw -= dx * 0.0055;
+                    this.cameraPitch = Math.max(0.08, Math.min(1.25, this.cameraPitch + dy * 0.0045));
+                }
+            }
+        }, { passive: true });
+
+        const clearLook = (e) => {
+            if (e.pointerId === lookPointerId) {
+                lookPointerId = null;
+            }
+        };
+        window.addEventListener('pointerup', clearLook, { passive: true });
+        window.addEventListener('pointercancel', clearLook, { passive: true });
+
+        // Mobile Pinch-to-Zoom
+        window.addEventListener('touchmove', (e) => {
+            if (e.touches && e.touches.length === 2) {
+                const dist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+                if (initialPinchDist === null) {
+                    initialPinchDist = dist;
+                    initialCamDist = this.cameraDistance;
+                } else {
+                    const diff = (initialPinchDist - dist) * 0.03;
+                    this.cameraDistance = Math.max(4.5, Math.min(22, initialCamDist + diff));
+                }
+            }
+        }, { passive: true });
+
+        window.addEventListener('touchend', (e) => {
+            if (!e.touches || e.touches.length < 2) {
+                initialPinchDist = null;
+                initialCamDist = null;
+            }
+        }, { passive: true });
+
         document.addEventListener('pointerlockchange', () => {
             this.isPointerLocked = (document.pointerLockElement === canvas);
             const ch = document.getElementById('crosshair-center');

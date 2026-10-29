@@ -1809,10 +1809,15 @@ export class GameApp {
         this.player.hp = this.player.maxHp;
         this.player.mp = this.player.maxMp;
 
-        // Show HUD (and Mobile Controls ONLY on touch devices)
+        // Show HUD (and Mobile Controls ONLY on touch/mobile devices - Circuit Siege Architecture)
         const hud = document.getElementById('game-hud');
         if (hud) hud.style.display = 'flex';
-        const isTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+        const ua = navigator.userAgent || '';
+        const isMobileUA = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(ua);
+        const hasTouch = (typeof navigator.maxTouchPoints === 'number' && navigator.maxTouchPoints > 0) || ('ontouchstart' in window);
+        const isCoarse = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+        const isTouch = isMobileUA || (hasTouch && isCoarse) || document.body.classList.contains('touch-enabled');
+        if (isTouch) document.body.classList.add('touch-enabled');
         const mobileCtrl = document.getElementById('mobile-controls');
         if (mobileCtrl) mobileCtrl.style.display = isTouch ? 'block' : 'none';
 
