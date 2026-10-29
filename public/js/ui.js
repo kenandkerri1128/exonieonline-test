@@ -1,4 +1,4 @@
-import { CLASSES, getItemSellPrice, CASH_SHOP_ITEMS } from './game_data.js';
+import { CLASSES, getItemSellPrice, CASH_SHOP_ITEMS, canStoneEnhanceItem, calculateEnhanceOutcome, MAX_ENHANCE_BY_RARITY, ENHANCE_BONUS_BY_RARITY } from './game_data.js';
 
 export class UIManager {
     constructor(game) {
@@ -45,6 +45,7 @@ export class UIManager {
         this.hauntedHouseModal = document.getElementById('haunted-house-modal');
         this.cashShopModal = document.getElementById('cash-shop-modal');
         this.notEnoughGoldModal = document.getElementById('not-enough-gold-modal');
+        this.enhancementModal = document.getElementById('enhancement-modal');
         this.tradeDialog = document.getElementById('trade-dialog');
         this.tradeScreen = document.getElementById('trade-screen');
         this.isTradeOpen = false;
@@ -507,6 +508,11 @@ export class UIManager {
             if (this.game) this.game.portalCooldown = 4.0;
         };
 
+        const btnCloseEnhance = document.getElementById('btn-close-enhancement');
+        if (btnCloseEnhance) btnCloseEnhance.onclick = () => {
+            this.closeEnhanceModal();
+        };
+
         window.enterHauntedHouseChallenge = (difficulty) => {
             let cost = 1000;
             if (difficulty === 'normal') cost = 10000;
@@ -637,14 +643,23 @@ export class UIManager {
         bindTouchBtn('btn-touch-lock', () => this.game.toggleTargetLock());
     }
 
-    showToast(message) {
+    showToast(message, borderColor = null) {
         if (!this.toastEl) return;
-        this.toastEl.textContent = message;
+        this.toastEl.innerHTML = message;
+        if (borderColor) {
+            this.toastEl.style.borderColor = borderColor;
+            this.toastEl.style.boxShadow = `0 0 25px ${borderColor}, 0 8px 24px rgba(0, 0, 0, 0.75)`;
+        } else {
+            this.toastEl.style.borderColor = '#38bdf8';
+            this.toastEl.style.boxShadow = '0 0 25px rgba(56, 189, 248, 0.45), 0 8px 24px rgba(0, 0, 0, 0.75)';
+        }
+        this.toastEl.classList.remove('show');
+        void this.toastEl.offsetWidth;
         this.toastEl.classList.add('show');
         clearTimeout(this.toastTimer);
         this.toastTimer = setTimeout(() => {
-            this.toastEl.classList.remove('show');
-        }, 2400);
+            if (this.toastEl) this.toastEl.classList.remove('show');
+        }, 3000);
     }
 
     updatePlayerHUD(player) {
@@ -1566,7 +1581,18 @@ export class UIManager {
                 this.renderInventory();
             };
             actionsEl.appendChild(btnUse);
-        } else if (item.type === 'material' && (String(item.sprite).includes('refinement') || String(item.sprite).includes('gem'))) {
+        } else if (item.type === 'material' && (String(item.sprite || '').includes('refinement') || String(item.name || '').includes('Refinement') || String(item.name || '').includes('Divine Enhancement'))) {
+            const btnEnhance = document.createElement('button');
+            btnEnhance.className = 'btn-item-action';
+            btnEnhance.style.background = 'linear-gradient(135deg, #0284c7, #38bdf8)';
+            btnEnhance.style.color = '#fff';
+            btnEnhance.style.fontWeight = 'bold';
+            btnEnhance.textContent = `✨ Enhance Equipment`;
+            btnEnhance.onclick = () => {
+                this.openEnhanceModal(index);
+            };
+            actionsEl.appendChild(btnEnhance);
+        } else if (item.type === 'material' && String(item.sprite || '').includes('gem')) {
             const btnUseMat = document.createElement('button');
             btnUseMat.className = 'btn-item-action';
             btnUseMat.textContent = `✨ Use ${item.name} on Weapon`;
@@ -1615,6 +1641,158 @@ export class UIManager {
         if (titleEl) titleEl.textContent = 'Select an item to view stats';
         if (descEl) descEl.textContent = 'Equipping a weapon allows you to choose your permanent class in the Skills menu (K).';
         if (actionsEl) actionsEl.innerHTML = '';
+    }
+
+    closeEnhanceModal() {
+        if (!this.enhancementModal) this.enhancementModal = document.getElementById('enhancement-modal');
+        if (this.enhancementModal) this.enhancementModal.style.display = 'none';
+    }
+
+    openEnhanceModal(stoneIndex) {
+        if (!this.enhancementModal) this.enhancementModal = document.getElementById('enhancement-modal');
+        if (!this.enhancementModal) return;
+
+        const stone = this.game?.player?.inventory ? this.game.player.inventory[stoneIndex] : null;
+        if (!stone) {
+            this.showToast('⚠️ Refinement stone not found.', '#ef4444');
+            return;
+        }
+
+        const stoneInfoEl = document.getElementById('enhance-stone-info');
+        const eqListEl = document.getElementById('enhance-equipment-list');
+        if (!stoneInfoEl || !eqListEl) return;
+
+        const stoneName = String(stone.name || 'Refinement Stone');
+        const stoneRarity = String(stone.rarity || 'Basic');
+        const stoneLvl = Number(stone.level) || 1;
+        const stoneQty = stone.quantity || 1;
+        const rarityColors = { Basic: '#ffffff', Rare: '#2196f3', Unique: '#ab47bc', Legendary: '#ff9800', Godly: '#f44336', Divine: '#ffd700' };
+        const stoneColor = stone.color || rarityColors[stoneRarity] || '#ffffff';
+
+        const isDivineStone = stoneRarity.toLowerCase() === 'divine' || stoneName.includes('Divine Enhancement');
+
+        stoneInfoEl.innerHTML = `
+            <div style="display:flex; align-items:center; justify-content:space-between; gap:12px;">
+                <div style="display:flex; align-items:center; gap:12px;">
+                    <div style="width:44px; height:44px; border-radius:8px; background:rgba(0,0,0,0.5); border:2px solid ${stoneColor}; display:flex; align-items:center; justify-content:center; font-size:1.6rem; box-shadow:0 0 12px ${stoneColor}44;">
+                        💎
+                    </div>
+                    <div>
+                        <div style="font-weight:bold; color:${stoneColor}; font-size:1.05rem;">${stoneName}</div>
+                        <div style="font-size:0.8rem; color:#94a3b8; margin-top:2px;">
+                            Rarity: <strong style="color:${stoneColor};">${stoneRarity}</strong> | Level: <strong style="color:#fff;">Lv.${stoneLvl}</strong> | Available: <strong style="color:#38bdf8;">x${stoneQty}</strong>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div style="margin-top:10px; padding:8px 12px; background:rgba(0,0,0,0.35); border-radius:6px; font-size:0.82rem; border-left:3px solid ${isDivineStone ? '#ffd700' : '#38bdf8'};">
+                ${isDivineStone 
+                    ? `🌟 <strong style="color:#ffd700;">Divine Universal Stone:</strong> Can enhance <strong style="color:#ffd700;">ANY LEVEL</strong> of Divine Equipment! (Max +25)` 
+                    : `🎯 <strong style="color:#38bdf8;">Strict Matching Rule:</strong> Can ONLY enhance <strong style="color:${stoneColor};">Lv.${stoneLvl} ${stoneRarity}</strong> equipment!`
+                }
+            </div>
+        `;
+
+        eqListEl.innerHTML = '';
+
+        // Gather all candidates: Equipped gear first, then Inventory items
+        const candidates = [];
+
+        // 1. Equipped Gear
+        const validSlots = ['weapon', 'armor', 'leggings', 'necklace', 'ring', 'earrings'];
+        if (this.game.player.equips) {
+            for (const slot of validSlots) {
+                const eq = this.game.player.equips[slot];
+                if (eq) {
+                    candidates.push({
+                        item: eq,
+                        source: 'equipped',
+                        key: slot,
+                        label: `Equipped: ${slot.toUpperCase()}`
+                    });
+                }
+            }
+        }
+
+        // 2. Bag Equipment
+        if (Array.isArray(this.game.player.inventory)) {
+            this.game.player.inventory.forEach((it, idx) => {
+                if (it && idx !== stoneIndex && validSlots.includes(it.type)) {
+                    candidates.push({
+                        item: it,
+                        source: 'inventory',
+                        key: idx,
+                        label: `Bag Slot #${idx + 1}`
+                    });
+                }
+            });
+        }
+
+        if (candidates.length === 0) {
+            eqListEl.innerHTML = `<div style="text-align:center; padding:24px; color:#94a3b8; font-size:0.9rem;">No equipment found in your equipped slots or bag to enhance.</div>`;
+            this.enhancementModal.style.display = 'flex';
+            return;
+        }
+
+        candidates.forEach(cand => {
+            const item = cand.item;
+            const check = canStoneEnhanceItem(stone, item);
+            const curEnh = item.enhanceLevel || item.refineLevel || 0;
+            const itemColor = item.color || rarityColors[item.rarity] || '#ffffff';
+            const cardEl = document.createElement('div');
+            cardEl.style.cssText = `background:${check.valid ? 'rgba(15, 23, 42, 0.85)' : 'rgba(15, 23, 42, 0.45)'}; border:1px solid ${check.valid ? '#38bdf8' : '#334155'}; border-radius:10px; padding:10px 12px; display:flex; align-items:center; justify-content:space-between; gap:10px; transition:all 0.2s; ${check.valid ? 'box-shadow: 0 0 10px rgba(56, 189, 248, 0.2);' : 'opacity:0.65;'}`;
+
+            let outcomePreview = '';
+            if (check.valid) {
+                const outcome = calculateEnhanceOutcome(curEnh);
+                const succPct = Math.round(outcome.successChance * 100);
+                const shatPct = Math.round(outcome.destroyChance * 100);
+                outcomePreview = `
+                    <div style="font-size:0.78rem; margin-top:3px; display:flex; gap:10px; flex-wrap:wrap;">
+                        <span style="color:#4ade80;">Success: <strong>${succPct}%</strong></span>
+                        ${shatPct > 0 ? `<span style="color:#ef4444;">Shatter Risk: <strong>${shatPct}%</strong></span>` : `<span style="color:#94a3b8;">Safe (0% Shatter)</span>`}
+                        <span style="color:#38bdf8;">Next: <strong>+${curEnh + 1}</strong> (+${check.bonus} all stats)</span>
+                    </div>
+                `;
+            } else {
+                outcomePreview = `
+                    <div style="font-size:0.75rem; color:#f87171; margin-top:3px;">
+                        ⛔ ${check.reason}
+                    </div>
+                `;
+            }
+
+            cardEl.innerHTML = `
+                <div style="flex:1; min-width:0;">
+                    <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                        <span style="font-size:0.7rem; background:#334155; color:#94a3b8; padding:2px 6px; border-radius:4px; font-weight:bold;">${cand.label}</span>
+                        <strong style="color:${itemColor}; font-size:0.92rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${item.name}</strong>
+                        ${curEnh > 0 ? `<span style="background:rgba(56,189,248,0.2); color:#38bdf8; border:1px solid #38bdf8; font-size:0.72rem; padding:1px 5px; border-radius:4px; font-weight:bold;">+${curEnh}</span>` : ''}
+                    </div>
+                    <div style="font-size:0.75rem; color:#64748b; margin-top:2px;">
+                        ${item.rarity || 'Basic'} | Lv.${item.level || 1} ${String(item.type || 'GEAR').toUpperCase()}
+                    </div>
+                    ${outcomePreview}
+                </div>
+            `;
+
+            if (check.valid) {
+                const btnEnh = document.createElement('button');
+                btnEnh.type = 'button';
+                btnEnh.textContent = '✨ Enhance';
+                btnEnh.style.cssText = `background:linear-gradient(135deg, #0284c7, #38bdf8); color:#fff; border:none; border-radius:6px; padding:8px 14px; font-weight:bold; font-size:0.85rem; cursor:pointer; box-shadow:0 0 10px rgba(56, 189, 248, 0.4); white-space:nowrap; transition:transform 0.15s;`;
+                btnEnh.onmouseenter = () => btnEnh.style.transform = 'scale(1.05)';
+                btnEnh.onmouseleave = () => btnEnh.style.transform = 'scale(1.0)';
+                btnEnh.onclick = () => {
+                    this.game.enhanceItemWithStone(stoneIndex, cand.source, cand.key);
+                };
+                cardEl.appendChild(btnEnh);
+            }
+
+            eqListEl.appendChild(cardEl);
+        });
+
+        this.enhancementModal.style.display = 'flex';
     }
 
     // ==========================================
@@ -1716,6 +1894,7 @@ export class UIManager {
             this.mazeGuideModal, this.settingsModal, this.statsModal,
             this.inventoryModal, this.skillsModal, this.inspectModal,
             this.cashShopModal, this.tradeScreen, this.notEnoughGoldModal,
+            this.enhancementModal,
             document.getElementById('home-sale-modal'),
             document.getElementById('guild-modal'),
             document.getElementById('not-enough-gold-modal')
@@ -1730,6 +1909,7 @@ export class UIManager {
             this.mazeGuideModal, this.settingsModal, this.statsModal,
             this.inventoryModal, this.skillsModal, this.inspectModal,
             this.cashShopModal, this.tradeScreen, this.notEnoughGoldModal,
+            this.enhancementModal,
             document.getElementById('home-sale-modal'),
             document.getElementById('guild-modal'),
             document.getElementById('guild-invite-dialog'),

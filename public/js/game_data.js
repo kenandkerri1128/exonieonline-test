@@ -503,13 +503,14 @@ export function generateLoot(mob) {
         const colorMap = { Basic: '#ffffff', Rare: '#2196f3', Unique: '#ab47bc', Legendary: '#ff9800', Godly: '#f44336' };
         drops.push({
             id: `stone_${Date.now()}_${Math.random()}`,
-            name: `Refinement Stone Lv.${lvl}`,
+            name: `${stoneRarity} Refinement Stone Lv.${lvl}`,
             type: 'material',
             sprite: 'refinementstone',
             level: lvl,
             rarity: stoneRarity,
             color: colorMap[stoneRarity] || '#ffffff',
-            desc: 'Enhances equipment.'
+            desc: `Enhances Lv.${lvl} ${stoneRarity} equipment.`,
+            quantity: 1
         });
         return drops;
     }
@@ -626,13 +627,14 @@ export function generateHauntedLoot(level) {
         const stoneRarity = Math.random() < 0.25 ? 'Godly' : 'Legendary';
         drops.push({
             id: `stone_${Date.now()}_${Math.random()}`,
-            name: `Refinement Stone Lv.${lvl}`,
+            name: `${stoneRarity} Refinement Stone Lv.${lvl}`,
             type: 'material',
             sprite: 'refinementstone',
             level: lvl,
             rarity: stoneRarity,
             color: stoneRarity === 'Godly' ? '#f44336' : '#ff9800',
-            desc: 'Enhances equipment.'
+            desc: `Enhances Lv.${lvl} ${stoneRarity} equipment.`,
+            quantity: 1
         });
     } else {
         // 55% Gear (Legendary or Godly)
@@ -815,4 +817,134 @@ export function generateBattlefieldLoot() {
         sellValue: 200000,
         desc: 'Level 150 Divine Raid Trophy weapon of extraordinary power.'
     };
+}
+
+
+// ==========================================
+// 🛡️ AUTHENTIC 2D EXONIE EQUIPMENT ENHANCEMENT ENGINE
+// ==========================================
+export const MAX_ENHANCE_BY_RARITY = {
+    Starter: 0,
+    Basic: 20,
+    Rare: 20,
+    Unique: 20,
+    Legendary: 15,
+    Godly: 10,
+    Divine: 25
+};
+
+export const ENHANCE_BONUS_BY_RARITY = {
+    Starter: 0,
+    Basic: 1,
+    Rare: 3,
+    Unique: 5,
+    Legendary: 8,
+    Godly: 15,
+    Divine: 25
+};
+
+export function canStoneEnhanceItem(stone, targetItem) {
+    if (!stone || !targetItem) return { valid: false, reason: 'Invalid item selected.' };
+
+    const validEquipTypes = ['weapon', 'armor', 'leggings', 'necklace', 'ring', 'earrings'];
+    if (!validEquipTypes.includes(targetItem.type)) {
+        return { valid: false, reason: 'Only equipment (Weapons, Armor, Leggings, Accessories) can be enhanced!' };
+    }
+
+    if (targetItem.rarity === 'Starter') {
+        return { valid: false, reason: 'Starter items cannot be enhanced.' };
+    }
+
+    if (targetItem.aura) {
+        return { valid: false, reason: 'You must extract the attached Aura or Pet before enhancing this item!' };
+    }
+
+    const stoneName = String(stone.name || '').trim();
+    let stoneRarity = String(stone.rarity || '').trim();
+    const targetRarity = String(targetItem.rarity || 'Basic').trim();
+
+    // Auto-detect stone rarity if unset
+    if (!stoneRarity || stoneRarity === 'undefined') {
+        if (stoneName.includes('Divine')) stoneRarity = 'Divine';
+        else if (stoneName.includes('Godly')) stoneRarity = 'Godly';
+        else if (stoneName.includes('Legendary')) stoneRarity = 'Legendary';
+        else if (stoneName.includes('Unique')) stoneRarity = 'Unique';
+        else if (stoneName.includes('Rare')) stoneRarity = 'Rare';
+        else stoneRarity = 'Basic';
+    }
+
+    // Auto-detect stone level from name if needed (e.g. "Lv.5" or "Lvl 5")
+    let stoneLvl = Number(stone.level);
+    if (!stoneLvl || isNaN(stoneLvl)) {
+        const m = stoneName.match(/(?:Lv\.?|Level|Lvl)\s*(\d+)/i);
+        stoneLvl = m ? parseInt(m[1], 10) : 1;
+    }
+    const targetLvl = Number(targetItem.level) || 1;
+
+    const isDivineStone = stoneRarity.toLowerCase() === 'divine' || stoneName.includes('Divine Enhancement') || stoneName.includes('Divine Refinement');
+
+    // Rule 1: Divine Enhancement Stone can enhance ANY level of Divine equipment!
+    if (isDivineStone) {
+        if (targetRarity.toLowerCase() !== 'divine') {
+            return {
+                valid: false,
+                reason: `Divine Enhancement Stone can only enhance Divine equipment! (${targetItem.name} is ${targetRarity})`
+            };
+        }
+        const currentEnhance = targetItem.enhanceLevel || targetItem.refineLevel || 0;
+        const maxAllowed = MAX_ENHANCE_BY_RARITY['Divine'] || 25;
+        if (currentEnhance >= maxAllowed) {
+            return { valid: false, reason: `Divine equipment cannot exceed +${maxAllowed}.` };
+        }
+        return { valid: true, isDivine: true, stoneRarity: 'Divine', targetRarity: 'Divine', bonus: ENHANCE_BONUS_BY_RARITY['Divine'] || 25 };
+    }
+
+    // Rule 2: Normal Refinement Stone can ONLY enhance equipment of the EXACT same rarity and level!
+    // (e.g. Lv.5 Basic Refinement Stone can only enhance Lv.5 Basic equipment)
+    if (stoneRarity.toLowerCase() !== targetRarity.toLowerCase()) {
+        return {
+            valid: false,
+            reason: `${stoneRarity} Refinement Stone can only enhance ${stoneRarity} equipment! (${targetItem.name} is ${targetRarity})`
+        };
+    }
+
+    if (stoneLvl !== targetLvl) {
+        return {
+            valid: false,
+            reason: `Lv.${stoneLvl} ${stoneRarity} Refinement Stone can only enhance Lv.${stoneLvl} equipment! (${targetItem.name} is Lv.${targetLvl})`
+        };
+    }
+
+    const currentEnhance = targetItem.enhanceLevel || targetItem.refineLevel || 0;
+    const maxAllowed = MAX_ENHANCE_BY_RARITY[targetRarity] || 20;
+    if (currentEnhance >= maxAllowed) {
+        return { valid: false, reason: `${targetRarity} items cannot exceed +${maxAllowed}.` };
+    }
+
+    return {
+        valid: true,
+        isDivine: false,
+        stoneRarity,
+        targetRarity,
+        bonus: ENHANCE_BONUS_BY_RARITY[targetRarity] || 1
+    };
+}
+
+export function calculateEnhanceOutcome(currentEnhance) {
+    let successChance = 1.0;
+    let destroyChance = 0.0;
+
+    if (currentEnhance >= 6) {
+        successChance = Math.max(0.15, 1.0 - ((currentEnhance - 5) * 0.15));
+        destroyChance = Math.min(0.40, ((currentEnhance - 5) * 0.05));
+    }
+
+    const roll = Math.random();
+    if (roll < destroyChance) {
+        return { status: 'shattered', successChance, destroyChance };
+    } else if (roll < destroyChance + successChance) {
+        return { status: 'success', successChance, destroyChance };
+    } else {
+        return { status: 'failed', successChance, destroyChance };
+    }
 }

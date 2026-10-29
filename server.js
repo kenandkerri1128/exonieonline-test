@@ -2319,6 +2319,107 @@ io.on('connection', (socket) => {
     });
 
     // ==========================================
+    // 🛡️ AUTHENTIC 2D EXONIE EQUIPMENT ENHANCEMENT ENGINE
+    // ==========================================
+    socket.on('requestEnhance', async (data) => {
+        const p = onlinePlayers[socket.id];
+        if (!p || !data) return;
+
+        if (!Array.isArray(p.inventory)) p.inventory = [];
+        if (!p.equips) p.equips = {};
+
+        const stoneIndex = data.stoneIndex;
+        let stone = p.inventory[stoneIndex];
+        let targetItem = null;
+
+        if (data.targetSource === 'equipped') {
+            targetItem = p.equips[data.targetKeyOrIndex];
+        } else if (data.targetSource === 'inventory' || data.targetIndex !== undefined) {
+            const tIdx = data.targetKeyOrIndex !== undefined ? data.targetKeyOrIndex : data.targetIndex;
+            targetItem = p.inventory[tIdx];
+        }
+
+        if (!stone || !targetItem) return;
+
+        // Anti-cheat / validation: Aura/Pet check
+        if (targetItem.aura) {
+            socket.emit('systemToast', { message: 'You must extract the Aura or Pet before enhancing this item!', color: '#ef4444' });
+            return;
+        }
+
+        const validRarities = ['Basic', 'Rare', 'Unique', 'Legendary', 'Godly', 'Divine'];
+        if (!validRarities.includes(targetItem.rarity)) return;
+
+        const maxAllowed = { Basic: 20, Rare: 20, Unique: 20, Legendary: 15, Godly: 10, Divine: 25 }[targetItem.rarity] || 20;
+        const currentEnhance = Number(targetItem.enhanceLevel || targetItem.refineLevel || 0);
+
+        if (currentEnhance >= maxAllowed) {
+            socket.emit('systemToast', { message: `${targetItem.rarity} items cannot go above +${maxAllowed}.`, color: '#ef4444' });
+            return;
+        }
+
+        const stoneName = String(stone.name || '');
+        const isDivineMatch = (stone.rarity === 'Divine' || stoneName.includes('Divine Enhancement')) && targetItem.rarity === 'Divine';
+        const isNormalMatch = stone.rarity === targetItem.rarity && Number(stone.level) === Number(targetItem.level) && !stoneName.includes('Divine Enhancement');
+
+        if (!isDivineMatch && !isNormalMatch) {
+            socket.emit('systemToast', { message: 'Incompatible enhancement stone for this equipment!', color: '#ef4444' });
+            return;
+        }
+
+        // Consume stone
+        stone.quantity = (stone.quantity || 1) - 1;
+        if (stone.quantity <= 0) {
+            p.inventory[stoneIndex] = null;
+        }
+
+        let outcome = data.outcome;
+        if (!outcome || !['success', 'failed', 'shattered'].includes(outcome)) {
+            let successChance = 1.0;
+            let destroyChance = 0.0;
+            if (currentEnhance >= 6) {
+                successChance = Math.max(0.15, 1.0 - ((currentEnhance - 5) * 0.15));
+                destroyChance = Math.min(0.40, ((currentEnhance - 5) * 0.05));
+            }
+            const roll = Math.random();
+            if (roll < destroyChance) outcome = 'shattered';
+            else if (roll < destroyChance + successChance) outcome = 'success';
+            else outcome = 'failed';
+        }
+
+        const bonus = { Starter: 0, Basic: 1, Rare: 3, Unique: 5, Legendary: 8, Godly: 15, Divine: 25 }[targetItem.rarity] || 1;
+
+        if (outcome === 'shattered') {
+            if (data.targetSource === 'equipped') {
+                p.equips[data.targetKeyOrIndex] = null;
+            } else {
+                const tIdx = data.targetKeyOrIndex !== undefined ? data.targetKeyOrIndex : data.targetIndex;
+                p.inventory[tIdx] = null;
+            }
+        } else if (outcome === 'success') {
+            targetItem.enhanceLevel = currentEnhance + 1;
+            targetItem.refineLevel = currentEnhance + 1;
+            if (targetItem.fixedStat) {
+                for (const k in targetItem.fixedStat) {
+                    if (typeof targetItem.fixedStat[k] === 'number') targetItem.fixedStat[k] += bonus;
+                }
+            }
+            if (targetItem.randomStat) {
+                for (const k in targetItem.randomStat) {
+                    if (typeof targetItem.randomStat[k] === 'number') targetItem.randomStat[k] += bonus;
+                }
+            }
+            if (!targetItem.name.includes('+')) {
+                targetItem.name = `${targetItem.name} +${targetItem.enhanceLevel}`;
+            } else {
+                targetItem.name = targetItem.name.replace(/\+\d+$/, `+${targetItem.enhanceLevel}`);
+            }
+        }
+
+        await savePlayerSlotData(socket, p);
+    });
+
+    // ==========================================
     // 🧰 HOME STORAGE ENGINE (AUTHENTIC 2D EXONIE - PERSISTED TO SUPABASE & SLOTS)
     // ==========================================
     socket.on('requestOpenStorage', async () => {

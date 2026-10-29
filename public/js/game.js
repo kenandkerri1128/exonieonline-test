@@ -5,7 +5,7 @@ import { World3D } from './world3d.js?v=3.0';
 import { Monster3D } from './monsters3d.js?v=3.0';
 import { CombatSystem } from './combat.js?v=3.0';
 import { UIManager } from './ui.js?v=3.0';
-import { CLASSES, MONSTER_DATABASE, STARTER_ITEMS, DEFAULT_BASE_STATS, MAX_LEVEL, getExpForNextLevel, generateLoot, generateTavernLoot, generateHauntedLoot, generateBattlefieldLoot, getItemSellPrice, CASH_SHOP_ITEMS, EVENT_CAVE_ACTIVE } from './game_data.js?v=3.0';
+import { CLASSES, MONSTER_DATABASE, STARTER_ITEMS, DEFAULT_BASE_STATS, MAX_LEVEL, getExpForNextLevel, generateLoot, generateTavernLoot, generateHauntedLoot, generateBattlefieldLoot, getItemSellPrice, CASH_SHOP_ITEMS, EVENT_CAVE_ACTIVE, canStoneEnhanceItem, calculateEnhanceOutcome } from './game_data.js?v=3.0';
 import { MAPS_DATA } from './maps_data.js?v=3.0';
 
 // ==========================================
@@ -2382,6 +2382,132 @@ export class GameApp {
         this.ui.renderInventory();
     }
 
+    // ==========================================
+    // 🛡️ AUTHENTIC 2D EXONIE EQUIPMENT ENHANCEMENT
+    // ==========================================
+    enhanceItemWithStone(stoneIndex, targetSource, targetKeyOrIndex) {
+        const stone = this.player.inventory ? this.player.inventory[stoneIndex] : null;
+        if (!stone) {
+            this.ui.showToast('⚠️ Refinement stone not found.', '#ef4444');
+            return;
+        }
+
+        let targetItem = null;
+        if (targetSource === 'equipped') {
+            targetItem = this.player.equips ? this.player.equips[targetKeyOrIndex] : null;
+        } else {
+            targetItem = this.player.inventory ? this.player.inventory[targetKeyOrIndex] : null;
+        }
+
+        if (!targetItem) {
+            this.ui.showToast('⚠️ Target equipment not found.', '#ef4444');
+            return;
+        }
+
+        const check = canStoneEnhanceItem(stone, targetItem);
+        if (!check.valid) {
+            if (this.audio) this.audio.playSfx('bump');
+            this.ui.showToast(`⛔ ${check.reason}`, '#ef4444');
+            return;
+        }
+
+        const currentEnhance = targetItem.enhanceLevel || targetItem.refineLevel || 0;
+        const outcome = calculateEnhanceOutcome(currentEnhance);
+
+        // Deduct 1 stone from inventory
+        stone.quantity = (stone.quantity || 1) - 1;
+        if (stone.quantity <= 0) {
+            this.player.inventory[stoneIndex] = null;
+        }
+
+        const playerPos = this.playerMesh ? this.playerMesh.position.clone() : (this.player.pos ? this.player.pos.clone() : new THREE.Vector3(0, 0, 0));
+
+        if (outcome.status === 'shattered') {
+            const oldName = targetItem.name;
+            if (targetSource === 'equipped') {
+                this.player.equips[targetKeyOrIndex] = null;
+            } else {
+                this.player.inventory[targetKeyOrIndex] = null;
+            }
+            if (this.audio) this.audio.playSfx('bump');
+            if (this.engine) this.engine.spawnHitSparks(playerPos.clone().add(new THREE.Vector3(0, 1.4, 0)), 0xef4444, 30);
+            this.ui.showToast(`💥 CRITICAL FAILURE! <strong>${oldName}</strong> shattered into dust!`, '#ef4444');
+            this.appendChatLine('local', `💥 <span style="color:#ef4444;">[Refinement]</span> CRITICAL FAILURE! <strong>${oldName}</strong> shattered into dust!`);
+        } else if (outcome.status === 'failed') {
+            if (this.audio) this.audio.playSfx('bump');
+            if (this.engine) this.engine.spawnHitSparks(playerPos.clone().add(new THREE.Vector3(0, 1.4, 0)), 0xf59e0b, 15);
+            this.ui.showToast(`⚠️ FAILED! <strong>${targetItem.name}</strong> enhancement failed.`, '#f59e0b');
+            this.appendChatLine('local', `⚠️ <span style="color:#f59e0b;">[Refinement]</span> Enhancement failed for <strong>${targetItem.name}</strong>.`);
+        } else {
+            // SUCCESS
+            const newEnhance = currentEnhance + 1;
+            targetItem.enhanceLevel = newEnhance;
+            targetItem.refineLevel = newEnhance;
+            const bonus = check.bonus || 1;
+
+            if (targetItem.fixedStat) {
+                for (const k in targetItem.fixedStat) {
+                    if (typeof targetItem.fixedStat[k] === 'number') targetItem.fixedStat[k] += bonus;
+                }
+            }
+            if (targetItem.randomStat) {
+                for (const k in targetItem.randomStat) {
+                    if (typeof targetItem.randomStat[k] === 'number') targetItem.randomStat[k] += bonus;
+                }
+            }
+
+            if (!targetItem.name.includes('+')) {
+                targetItem.name = `${targetItem.name} +${newEnhance}`;
+            } else {
+                targetItem.name = targetItem.name.replace(/\+\d+$/, `+${newEnhance}`);
+            }
+
+            if (this.audio) {
+                this.audio.playSfx('levelup');
+                this.audio.playSfx('holy');
+            }
+            if (this.engine) {
+                this.engine.spawnHitSparks(playerPos.clone().add(new THREE.Vector3(0, 1.4, 0)), 0x38bdf8, 35);
+            }
+            this.ui.showToast(`✨ SUCCESS! <strong>${targetItem.name}</strong> is now <strong style="color:#38bdf8;">+${newEnhance}</strong>! (+${bonus} all stats)`, '#38bdf8');
+            this.appendChatLine('local', `✨ <span style="color:#38bdf8;">[Refinement]</span> SUCCESS! <strong>${targetItem.name}</strong> is now <strong>+${newEnhance}</strong> (+${bonus} all stats)!`);
+            this.combat.spawnFloatingDamage(
+                playerPos.clone().add(new THREE.Vector3(0, 1.8, 0)),
+                `✨ +${newEnhance} SUCCESS!`,
+                true,
+                false
+            );
+        }
+
+        this.recalculateStats();
+        this.saveCharacterToAccountSlot();
+        this.ui.renderInventory();
+        if (this.ui.updatePlayerHUD) this.ui.updatePlayerHUD(this.player);
+
+        if (this.socket && this.socket.connected) {
+            this.socket.emit('requestEnhance', {
+                stoneIndex,
+                targetSource,
+                targetKeyOrIndex,
+                outcome: outcome.status,
+                characterName: this.player.name
+            });
+            if (targetSource === 'equipped') {
+                this.socket.emit('playerEquipUpdate', {
+                    weapon: this.player.equips.weapon,
+                    equips: this.player.equips
+                });
+            }
+        }
+
+        // Refresh modal if stone still exists in slot, otherwise close modal
+        if (this.player.inventory[stoneIndex]) {
+            this.ui.openEnhanceModal(stoneIndex);
+        } else {
+            this.ui.closeEnhanceModal();
+        }
+    }
+
     // Sell item or Gold Bar for Gold (Exact 2D Exonie Sell Price formula)
     sellItemFromInventory(slotIndex) {
         const item = this.player.inventory[slotIndex];
@@ -3225,33 +3351,28 @@ export class GameApp {
             drops.push(...normalDrops);
         }
 
-        let bestLegendDrop = null;
         for (const drop of drops) {
             const added = this.addItemToInventory(drop);
+            const rColor = drop.color || '#38bdf8';
+            const rLvl = drop.level ? ` (Lv.${drop.level})` : '';
             if (added) {
-                this.ui.showToast(`🎁 Looted [${drop.rarity}] ${drop.name}!`);
+                // Personal prominent HUD notification to the player (Even for Basic equipment!)
+                this.ui.showToast(`🎁 Looted <strong style="color:${rColor};">[${drop.rarity || 'Basic'}] ${drop.name}</strong>${rLvl}!`, rColor);
+
+                // Personal Local chat notification - only for them, not the whole world or party
+                this.appendChatLine('local', `🎁 <span style="color:#94a3b8;">[Loot]</span> You obtained: <strong style="color:${rColor};">[${drop.rarity || 'Basic'}] ${drop.name}</strong>${rLvl}!`);
+
+                // 3D floating text above monster corpse
                 this.combat.spawnFloatingDamage(
                     mob.group.position.clone().add(new THREE.Vector3(0, 0.7, 0)),
                     `🎁 ${drop.name}`,
                     drop.rarity === 'Legendary' || drop.rarity === 'Godly' || drop.rarity === 'Divine',
                     true
                 );
-                if (['Legendary', 'Godly', 'Divine'].includes(drop.rarity)) {
-                    if (!bestLegendDrop || drop.rarity === 'Divine' || (drop.rarity === 'Godly' && bestLegendDrop.rarity !== 'Divine')) {
-                        bestLegendDrop = drop;
-                    }
-                }
             } else {
-                this.ui.showToast(`⚠️ Bag Full! Could not pick up ${drop.name}.`);
+                this.ui.showToast(`⚠️ Bag Full! Could not pick up [${drop.rarity || 'Basic'}] ${drop.name}.`, '#ef4444');
+                this.appendChatLine('local', `⚠️ <span style="color:#ef4444;">[Inventory Full]</span> Could not pick up <strong>${drop.name}</strong>.`);
             }
-        }
-
-        // Show exactly ONE world announcement for rare drops per kill
-        if (bestLegendDrop) {
-            this.ui.showWorldAnnouncement(
-                `🌟 <strong style="color:#00e5ff;">${this.player.name}</strong> obtained <strong style="color:#ffd700;">[${bestLegendDrop.rarity}] ${bestLegendDrop.name}</strong> from <strong>${mob.name}</strong>!`,
-                '#ffd700'
-            );
         }
 
         // ============================================================

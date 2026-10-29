@@ -1339,6 +1339,31 @@
     </div>
 
     <!-- ============================================================
+         EQUIPMENT REFINEMENT & ENHANCEMENT MODAL (2D EXONIE ALIGNED)
+         ============================================================ -->
+    <div class="game-modal" id="enhancement-modal" style="display:none; z-index:99999;">
+        <div class="modal-dialog" style="max-width:520px; width:95vw; background:radial-gradient(circle at 50% 15%, #1e293b, #0f172a); border:2px solid #38bdf8; border-radius:14px; box-shadow:0 0 35px rgba(56, 189, 248, 0.45); padding:20px; color:#fff;">
+            <div class="modal-header" style="border-bottom:1px solid #334155; padding-bottom:12px; margin-bottom:14px; display:flex; justify-content:space-between; align-items:center;">
+                <h3 style="color:#38bdf8; margin:0; font-size:1.2rem; display:flex; align-items:center; gap:8px;">
+                    ✨ Equipment Enhancement
+                </h3>
+                <button type="button" class="btn-close-modal" id="btn-close-enhancement" style="background:none; border:none; color:#94a3b8; font-size:1.3rem; cursor:pointer;">✖</button>
+            </div>
+            
+            <!-- Selected Stone Info Card -->
+            <div id="enhance-stone-info" style="background:rgba(30,41,59,0.7); border:1px solid #475569; border-radius:10px; padding:12px 14px; margin-bottom:14px;">
+                <!-- Populated dynamically -->
+            </div>
+
+            <!-- Target Equipment Selector -->
+            <div style="font-size:0.85rem; color:#cbd5e1; font-weight:700; margin-bottom:6px; text-transform:uppercase; letter-spacing:0.5px;">Select Equipment to Enhance:</div>
+            <div id="enhance-equipment-list" style="max-height:280px; overflow-y:auto; display:flex; flex-direction:column; gap:8px; padding-right:4px;">
+                <!-- Populated dynamically -->
+            </div>
+        </div>
+    </div>
+
+    <!-- ============================================================
          AUTHENTIC 2D EXONIE PERSISTENT CHAT BOX & INPUT (LOCAL + WORLD)
          ============================================================ -->
     <div id="persistent-chat-box" style="display:none !important;">
@@ -1363,7 +1388,7 @@
     </div>
 
     <!-- System Message Toast -->
-    <div id="system-toast" style="display:none;"></div>
+    <div id="system-toast"></div>
 
     <!-- Floor Cleared Notification Banner -->
     <div id="floor-cleared-banner" style="display:none;">

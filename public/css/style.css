@@ -1934,25 +1934,28 @@ html, body {
 /* System Toast */
 #system-toast {
     position: fixed;
-    top: 75px;
+    top: 80px;
     left: 50%;
-    transform: translateX(-50%);
-    background: rgba(15, 23, 42, 0.92);
-    border: 1px solid #38bdf8;
-    color: #38bdf8;
-    padding: 8px 18px;
-    border-radius: 20px;
+    transform: translateX(-50%) translateY(-15px);
+    background: rgba(15, 23, 42, 0.95);
+    border: 2px solid #38bdf8;
+    color: #f8fafc;
+    padding: 10px 22px;
+    border-radius: 24px;
     font-weight: 800;
-    font-size: 0.9rem;
-    z-index: 6000;
+    font-size: 0.95rem;
+    z-index: 1000000;
     pointer-events: none;
     opacity: 0;
-    transition: opacity 0.3s ease;
-    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.6);
+    transition: opacity 0.25s cubic-bezier(0.16, 1, 0.3, 1), transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    box-shadow: 0 0 25px rgba(56, 189, 248, 0.45), 0 8px 24px rgba(0, 0, 0, 0.75);
+    text-align: center;
+    max-width: 90vw;
 }
 
 #system-toast.show {
     opacity: 1;
+    transform: translateX(-50%) translateY(0);
 }
 
 /* Desktop Bottom Hotbar */
