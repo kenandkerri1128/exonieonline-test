@@ -116,7 +116,10 @@ export class UIManager {
         if (mBtnInv) mBtnInv.onclick = () => this.toggleInventory();
 
         const btnCloseInv = document.getElementById('btn-close-inventory');
-        if (btnCloseInv) btnCloseInv.onclick = () => { if (this.inventoryModal) this.inventoryModal.style.display = 'none'; };
+        if (btnCloseInv) btnCloseInv.onclick = () => {
+            if (this.inventoryModal) this.inventoryModal.style.display = 'none';
+            this.hideTooltip();
+        };
 
         // Skills Buttons
         const btnSkills = document.getElementById('btn-skills');
@@ -126,7 +129,10 @@ export class UIManager {
         if (mBtnSkills) mBtnSkills.onclick = () => this.toggleSkills();
 
         const btnCloseSkills = document.getElementById('btn-close-skills');
-        if (btnCloseSkills) btnCloseSkills.onclick = () => { if (this.skillModal) this.skillModal.style.display = 'none'; };
+        if (btnCloseSkills) btnCloseSkills.onclick = () => {
+            if (this.skillModal) this.skillModal.style.display = 'none';
+            this.hideTooltip();
+        };
 
         // Potion Shortcut Buttons
         const mBtnPot = document.getElementById('m-btn-potion');
@@ -401,6 +407,19 @@ export class UIManager {
                 }
             }
         });
+
+        // Universal dismiss tooltip on any tap or click outside item slots
+        const dismissTooltipIfOutside = (e) => {
+            const tip = document.getElementById('item-hover-tooltip');
+            if (tip && tip.style.display !== 'none') {
+                if (!e.target || !e.target.closest || !e.target.closest('.bag-slot, .equip-slot-box, .trade-slot, .storage-slot')) {
+                    this.hideTooltip();
+                }
+            }
+        };
+        window.addEventListener('pointerdown', dismissTooltipIfOutside, { passive: true });
+        window.addEventListener('touchstart', dismissTooltipIfOutside, { passive: true });
+        window.addEventListener('click', dismissTooltipIfOutside, { passive: true });
 
         // Mobile Menu Button Actions
         const bindMobBtn = (id, action) => {
@@ -1244,6 +1263,7 @@ export class UIManager {
     closeMobileMenu() {
         const menu = document.getElementById('mobile-menu-modal') || document.getElementById('hud-dropdown-menu');
         if (menu) menu.style.display = 'none';
+        this.hideTooltip();
     }
 
     toggleMobileMenu() {
@@ -1462,6 +1482,13 @@ export class UIManager {
     }
 
     showTooltip(item, mouseEvent) {
+        // On touch screens / mobile, item details are shown in the bottom detail panel
+        const isTouchScreen = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0 && window.innerWidth <= 950) || document.body.classList.contains('touch-enabled');
+        if (isTouchScreen) return;
+        if (mouseEvent && (mouseEvent.pointerType === 'touch' || mouseEvent.sourceCapabilities?.firesTouchEvents)) {
+            return;
+        }
+
         const tip = document.getElementById('item-hover-tooltip');
         if (!tip || !item) return;
         tip.innerHTML = this.getItemTooltip(item);
@@ -1469,11 +1496,11 @@ export class UIManager {
 
         const tipWidth = 260;
         const tipHeight = 160;
-        let x = mouseEvent.clientX + 16;
-        let y = mouseEvent.clientY + 16;
+        let x = (mouseEvent?.clientX || 0) + 16;
+        let y = (mouseEvent?.clientY || 0) + 16;
 
-        if (x + tipWidth > window.innerWidth) x = mouseEvent.clientX - tipWidth - 16;
-        if (y + tipHeight > window.innerHeight) y = mouseEvent.clientY - tipHeight - 16;
+        if (x + tipWidth > window.innerWidth) x = (mouseEvent?.clientX || tipWidth) - tipWidth - 16;
+        if (y + tipHeight > window.innerHeight) y = (mouseEvent?.clientY || tipHeight) - tipHeight - 16;
 
         tip.style.left = `${Math.max(10, x)}px`;
         tip.style.top = `${Math.max(10, y)}px`;
@@ -1580,6 +1607,7 @@ export class UIManager {
 
                 // DOUBLE CLICK: Instant Equip or Use!
                 slotEl.ondblclick = () => {
+                    this.hideTooltip();
                     if (['weapon', 'armor', 'leggings', 'necklace', 'ring', 'earrings', 'aura', 'pet'].includes(item.type)) {
                         this.game.equipItemFromInventory(i);
                         this.selectedInventoryIndex = null;
@@ -1679,6 +1707,7 @@ export class UIManager {
             if (canEquip) {
                 btnEquip.textContent = `⚔️ Equip ${item.type.charAt(0).toUpperCase() + item.type.slice(1)}`;
                 btnEquip.onclick = () => {
+                    this.hideTooltip();
                     this.game.equipItemFromInventory(index);
                     this.selectedInventoryIndex = null;
                     this.renderInventory();
@@ -2037,6 +2066,7 @@ export class UIManager {
 
     closeAllModals() {
         this.closeMobileMenu();
+        this.hideTooltip();
         const modals = [
             this.marketplaceModal, this.storageModal, this.dailyMissionsModal,
             this.tavernModal, this.leaderboardModal, this.dungeonModal,

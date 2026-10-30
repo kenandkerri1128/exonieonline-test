@@ -35,7 +35,7 @@
       }
     </script>
     <link rel="preload" as="image" href="loadingscreen.png">
-    <link rel="stylesheet" href="css/style.css?v=4.3">
+    <link rel="stylesheet" href="css/style.css?v=4.4">
 
     <!-- Native ES Module Import Map for Three.js -->
     <script type="importmap">
@@ -48,7 +48,7 @@
     </script>
     <script src="https://cdn.socket.io/4.7.4/socket.io.min.js"></script>
     <!-- Standalone Flow Controller (Runs immediately with zero delay) -->
-    <script src="./js/flow.js?v=3.9"></script>
+    <script src="./js/flow.js?v=4.0"></script>
 </head>
 <body>
 
@@ -527,8 +527,8 @@
         <div class="hover-player-prompt">🖱️ Click or Right-Click to Interact</div>
     </div>
 
-    <!-- Floating Rich Item Hover Tooltip -->
-    <div id="item-hover-tooltip" style="display:none;"></div>
+    <!-- Floating Rich Item Hover Tooltip (Tap to dismiss immediately on touch/mobile) -->
+    <div id="item-hover-tooltip" style="display:none;" onclick="this.style.display='none';"></div>
 
     <!-- ============================================================
          CENTERED POPUP GAME MENU MODAL (CLOSED BY DEFAULT)
@@ -1547,6 +1547,6 @@
     </div>
 
     <!-- Main Game Orchestrator Script -->
-    <script type="module" src="./js/game.js?v=4.0"></script>
+    <script type="module" src="./js/game.js?v=4.1"></script>
 </body>
 </html>

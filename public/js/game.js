@@ -1558,7 +1558,7 @@ export class GameApp {
 
         window.submitChat = () => this.submitChat();
 
-        // 1. Shrink Chat function: guarantees chat collapses to small button
+        // 1. Shrink Chat function: collapses chat window COMPLETELY into the small button
         const shrinkChat = (e) => {
             if (e) {
                 e.preventDefault();
@@ -1567,20 +1567,18 @@ export class GameApp {
             if (chatInput) chatInput.blur();
             this.isChatting = false;
 
-            const isTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0) || window.innerWidth <= 950;
             if (chatBox) {
-                chatBox.classList.remove('mobile-open');
-                if (!isTouch) {
-                    chatBox.classList.add('minimized');
-                } else {
-                    chatBox.style.display = 'none';
-                }
+                chatBox.classList.remove('chat-open', 'mobile-open');
+                chatBox.classList.add('chat-closed');
+                chatBox.style.setProperty('display', 'none', 'important');
             }
             if (toggleBtn) {
-                toggleBtn.style.display = isTouch ? 'flex' : 'none';
+                toggleBtn.classList.remove('hidden');
+                toggleBtn.classList.add('visible');
+                toggleBtn.style.setProperty('display', 'flex', 'important');
             }
-            if (minIcon) minIcon.textContent = '▲';
-            if (minLabel) minLabel.textContent = 'Expand';
+            if (minIcon) minIcon.textContent = '▾';
+            if (minLabel) minLabel.textContent = 'Shrink';
         };
 
         // 2. Expand / Open Chat function: opens chat window
@@ -1593,12 +1591,14 @@ export class GameApp {
             if (unreadBadge) unreadBadge.style.display = 'none';
 
             if (chatBox) {
-                chatBox.classList.remove('minimized');
-                chatBox.classList.add('mobile-open');
-                chatBox.style.display = 'flex';
+                chatBox.classList.remove('chat-closed');
+                chatBox.classList.add('chat-open', 'mobile-open');
+                chatBox.style.setProperty('display', 'flex', 'important');
             }
             if (toggleBtn) {
-                toggleBtn.style.display = 'none';
+                toggleBtn.classList.remove('visible');
+                toggleBtn.classList.add('hidden');
+                toggleBtn.style.setProperty('display', 'none', 'important');
             }
             if (minIcon) minIcon.textContent = '▾';
             if (minLabel) minLabel.textContent = 'Shrink';
@@ -1616,20 +1616,11 @@ export class GameApp {
         this.expandChat = expandChat;
         window.shrinkChat = shrinkChat;
         window.expandChat = expandChat;
-        window.toggleChatBoxMinimized = () => {
-            const isTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0) || window.innerWidth <= 950;
-            if (isTouch) {
-                if (chatBox && chatBox.classList.contains('mobile-open')) {
-                    shrinkChat();
-                } else {
-                    expandChat();
-                }
+        window.toggleChatBoxMinimized = (e) => {
+            if (chatBox && (chatBox.classList.contains('chat-open') || chatBox.classList.contains('mobile-open') || chatBox.style.display === 'flex')) {
+                shrinkChat(e);
             } else {
-                if (chatBox && chatBox.classList.contains('minimized')) {
-                    expandChat();
-                } else {
-                    shrinkChat();
-                }
+                expandChat(e);
             }
         };
 
@@ -1921,7 +1912,7 @@ export class GameApp {
         const isMobileUA = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(ua);
         const hasTouch = (typeof navigator.maxTouchPoints === 'number' && navigator.maxTouchPoints > 0) || ('ontouchstart' in window);
         const isCoarse = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
-        const isTouch = isMobileUA || (hasTouch && isCoarse) || document.body.classList.contains('touch-enabled');
+        const isTouch = isMobileUA || (hasTouch && isCoarse) || document.body.classList.contains('touch-enabled') || window.innerWidth <= 950;
         if (isTouch) document.body.classList.add('touch-enabled');
         const mobileCtrl = document.getElementById('mobile-controls');
         if (mobileCtrl) mobileCtrl.style.display = isTouch ? 'block' : 'none';
@@ -1935,17 +1926,13 @@ export class GameApp {
 
         // Reveal persistent chat box inside the active game world
         const chatBox = document.getElementById('persistent-chat-box');
-        const toggleBtn = document.getElementById('btn-mobile-chat-toggle');
         if (chatBox) {
             chatBox.classList.add('in-game');
             if (isTouch) {
                 // Mobile default: CHAT DEFAULTS AS SHRUNK (HIDDEN), SMALL BUTTON IS SHOWN
-                chatBox.classList.remove('mobile-open');
-                chatBox.style.display = 'none';
-                if (toggleBtn) toggleBtn.style.display = 'flex';
+                this.shrinkChat();
             } else {
-                chatBox.style.display = 'flex';
-                if (toggleBtn) toggleBtn.style.display = 'none';
+                this.expandChat();
             }
         }
 
@@ -2430,6 +2417,7 @@ export class GameApp {
         const oldEquip = this.player.equips[slot];
         this.player.equips[slot] = item;
         this.player.inventory[slotIndex] = oldEquip;
+        this.ui?.hideTooltip?.();
 
         // Update 3D Character Model Equipment Visuals based on Rarity (2D Exonie style)
         if (this.player.char3D) {
@@ -2686,6 +2674,7 @@ export class GameApp {
         const unequipped = this.player.equips[slot];
         this.player.inventory[emptyIdx] = unequipped;
         this.player.equips[slot] = null;
+        this.ui?.hideTooltip?.();
 
         if (slot === 'weapon' && this.player.char3D) {
             this.player.char3D.setWeapon(null);

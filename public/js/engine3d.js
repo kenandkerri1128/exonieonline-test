@@ -370,6 +370,10 @@ export class Engine3D {
         let initialCamDist = null;
 
         window.addEventListener('pointerdown', (e) => {
+            const tip = document.getElementById('item-hover-tooltip');
+            if (tip && tip.style.display !== 'none') {
+                tip.style.display = 'none';
+            }
             if (e.pointerType === 'mouse') return;
             if (e.target && e.target.closest && e.target.closest('#desktop-hotbar, .hotbar-slot, #mobile-dpad-container, #joystick-zone, #touch-actions-zone, #mobile-menu-modal, .mobile-menu-dialog, #btn-mobile-chat-toggle, .hud-mobile-menu-wrapper, #hud-dropdown-menu, #persistent-chat-box, .game-modal, button, input, a, select')) return;
 
