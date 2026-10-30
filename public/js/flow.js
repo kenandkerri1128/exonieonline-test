@@ -259,13 +259,13 @@ window.ExonieFlow = {
         if (toast) toast.style.display = 'none';
         const chatBox = document.getElementById('persistent-chat-box');
         if (chatBox) {
-            chatBox.classList.remove('in-game');
+            chatBox.classList.remove('in-game', 'mobile-open');
             chatBox.style.display = 'none';
         }
-        const fullscreenChat = document.getElementById('fullscreen-chat-modal');
-        if (fullscreenChat) fullscreenChat.style.display = 'none';
-        const dropdownMenu = document.getElementById('hud-dropdown-menu');
-        if (dropdownMenu) dropdownMenu.style.display = 'none';
+        const mobChatBtn = document.getElementById('btn-mobile-chat-toggle');
+        if (mobChatBtn) mobChatBtn.style.display = 'none';
+        const mobMenu = document.getElementById('mobile-menu-modal');
+        if (mobMenu) mobMenu.style.display = 'none';
         const chatInput = document.getElementById('chat-input-container');
         if (chatInput) {
             chatInput.classList.remove('in-game', 'open');
@@ -1426,9 +1426,32 @@ window.ExonieFlow = {
         window.toggleChatBoxMinimized = () => {
             const chatBox = document.getElementById('persistent-chat-box');
             if (!chatBox) return;
-            const isMin = chatBox.classList.toggle('minimized');
-            const btn = document.getElementById('chat-minimize-btn');
-            if (btn) btn.textContent = isMin ? '▲' : '▾';
+            const isTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0) || window.innerWidth <= 950;
+            if (isTouch) {
+                if (chatBox.classList.contains('mobile-open')) {
+                    if (window.shrinkChat) window.shrinkChat();
+                    else {
+                        chatBox.classList.remove('mobile-open');
+                        chatBox.style.display = 'none';
+                        const toggleBtn = document.getElementById('btn-mobile-chat-toggle');
+                        if (toggleBtn) toggleBtn.style.display = 'flex';
+                    }
+                } else {
+                    if (window.expandChat) window.expandChat();
+                    else {
+                        chatBox.classList.add('mobile-open');
+                        chatBox.style.display = 'flex';
+                        const toggleBtn = document.getElementById('btn-mobile-chat-toggle');
+                        if (toggleBtn) toggleBtn.style.display = 'none';
+                    }
+                }
+            } else {
+                const isMin = chatBox.classList.toggle('minimized');
+                const minIcon = document.getElementById('chat-min-icon');
+                const minLabel = document.getElementById('chat-min-label');
+                if (minIcon) minIcon.textContent = isMin ? '▲' : '▾';
+                if (minLabel) minLabel.textContent = isMin ? 'Expand' : 'Shrink';
+            }
         };
     },
 

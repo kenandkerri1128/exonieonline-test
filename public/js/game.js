@@ -1529,79 +1529,122 @@ export class GameApp {
         this.isChatting = false;
         this.lastChatTime = 0;
         const chatInput = document.getElementById('chat-input');
+        const chatBox = document.getElementById('persistent-chat-box');
+        const toggleBtn = document.getElementById('btn-mobile-chat-toggle');
+        const minBtn = document.getElementById('chat-minimize-btn');
+        const minIcon = document.getElementById('chat-min-icon');
+        const minLabel = document.getElementById('chat-min-label');
 
         window.switchChatTab = (tab) => {
             this.activeChatTab = tab;
-            // Desktop tabs
-            document.querySelectorAll('.chat-tab').forEach(b => b.classList.remove('active'));
-            const tabBtn = document.getElementById(`chat-tab-${tab}`);
-            if (tabBtn) tabBtn.classList.add('active');
-
-            // Modal tabs
-            document.querySelectorAll('.chat-tab-btn').forEach(b => b.classList.remove('active'));
-            const modalTabBtn = document.getElementById(`modal-tab-${tab}`);
-            if (modalTabBtn) modalTabBtn.classList.add('active');
+            document.querySelectorAll('.chat-tab').forEach(b => {
+                if (b.id === `chat-tab-${tab}`) b.classList.add('active');
+                else if (b.id === 'chat-tab-local' || b.id === 'chat-tab-world') b.classList.remove('active');
+            });
 
             const localContent = document.getElementById('chat-tab-content-local');
             const worldContent = document.getElementById('chat-tab-content-world');
-            const modalLocalContent = document.getElementById('modal-chat-local-content');
-            const modalWorldContent = document.getElementById('modal-chat-world-content');
 
             if (tab === 'local') {
                 if (localContent) localContent.style.display = 'flex';
                 if (worldContent) worldContent.style.display = 'none';
-                if (modalLocalContent) modalLocalContent.style.display = 'flex';
-                if (modalWorldContent) modalWorldContent.style.display = 'none';
             } else {
                 if (localContent) localContent.style.display = 'none';
                 if (worldContent) worldContent.style.display = 'flex';
-                if (modalLocalContent) modalLocalContent.style.display = 'none';
-                if (modalWorldContent) modalWorldContent.style.display = 'flex';
                 const unreadDot = document.getElementById('world-unread-dot');
                 if (unreadDot) unreadDot.style.display = 'none';
-                const modalUnreadDot = document.getElementById('modal-world-unread-dot');
-                if (modalUnreadDot) modalUnreadDot.style.display = 'none';
             }
         };
 
-        window.switchModalChatTab = (tab) => window.switchChatTab(tab);
         window.submitChat = () => this.submitChat();
-        window.submitModalChat = () => {
-            const modalInput = document.getElementById('modal-chat-input');
-            if (!modalInput) return;
-            const text = modalInput.value.trim();
-            if (text.length > 0) {
-                this.sendChatMessage(text);
-                modalInput.value = '';
+
+        // 1. Shrink Chat function: guarantees chat collapses to small button
+        const shrinkChat = (e) => {
+            if (e) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+            if (chatInput) chatInput.blur();
+            this.isChatting = false;
+
+            const isTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0) || window.innerWidth <= 950;
+            if (chatBox) {
+                chatBox.classList.remove('mobile-open');
+                if (!isTouch) {
+                    chatBox.classList.add('minimized');
+                } else {
+                    chatBox.style.display = 'none';
+                }
+            }
+            if (toggleBtn) {
+                toggleBtn.style.display = isTouch ? 'flex' : 'none';
+            }
+            if (minIcon) minIcon.textContent = '▲';
+            if (minLabel) minLabel.textContent = 'Expand';
+        };
+
+        // 2. Expand / Open Chat function: opens chat window
+        const expandChat = (e) => {
+            if (e) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+            const unreadBadge = document.getElementById('m-chat-unread-badge');
+            if (unreadBadge) unreadBadge.style.display = 'none';
+
+            if (chatBox) {
+                chatBox.classList.remove('minimized');
+                chatBox.classList.add('mobile-open');
+                chatBox.style.display = 'flex';
+            }
+            if (toggleBtn) {
+                toggleBtn.style.display = 'none';
+            }
+            if (minIcon) minIcon.textContent = '▾';
+            if (minLabel) minLabel.textContent = 'Shrink';
+
+            // Auto-scroll messages to bottom
+            const activeCont = this.activeChatTab === 'world'
+                ? document.getElementById('world-chat-content')
+                : document.getElementById('persistent-chat-content');
+            if (activeCont && activeCont.parentElement) {
+                activeCont.parentElement.scrollTop = activeCont.parentElement.scrollHeight;
             }
         };
 
-        // Mobile chat toggle and close buttons
-        const btnMobChat = document.getElementById('btn-mobile-chat-toggle');
-        if (btnMobChat) {
-            btnMobChat.onclick = () => this.openFullscreenChat();
-        }
-
-        const btnCloseMobChat = document.getElementById('btn-close-chat-modal');
-        if (btnCloseMobChat) {
-            btnCloseMobChat.onclick = () => this.closeFullscreenChat();
-        }
-
-        const modalForm = document.getElementById('modal-chat-form');
-        const modalInput = document.getElementById('modal-chat-input');
-        if (modalForm && modalInput) {
-            modalForm.onsubmit = (e) => {
-                e.preventDefault();
-                window.submitModalChat();
-            };
-            modalInput.addEventListener('keydown', (e) => {
-                if (e.code === 'Escape') {
-                    e.preventDefault();
-                    this.closeFullscreenChat();
+        this.shrinkChat = shrinkChat;
+        this.expandChat = expandChat;
+        window.shrinkChat = shrinkChat;
+        window.expandChat = expandChat;
+        window.toggleChatBoxMinimized = () => {
+            const isTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0) || window.innerWidth <= 950;
+            if (isTouch) {
+                if (chatBox && chatBox.classList.contains('mobile-open')) {
+                    shrinkChat();
+                } else {
+                    expandChat();
                 }
-            });
-            modalInput.addEventListener('focus', () => { this.isChatting = true; });
-            modalInput.addEventListener('blur', () => { this.isChatting = false; });
+            } else {
+                if (chatBox && chatBox.classList.contains('minimized')) {
+                    expandChat();
+                } else {
+                    shrinkChat();
+                }
+            }
+        };
+
+        // Bind Small Mobile Button to expand chat
+        if (toggleBtn) {
+            toggleBtn.onclick = expandChat;
+            toggleBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
+            toggleBtn.addEventListener('touchend', expandChat);
+        }
+
+        // Bind Shrink Button in chat tab bar to shrink chat
+        if (minBtn) {
+            minBtn.onclick = shrinkChat;
+            minBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
+            minBtn.addEventListener('touchend', shrinkChat);
         }
 
         if (chatInput) {
@@ -1614,6 +1657,7 @@ export class GameApp {
                     chatInput.value = '';
                     chatInput.blur();
                     this.isChatting = false;
+                    shrinkChat();
                 }
             });
             chatInput.addEventListener('focus', () => {
@@ -1623,29 +1667,6 @@ export class GameApp {
                 this.isChatting = false;
             });
         }
-    }
-
-    openFullscreenChat() {
-        const modal = document.getElementById('fullscreen-chat-modal');
-        if (!modal) return;
-        document.exitPointerLock?.();
-        modal.style.display = 'flex';
-        const unread = document.getElementById('m-chat-unread-badge');
-        if (unread) unread.style.display = 'none';
-        const body = document.getElementById('fullscreen-chat-body');
-        if (body) body.scrollTop = body.scrollHeight;
-        setTimeout(() => {
-            const input = document.getElementById('modal-chat-input');
-            if (input) input.focus();
-        }, 60);
-    }
-
-    closeFullscreenChat() {
-        const modal = document.getElementById('fullscreen-chat-modal');
-        if (modal) modal.style.display = 'none';
-        const input = document.getElementById('modal-chat-input');
-        if (input) input.blur();
-        this.isChatting = false;
     }
 
     submitChat() {
@@ -1661,6 +1682,7 @@ export class GameApp {
     }
 
     openChatInput() {
+        if (this.expandChat) this.expandChat();
         const chatInput = document.getElementById('chat-input');
         if (chatInput) {
             chatInput.focus();
@@ -1703,7 +1725,6 @@ export class GameApp {
     }
 
     appendChatLine(channel, htmlContent) {
-        // 1. Desktop container
         const container = channel === 'world'
             ? document.getElementById('world-chat-content')
             : document.getElementById('persistent-chat-content');
@@ -1719,25 +1740,9 @@ export class GameApp {
             }
         }
 
-        // 2. Fullscreen popup chat container
-        const modalContainer = channel === 'world'
-            ? document.getElementById('modal-chat-world-content')
-            : document.getElementById('modal-chat-local-content');
-        if (modalContainer) {
-            const mLine = document.createElement('div');
-            mLine.className = `chat-line ${channel}-line`;
-            mLine.innerHTML = htmlContent;
-            modalContainer.appendChild(mLine);
-
-            const mBody = document.getElementById('fullscreen-chat-body');
-            if (mBody) {
-                mBody.scrollTop = mBody.scrollHeight;
-            }
-        }
-
-        // 3. Unread indicator for mobile chat button if modal is closed
-        const chatModal = document.getElementById('fullscreen-chat-modal');
-        if (!chatModal || chatModal.style.display === 'none') {
+        // Show unread indicator on mobile small button if chat is currently closed/shrunk
+        const chatBox = document.getElementById('persistent-chat-box');
+        if (!chatBox || !chatBox.classList.contains('mobile-open')) {
             const badge = document.getElementById('m-chat-unread-badge');
             if (badge) badge.style.display = 'block';
         }
@@ -1928,9 +1933,21 @@ export class GameApp {
         this.keys = {};
         this.isChatting = false;
 
-        // Reveal persistent chat box ONLY inside the active game world
+        // Reveal persistent chat box inside the active game world
         const chatBox = document.getElementById('persistent-chat-box');
-        if (chatBox) chatBox.classList.add('in-game');
+        const toggleBtn = document.getElementById('btn-mobile-chat-toggle');
+        if (chatBox) {
+            chatBox.classList.add('in-game');
+            if (isTouch) {
+                // Mobile default: CHAT DEFAULTS AS SHRUNK (HIDDEN), SMALL BUTTON IS SHOWN
+                chatBox.classList.remove('mobile-open');
+                chatBox.style.display = 'none';
+                if (toggleBtn) toggleBtn.style.display = 'flex';
+            } else {
+                chatBox.style.display = 'flex';
+                if (toggleBtn) toggleBtn.style.display = 'none';
+            }
+        }
 
         const equippedWpnType = this.getEquippedWeaponType();
         const equippedRarity = this.player.equips?.weapon?.rarity || 'Starter';

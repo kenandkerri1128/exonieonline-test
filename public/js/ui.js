@@ -375,12 +375,21 @@ export class UIManager {
             };
         }
 
-        const btnCloseDropdown = document.getElementById('btn-close-dropdown') || document.getElementById('btn-close-mobile-menu');
+        const btnCloseDropdown = document.getElementById('btn-close-mobile-menu') || document.getElementById('btn-close-dropdown');
         if (btnCloseDropdown) {
             btnCloseDropdown.onclick = (e) => {
                 e.stopPropagation();
                 this.closeMobileMenu();
             };
+        }
+
+        const mobMenuModal = document.getElementById('mobile-menu-modal');
+        if (mobMenuModal) {
+            mobMenuModal.addEventListener('click', (e) => {
+                if (e.target === mobMenuModal) {
+                    this.closeMobileMenu();
+                }
+            });
         }
 
         // Close dropdown when clicking outside the wrapper
@@ -1226,19 +1235,19 @@ export class UIManager {
     }
 
     openMobileMenu() {
-        const menu = document.getElementById('hud-dropdown-menu') || document.getElementById('mobile-menu-modal');
+        const menu = document.getElementById('mobile-menu-modal') || document.getElementById('hud-dropdown-menu');
         if (!menu) return;
         document.exitPointerLock?.();
         menu.style.display = 'flex';
     }
 
     closeMobileMenu() {
-        const menu = document.getElementById('hud-dropdown-menu') || document.getElementById('mobile-menu-modal');
+        const menu = document.getElementById('mobile-menu-modal') || document.getElementById('hud-dropdown-menu');
         if (menu) menu.style.display = 'none';
     }
 
     toggleMobileMenu() {
-        const menu = document.getElementById('hud-dropdown-menu') || document.getElementById('mobile-menu-modal');
+        const menu = document.getElementById('mobile-menu-modal') || document.getElementById('hud-dropdown-menu');
         if (!menu) return;
         if (menu.style.display === 'flex') {
             this.closeMobileMenu();
@@ -2020,7 +2029,7 @@ export class UIManager {
             this.enhancementModal,
             document.getElementById('home-sale-modal'),
             document.getElementById('guild-modal'),
-            document.getElementById('fullscreen-chat-modal'),
+            document.getElementById('mobile-menu-modal'),
             document.getElementById('not-enough-gold-modal')
         ];
         return modals.some(m => m && (m.style.display === 'flex' || m.style.display === 'block'));
@@ -2040,7 +2049,7 @@ export class UIManager {
             document.getElementById('guild-invite-dialog'),
             document.getElementById('friends-modal'),
             document.getElementById('mailbox-modal'),
-            document.getElementById('fullscreen-chat-modal'),
+            document.getElementById('mobile-menu-modal'),
             document.getElementById('cosmetic-preview-modal'),
             document.getElementById('not-enough-gold-modal')
         ];
